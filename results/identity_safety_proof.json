@@ -1,0 +1,334 @@
+{
+  "generated_at": "2026-05-11T18:14:29Z",
+  "summary": {
+    "cases": 3,
+    "passed": 3,
+    "failed": 0,
+    "distinct_identity_payload_cases": 1,
+    "subscriber_specific_cases": 3
+  },
+  "cases": [
+    {
+      "name": "identity_card_value_update_does_not_cross_deliver",
+      "passed": true,
+      "assertion": {
+        "passed": true,
+        "alice_sees_changed_value": true,
+        "bob_does_not_receive_changed_value": true,
+        "naive_shared_payload_would_leak": true
+      },
+      "distinct_identity_payloads": true,
+      "changes": [
+        {
+          "type": "update",
+          "table": "cards",
+          "model": "Upkeep::Domain::Card",
+          "id": 1,
+          "changed_attributes": [
+            "value"
+          ]
+        }
+      ],
+      "subscriber_results": [
+        {
+          "subscriber": "Alice",
+          "user_id": 1,
+          "value_limit": 100,
+          "selected_targets": [
+            {
+              "kind": "fragment",
+              "id": "fragment:cards/_secure_card:cards:1",
+              "reason": "record attribute read matched committed attributes",
+              "identity_signature": "a3b67d858e1b5e49",
+              "identity_profile": [
+                {
+                  "type": "identity_read",
+                  "source": "Current.user",
+                  "key": "id",
+                  "value": 1,
+                  "table": "users",
+                  "id": 1
+                }
+              ]
+            }
+          ],
+          "patch_payloads": [
+            {
+              "kind": "fragment",
+              "id": "fragment:cards/_secure_card:cards:1",
+              "identity_signature": "a3b67d858e1b5e49",
+              "html_digest": "4ab538802a6738124ee56f8a378725f3b539303976ad28034156611940228ee1",
+              "html": "<li class=\"card\" id=\"secure_card_1\" data-upkeep-frame=\"fragment:cards/_secure_card:cards:1\" data-upkeep-template=\"74fa0df3fd61475d\">\n  <span class=\"title\">Plan</span>\n  <span class=\"value\">$90</span>\n</li>"
+            }
+          ],
+          "patched_equals_full": true
+        },
+        {
+          "subscriber": "Bob",
+          "user_id": 2,
+          "value_limit": 50,
+          "selected_targets": [
+            {
+              "kind": "fragment",
+              "id": "fragment:cards/_secure_card:cards:1",
+              "reason": "record attribute read matched committed attributes",
+              "identity_signature": "c7cb10cf8f5cfb3e",
+              "identity_profile": [
+                {
+                  "type": "identity_read",
+                  "source": "Current.user",
+                  "key": "id",
+                  "value": 2,
+                  "table": "users",
+                  "id": 2
+                }
+              ]
+            }
+          ],
+          "patch_payloads": [
+            {
+              "kind": "fragment",
+              "id": "fragment:cards/_secure_card:cards:1",
+              "identity_signature": "c7cb10cf8f5cfb3e",
+              "html_digest": "2a6d80a965d78ff8ffd439f00063c61bd92388aab3b97567b6e74dda71d843da",
+              "html": "<li class=\"card\" id=\"secure_card_1\" data-upkeep-frame=\"fragment:cards/_secure_card:cards:1\" data-upkeep-template=\"74fa0df3fd61475d\">\n  <span class=\"title\">Plan</span>\n  <span class=\"value\">Hidden</span>\n</li>"
+            }
+          ],
+          "patched_equals_full": true
+        }
+      ]
+    },
+    {
+      "name": "identity_user_limit_update_targets_only_that_user",
+      "passed": true,
+      "assertion": {
+        "passed": true,
+        "alice_not_targeted": true,
+        "bob_targeted": true,
+        "bob_sees_value_after_limit_change": true
+      },
+      "distinct_identity_payloads": false,
+      "changes": [
+        {
+          "type": "update",
+          "table": "users",
+          "model": "Upkeep::Domain::User",
+          "id": 2,
+          "changed_attributes": [
+            "value_limit"
+          ]
+        }
+      ],
+      "subscriber_results": [
+        {
+          "subscriber": "Alice",
+          "user_id": 1,
+          "value_limit": 100,
+          "selected_targets": [],
+          "patch_payloads": [],
+          "patched_equals_full": true
+        },
+        {
+          "subscriber": "Bob",
+          "user_id": 2,
+          "value_limit": 100,
+          "selected_targets": [
+            {
+              "kind": "fragment",
+              "id": "fragment:cards/_secure_card:cards:1",
+              "reason": "record attribute read matched committed attributes",
+              "identity_signature": "c7cb10cf8f5cfb3e",
+              "identity_profile": [
+                {
+                  "type": "identity_read",
+                  "source": "Current.user",
+                  "key": "id",
+                  "value": 2,
+                  "table": "users",
+                  "id": 2
+                }
+              ]
+            },
+            {
+              "kind": "fragment",
+              "id": "fragment:cards/_secure_card:cards:2",
+              "reason": "record attribute read matched committed attributes",
+              "identity_signature": "c7cb10cf8f5cfb3e",
+              "identity_profile": [
+                {
+                  "type": "identity_read",
+                  "source": "Current.user",
+                  "key": "id",
+                  "value": 2,
+                  "table": "users",
+                  "id": 2
+                }
+              ]
+            },
+            {
+              "kind": "fragment",
+              "id": "fragment:cards/_secure_card:cards:3",
+              "reason": "record attribute read matched committed attributes",
+              "identity_signature": "c7cb10cf8f5cfb3e",
+              "identity_profile": [
+                {
+                  "type": "identity_read",
+                  "source": "Current.user",
+                  "key": "id",
+                  "value": 2,
+                  "table": "users",
+                  "id": 2
+                }
+              ]
+            }
+          ],
+          "patch_payloads": [
+            {
+              "kind": "fragment",
+              "id": "fragment:cards/_secure_card:cards:1",
+              "identity_signature": "c7cb10cf8f5cfb3e",
+              "html_digest": "aeee19f30ab7ba9cac601e9d9c0785836421947495ea7948dc2a2be6c851cdf8",
+              "html": "<li class=\"card\" id=\"secure_card_1\" data-upkeep-frame=\"fragment:cards/_secure_card:cards:1\" data-upkeep-template=\"74fa0df3fd61475d\">\n  <span class=\"title\">Plan</span>\n  <span class=\"value\">$80</span>\n</li>"
+            },
+            {
+              "kind": "fragment",
+              "id": "fragment:cards/_secure_card:cards:2",
+              "identity_signature": "c7cb10cf8f5cfb3e",
+              "html_digest": "a4b4f6988d67edfa8517adbc0960c3725f81fe87b60969c112abaab10025ce2e",
+              "html": "<li class=\"card\" id=\"secure_card_2\" data-upkeep-frame=\"fragment:cards/_secure_card:cards:2\" data-upkeep-template=\"74fa0df3fd61475d\">\n  <span class=\"title\">Build</span>\n  <span class=\"value\">$40</span>\n</li>"
+            },
+            {
+              "kind": "fragment",
+              "id": "fragment:cards/_secure_card:cards:3",
+              "identity_signature": "c7cb10cf8f5cfb3e",
+              "html_digest": "8781c7d6e7cc51638e22efc8ea7113d638516f5289a5701970a9ca9f5163bb1c",
+              "html": "<li class=\"card\" id=\"secure_card_3\" data-upkeep-frame=\"fragment:cards/_secure_card:cards:3\" data-upkeep-template=\"74fa0df3fd61475d\">\n  <span class=\"title\">Review</span>\n  <span class=\"value\">Hidden</span>\n</li>"
+            }
+          ],
+          "patched_equals_full": true
+        }
+      ]
+    },
+    {
+      "name": "identity_visible_collection_membership_is_bucketed",
+      "passed": true,
+      "assertion": {
+        "passed": true,
+        "alice_render_site_targeted": true,
+        "bob_render_site_targeted": true
+      },
+      "distinct_identity_payloads": false,
+      "changes": [
+        {
+          "type": "update",
+          "table": "cards",
+          "model": "Upkeep::Domain::Card",
+          "id": 1,
+          "changed_attributes": [
+            "value"
+          ]
+        }
+      ],
+      "subscriber_results": [
+        {
+          "subscriber": "Alice",
+          "user_id": 1,
+          "value_limit": 100,
+          "selected_targets": [
+            {
+              "kind": "render_site",
+              "id": "8a3db56ad4cf3d11",
+              "reason": "render-site dependency matched committed change",
+              "identity_signature": "c29ac897c5b7f69d",
+              "identity_profile": [
+                {
+                  "type": "identity_read",
+                  "source": "Current.user",
+                  "key": "id",
+                  "value": 1,
+                  "table": "users",
+                  "id": 1
+                },
+                {
+                  "type": "identity_read",
+                  "source": "Current.user",
+                  "key": "id",
+                  "value": 1,
+                  "table": "users",
+                  "id": 1
+                },
+                {
+                  "type": "identity_read",
+                  "source": "Current.user",
+                  "key": "id",
+                  "value": 1,
+                  "table": "users",
+                  "id": 1
+                }
+              ]
+            }
+          ],
+          "patch_payloads": [
+            {
+              "kind": "render_site",
+              "id": "8a3db56ad4cf3d11",
+              "identity_signature": "c29ac897c5b7f69d",
+              "html_digest": "1f489ab302c72a4f1a359a9e346bac2284deee8d3e059d3a34f55ff2dca156b3",
+              "html": "<upkeep-render-site data-upkeep-render-site=\"8a3db56ad4cf3d11\"><li class=\"card\" id=\"secure_card_1\" data-upkeep-frame=\"fragment:cards/_secure_card:cards:1\" data-upkeep-template=\"74fa0df3fd61475d\">\n  <span class=\"title\">Plan</span>\n  <span class=\"value\">$45</span>\n</li>\n<li class=\"card\" id=\"secure_card_2\" data-upkeep-frame=\"fragment:cards/_secure_card:cards:2\" data-upkeep-template=\"74fa0df3fd61475d\">\n  <span class=\"title\">Build</span>\n  <span class=\"value\">$40</span>\n</li>\n</upkeep-render-site>"
+            }
+          ],
+          "patched_equals_full": true
+        },
+        {
+          "subscriber": "Bob",
+          "user_id": 2,
+          "value_limit": 50,
+          "selected_targets": [
+            {
+              "kind": "render_site",
+              "id": "8a3db56ad4cf3d11",
+              "reason": "render-site dependency matched committed change",
+              "identity_signature": "59e294dfdf6d9e6d",
+              "identity_profile": [
+                {
+                  "type": "identity_read",
+                  "source": "Current.user",
+                  "key": "id",
+                  "value": 2,
+                  "table": "users",
+                  "id": 2
+                },
+                {
+                  "type": "identity_read",
+                  "source": "Current.user",
+                  "key": "id",
+                  "value": 2,
+                  "table": "users",
+                  "id": 2
+                },
+                {
+                  "type": "identity_read",
+                  "source": "Current.user",
+                  "key": "id",
+                  "value": 2,
+                  "table": "users",
+                  "id": 2
+                }
+              ]
+            }
+          ],
+          "patch_payloads": [
+            {
+              "kind": "render_site",
+              "id": "8a3db56ad4cf3d11",
+              "identity_signature": "59e294dfdf6d9e6d",
+              "html_digest": "1f489ab302c72a4f1a359a9e346bac2284deee8d3e059d3a34f55ff2dca156b3",
+              "html": "<upkeep-render-site data-upkeep-render-site=\"8a3db56ad4cf3d11\"><li class=\"card\" id=\"secure_card_1\" data-upkeep-frame=\"fragment:cards/_secure_card:cards:1\" data-upkeep-template=\"74fa0df3fd61475d\">\n  <span class=\"title\">Plan</span>\n  <span class=\"value\">$45</span>\n</li>\n<li class=\"card\" id=\"secure_card_2\" data-upkeep-frame=\"fragment:cards/_secure_card:cards:2\" data-upkeep-template=\"74fa0df3fd61475d\">\n  <span class=\"title\">Build</span>\n  <span class=\"value\">$40</span>\n</li>\n</upkeep-render-site>"
+            }
+          ],
+          "patched_equals_full": true
+        }
+      ]
+    }
+  ]
+}

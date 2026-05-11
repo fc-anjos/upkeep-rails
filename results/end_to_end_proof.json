@@ -1,0 +1,212 @@
+{
+  "generated_at": "2026-05-11T18:14:29Z",
+  "summary": {
+    "cases": 6,
+    "passed": 6,
+    "failed": 0,
+    "narrow_fragment_cases": 2,
+    "render_site_cases": 1,
+    "page_fallback_cases": 3
+  },
+  "cases": [
+    {
+      "name": "easy_partial_record_update",
+      "expected_strategy": "fragment",
+      "passed": true,
+      "selected_targets": [
+        {
+          "kind": "fragment",
+          "id": "fragment:cards/_card:cards:1",
+          "reason": "record attribute read matched committed attributes"
+        }
+      ],
+      "changes": [
+        {
+          "type": "update",
+          "table": "cards",
+          "model": "Upkeep::Domain::Card",
+          "id": 1,
+          "changed_attributes": [
+            "title"
+          ]
+        }
+      ],
+      "frames_observed": {
+        "page:boards/collection": 1,
+        "site:1a8372386e7ae95a": 8,
+        "fragment:cards/_card:cards:1": 3,
+        "fragment:cards/_card:cards:2": 3,
+        "fragment:cards/_card:cards:3": 3
+      },
+      "request_events_observed": 2,
+      "initial_html_digest": "5bb96f5231595a74f59992d18ac832659e35602b2b41ad51304736c11fd1d816",
+      "full_after_html_digest": "5bb96f5231595a74f59992d18ac832659e35602b2b41ad51304736c11fd1d816"
+    },
+    {
+      "name": "hard_presenter_helper_record_update",
+      "expected_strategy": "fragment",
+      "passed": true,
+      "selected_targets": [
+        {
+          "kind": "fragment",
+          "id": "fragment:cards/_card:cards:1",
+          "reason": "record attribute read matched committed attributes"
+        }
+      ],
+      "changes": [
+        {
+          "type": "update",
+          "table": "cards",
+          "model": "Upkeep::Domain::Card",
+          "id": 1,
+          "changed_attributes": [
+            "status"
+          ]
+        }
+      ],
+      "frames_observed": {
+        "page:boards/collection": 1,
+        "site:1a8372386e7ae95a": 8,
+        "fragment:cards/_card:cards:1": 3,
+        "fragment:cards/_card:cards:2": 3,
+        "fragment:cards/_card:cards:3": 3
+      },
+      "request_events_observed": 2,
+      "initial_html_digest": "e690a3872aff5ea785945b6d7d62c29e1840fe7b56a24287ba29a4a319e772d4",
+      "full_after_html_digest": "e690a3872aff5ea785945b6d7d62c29e1840fe7b56a24287ba29a4a319e772d4"
+    },
+    {
+      "name": "hard_collection_membership_create",
+      "expected_strategy": "render_site",
+      "passed": true,
+      "selected_targets": [
+        {
+          "kind": "render_site",
+          "id": "1a8372386e7ae95a",
+          "reason": "render-site dependency matched committed change"
+        }
+      ],
+      "changes": [
+        {
+          "type": "create_or_update",
+          "table": "cards",
+          "model": "Upkeep::Domain::Card",
+          "id": 4,
+          "changed_attributes": [
+            "board_id",
+            "id",
+            "position",
+            "status",
+            "title",
+            "value"
+          ]
+        }
+      ],
+      "frames_observed": {
+        "page:boards/collection": 1,
+        "site:1a8372386e7ae95a": 8,
+        "fragment:cards/_card:cards:1": 3,
+        "fragment:cards/_card:cards:2": 3,
+        "fragment:cards/_card:cards:3": 3
+      },
+      "request_events_observed": 2,
+      "initial_html_digest": "95788085da070f066b31cae355638a38399f4f1fb659c9d59d1a0f5ccd5c719f",
+      "full_after_html_digest": "95788085da070f066b31cae355638a38399f4f1fb659c9d59d1a0f5ccd5c719f"
+    },
+    {
+      "name": "hard_inline_page_without_partials",
+      "expected_strategy": "page",
+      "passed": true,
+      "selected_targets": [
+        {
+          "kind": "page",
+          "id": "page:boards/inline",
+          "reason": "page frame dependency matched committed change"
+        }
+      ],
+      "changes": [
+        {
+          "type": "update",
+          "table": "cards",
+          "model": "Upkeep::Domain::Card",
+          "id": 2,
+          "changed_attributes": [
+            "title"
+          ]
+        }
+      ],
+      "frames_observed": {
+        "page:boards/inline": 11
+      },
+      "request_events_observed": 2,
+      "initial_html_digest": "ec8541f7c5a41f4101aed6ad3696182785c55cd5019cc5a84096337e7a1f7b31",
+      "full_after_html_digest": "ec8541f7c5a41f4101aed6ad3696182785c55cd5019cc5a84096337e7a1f7b31"
+    },
+    {
+      "name": "hard_helper_hidden_collection_create",
+      "expected_strategy": "page",
+      "passed": true,
+      "selected_targets": [
+        {
+          "kind": "page",
+          "id": "page:boards/helper_hidden",
+          "reason": "page frame dependency matched committed change"
+        }
+      ],
+      "changes": [
+        {
+          "type": "create_or_update",
+          "table": "cards",
+          "model": "Upkeep::Domain::Card",
+          "id": 4,
+          "changed_attributes": [
+            "board_id",
+            "id",
+            "position",
+            "status",
+            "title",
+            "value"
+          ]
+        }
+      ],
+      "frames_observed": {
+        "page:boards/helper_hidden": 9,
+        "fragment:cards/_card:cards:1": 3,
+        "fragment:cards/_card:cards:2": 3,
+        "fragment:cards/_card:cards:3": 3
+      },
+      "request_events_observed": 2,
+      "initial_html_digest": "dcd180b1328e4bfa69fe60e0f7cd73345fc43107ceaf5fdb0954daa6a2e3a7a3",
+      "full_after_html_digest": "dcd180b1328e4bfa69fe60e0f7cd73345fc43107ceaf5fdb0954daa6a2e3a7a3"
+    },
+    {
+      "name": "hard_preloaded_plain_data",
+      "expected_strategy": "page",
+      "passed": true,
+      "selected_targets": [
+        {
+          "kind": "page",
+          "id": "page:boards/preloaded_plain",
+          "reason": "request-level dependency matched committed change"
+        }
+      ],
+      "changes": [
+        {
+          "type": "update",
+          "table": "cards",
+          "model": "Upkeep::Domain::Card",
+          "id": 2,
+          "changed_attributes": [
+            "title"
+          ]
+        }
+      ],
+      "frames_observed": {
+        "page:boards/preloaded_plain": 1
+      },
+      "request_events_observed": 9,
+      "initial_html_digest": "55f83c7573565006ddc1092b37d4f8267bd72228e274710421626d0a988c439a",
+      "full_after_html_digest": "55f83c7573565006ddc1092b37d4f8267bd72228e274710421626d0a988c439a"
+    }
+  ]
+}

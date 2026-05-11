@@ -1,0 +1,1746 @@
+{
+  "generated_at": "2026-05-11T18:14:29Z",
+  "inputs": {
+    "benchmark_apps": [
+      "rails/upkeep/benchmark/upkeep-app",
+      "rails/upkeep/benchmark/turbo-app"
+    ],
+    "template_pattern": "app/views/**/*.html.erb",
+    "herb_options": {
+      "strict": true,
+      "track_whitespace": true,
+      "render_nodes": true,
+      "action_view_helpers": true,
+      "transform_conditionals": true
+    }
+  },
+  "summary": {
+    "templates_scanned": 33,
+    "strict_parse_failures": 0,
+    "render_nodes": 12,
+    "helper_lowered_elements": 1,
+    "frontend_tag_targets": 26,
+    "fragment_root_tags": 14,
+    "render_site_tags": 12,
+    "partials": 14,
+    "single_root_partials": 14,
+    "multi_root_partials": 0
+  },
+  "templates": [
+    {
+      "path": "rails/upkeep/benchmark/turbo-app/app/views/boards/show.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 1,
+        "root_elements": 1,
+        "root_types": [
+          "Herb::AST::HTMLElementNode"
+        ],
+        "single_root": true,
+        "multi_root": false
+      },
+      "frontend_tag_plan": [
+        {
+          "kind": "render_site",
+          "target": "collection_region",
+          "location": {
+            "start": {
+              "line": 11,
+              "column": 2
+            },
+            "end": {
+              "line": 11,
+              "column": 68
+            }
+          },
+          "site_id": "a6c3097b38813af2",
+          "attributes": [
+            {
+              "name": "data-upkeep-render-site",
+              "value": "a6c3097b38813af2"
+            }
+          ],
+          "render": {
+            "kind": "partial",
+            "partial": "cards/card",
+            "collection": "@cards",
+            "object": null,
+            "as": "card"
+          },
+          "update_role": "anchor collection membership while child partial roots carry per-record frame tags"
+        }
+      ],
+      "render_nodes": [
+        {
+          "location": {
+            "start": {
+              "line": 11,
+              "column": 2
+            },
+            "end": {
+              "line": 11,
+              "column": 68
+            }
+          },
+          "site_id": "a6c3097b38813af2",
+          "expression": "render partial: \"cards/card\", collection: @cards, as: :card",
+          "kind": "partial",
+          "partial": "cards/card",
+          "template_path": null,
+          "layout": null,
+          "collection": "@cards",
+          "object": null,
+          "as": "card",
+          "locals": [],
+          "block_arguments": []
+        }
+      ],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/turbo-app/app/views/cards/_card.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 1,
+        "root_elements": 1,
+        "root_types": [
+          "Herb::AST::HTMLElementNode"
+        ],
+        "single_root": true,
+        "multi_root": false
+      },
+      "frontend_tag_plan": [
+        {
+          "kind": "fragment_root",
+          "target": "root_element",
+          "location": {
+            "start": {
+              "line": 1,
+              "column": 0
+            },
+            "end": {
+              "line": 3,
+              "column": 6
+            }
+          },
+          "tag_name": "div",
+          "attributes": [
+            {
+              "name": "data-upkeep-frame",
+              "value": "<%= upkeep_frame_id %>"
+            },
+            {
+              "name": "data-upkeep-template",
+              "value": "45645f6543a0b3a0"
+            }
+          ],
+          "update_role": "morph or replace this rendered fragment when runtime observations match a committed change"
+        }
+      ],
+      "render_nodes": [],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/turbo-app/app/views/featured_items/_featured_item.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 1,
+        "root_elements": 1,
+        "root_types": [
+          "Herb::AST::HTMLElementNode"
+        ],
+        "single_root": true,
+        "multi_root": false
+      },
+      "frontend_tag_plan": [
+        {
+          "kind": "fragment_root",
+          "target": "root_element",
+          "location": {
+            "start": {
+              "line": 1,
+              "column": 0
+            },
+            "end": {
+              "line": 5,
+              "column": 10
+            }
+          },
+          "tag_name": "section",
+          "attributes": [
+            {
+              "name": "data-upkeep-frame",
+              "value": "<%= upkeep_frame_id %>"
+            },
+            {
+              "name": "data-upkeep-template",
+              "value": "af042be6bd797feb"
+            }
+          ],
+          "update_role": "morph or replace this rendered fragment when runtime observations match a committed change"
+        }
+      ],
+      "render_nodes": [],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/turbo-app/app/views/featured_items/show.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 3,
+        "root_elements": 1,
+        "root_types": [
+          "Herb::AST::ERBContentNode",
+          "Herb::AST::HTMLElementNode",
+          "Herb::AST::ERBRenderNode"
+        ],
+        "single_root": false,
+        "multi_root": false
+      },
+      "frontend_tag_plan": [
+        {
+          "kind": "render_site",
+          "target": "opaque_render_output",
+          "location": {
+            "start": {
+              "line": 3,
+              "column": 0
+            },
+            "end": {
+              "line": 3,
+              "column": 29
+            }
+          },
+          "site_id": "b0ca8fd6e48ced48",
+          "attributes": [
+            {
+              "name": "data-upkeep-render-site",
+              "value": "b0ca8fd6e48ced48"
+            }
+          ],
+          "render": {
+            "kind": "partial",
+            "partial": "featured_item",
+            "collection": null,
+            "object": null,
+            "as": null
+          },
+          "update_role": "record where ActionView runtime must confirm the rendered frame target"
+        }
+      ],
+      "render_nodes": [
+        {
+          "location": {
+            "start": {
+              "line": 3,
+              "column": 0
+            },
+            "end": {
+              "line": 3,
+              "column": 29
+            }
+          },
+          "site_id": "b0ca8fd6e48ced48",
+          "expression": "render \"featured_item\"",
+          "kind": "partial",
+          "partial": "featured_item",
+          "template_path": null,
+          "layout": null,
+          "collection": null,
+          "object": null,
+          "as": null,
+          "locals": [],
+          "block_arguments": []
+        }
+      ],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/turbo-app/app/views/feed/_feed_item.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 1,
+        "root_elements": 1,
+        "root_types": [
+          "Herb::AST::HTMLElementNode"
+        ],
+        "single_root": true,
+        "multi_root": false
+      },
+      "frontend_tag_plan": [
+        {
+          "kind": "fragment_root",
+          "target": "root_element",
+          "location": {
+            "start": {
+              "line": 1,
+              "column": 0
+            },
+            "end": {
+              "line": 1,
+              "column": 74
+            }
+          },
+          "tag_name": "li",
+          "attributes": [
+            {
+              "name": "data-upkeep-frame",
+              "value": "<%= upkeep_frame_id %>"
+            },
+            {
+              "name": "data-upkeep-template",
+              "value": "3cfe612a3b5d2f80"
+            }
+          ],
+          "update_role": "morph or replace this rendered fragment when runtime observations match a committed change"
+        }
+      ],
+      "render_nodes": [],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/turbo-app/app/views/feed/show.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 3,
+        "root_elements": 2,
+        "root_types": [
+          "Herb::AST::ERBContentNode",
+          "Herb::AST::HTMLElementNode",
+          "Herb::AST::HTMLElementNode"
+        ],
+        "single_root": false,
+        "multi_root": true
+      },
+      "frontend_tag_plan": [
+        {
+          "kind": "render_site",
+          "target": "collection_region",
+          "location": {
+            "start": {
+              "line": 4,
+              "column": 2
+            },
+            "end": {
+              "line": 4,
+              "column": 72
+            }
+          },
+          "site_id": "490a86ad40a234f7",
+          "attributes": [
+            {
+              "name": "data-upkeep-render-site",
+              "value": "490a86ad40a234f7"
+            }
+          ],
+          "render": {
+            "kind": "partial",
+            "partial": "feed/feed_item",
+            "collection": "@items",
+            "object": null,
+            "as": "item"
+          },
+          "update_role": "anchor collection membership while child partial roots carry per-record frame tags"
+        }
+      ],
+      "render_nodes": [
+        {
+          "location": {
+            "start": {
+              "line": 4,
+              "column": 2
+            },
+            "end": {
+              "line": 4,
+              "column": 72
+            }
+          },
+          "site_id": "490a86ad40a234f7",
+          "expression": "render partial: \"feed/feed_item\", collection: @items, as: :item",
+          "kind": "partial",
+          "partial": "feed/feed_item",
+          "template_path": null,
+          "layout": null,
+          "collection": "@items",
+          "object": null,
+          "as": "item",
+          "locals": [],
+          "block_arguments": []
+        }
+      ],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/turbo-app/app/views/layouts/application.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 2,
+        "root_elements": 1,
+        "root_types": [
+          "Herb::AST::HTMLDoctypeNode",
+          "Herb::AST::HTMLElementNode"
+        ],
+        "single_root": false,
+        "multi_root": false
+      },
+      "frontend_tag_plan": [],
+      "render_nodes": [],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/turbo-app/app/views/messages/_message.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 1,
+        "root_elements": 1,
+        "root_types": [
+          "Herb::AST::HTMLElementNode"
+        ],
+        "single_root": true,
+        "multi_root": false
+      },
+      "frontend_tag_plan": [
+        {
+          "kind": "fragment_root",
+          "target": "root_element",
+          "location": {
+            "start": {
+              "line": 1,
+              "column": 0
+            },
+            "end": {
+              "line": 3,
+              "column": 6
+            }
+          },
+          "tag_name": "div",
+          "attributes": [
+            {
+              "name": "data-upkeep-frame",
+              "value": "<%= upkeep_frame_id %>"
+            },
+            {
+              "name": "data-upkeep-template",
+              "value": "1c9c69ce76755252"
+            }
+          ],
+          "update_role": "morph or replace this rendered fragment when runtime observations match a committed change"
+        }
+      ],
+      "render_nodes": [],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/turbo-app/app/views/rooms/show.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 4,
+        "root_elements": 2,
+        "root_types": [
+          "Herb::AST::HTMLElementNode",
+          "Herb::AST::ERBContentNode",
+          "Herb::AST::HTMLElementNode",
+          "Herb::AST::ERBBlockNode"
+        ],
+        "single_root": false,
+        "multi_root": true
+      },
+      "frontend_tag_plan": [
+        {
+          "kind": "render_site",
+          "target": "collection_region",
+          "location": {
+            "start": {
+              "line": 4,
+              "column": 2
+            },
+            "end": {
+              "line": 4,
+              "column": 80
+            }
+          },
+          "site_id": "41badbf4a9c8e9e7",
+          "attributes": [
+            {
+              "name": "data-upkeep-render-site",
+              "value": "41badbf4a9c8e9e7"
+            }
+          ],
+          "render": {
+            "kind": "partial",
+            "partial": "messages/message",
+            "collection": "@messages",
+            "object": null,
+            "as": "message"
+          },
+          "update_role": "anchor collection membership while child partial roots carry per-record frame tags"
+        }
+      ],
+      "render_nodes": [
+        {
+          "location": {
+            "start": {
+              "line": 4,
+              "column": 2
+            },
+            "end": {
+              "line": 4,
+              "column": 80
+            }
+          },
+          "site_id": "41badbf4a9c8e9e7",
+          "expression": "render partial: \"messages/message\", collection: @messages, as: :message",
+          "kind": "partial",
+          "partial": "messages/message",
+          "template_path": null,
+          "layout": null,
+          "collection": "@messages",
+          "object": null,
+          "as": "message",
+          "locals": [],
+          "block_arguments": []
+        }
+      ],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/upkeep-app/app/views/boards/show.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 1,
+        "root_elements": 1,
+        "root_types": [
+          "Herb::AST::HTMLElementNode"
+        ],
+        "single_root": true,
+        "multi_root": false
+      },
+      "frontend_tag_plan": [
+        {
+          "kind": "render_site",
+          "target": "collection_region",
+          "location": {
+            "start": {
+              "line": 6,
+              "column": 2
+            },
+            "end": {
+              "line": 6,
+              "column": 68
+            }
+          },
+          "site_id": "dc5baffb1e6f63ca",
+          "attributes": [
+            {
+              "name": "data-upkeep-render-site",
+              "value": "dc5baffb1e6f63ca"
+            }
+          ],
+          "render": {
+            "kind": "partial",
+            "partial": "cards/card",
+            "collection": "@cards",
+            "object": null,
+            "as": "card"
+          },
+          "update_role": "anchor collection membership while child partial roots carry per-record frame tags"
+        }
+      ],
+      "render_nodes": [
+        {
+          "location": {
+            "start": {
+              "line": 6,
+              "column": 2
+            },
+            "end": {
+              "line": 6,
+              "column": 68
+            }
+          },
+          "site_id": "dc5baffb1e6f63ca",
+          "expression": "render partial: \"cards/card\", collection: @cards, as: :card",
+          "kind": "partial",
+          "partial": "cards/card",
+          "template_path": null,
+          "layout": null,
+          "collection": "@cards",
+          "object": null,
+          "as": "card",
+          "locals": [],
+          "block_arguments": []
+        }
+      ],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/upkeep-app/app/views/cards/_card.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 1,
+        "root_elements": 1,
+        "root_types": [
+          "Herb::AST::HTMLElementNode"
+        ],
+        "single_root": true,
+        "multi_root": false
+      },
+      "frontend_tag_plan": [
+        {
+          "kind": "fragment_root",
+          "target": "root_element",
+          "location": {
+            "start": {
+              "line": 1,
+              "column": 0
+            },
+            "end": {
+              "line": 3,
+              "column": 6
+            }
+          },
+          "tag_name": "div",
+          "attributes": [
+            {
+              "name": "data-upkeep-frame",
+              "value": "<%= upkeep_frame_id %>"
+            },
+            {
+              "name": "data-upkeep-template",
+              "value": "e87c9b8e0a7d85b8"
+            }
+          ],
+          "update_role": "morph or replace this rendered fragment when runtime observations match a committed change"
+        }
+      ],
+      "render_nodes": [],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/upkeep-app/app/views/cards/_summary.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 1,
+        "root_elements": 1,
+        "root_types": [
+          "Herb::AST::HTMLElementNode"
+        ],
+        "single_root": true,
+        "multi_root": false
+      },
+      "frontend_tag_plan": [
+        {
+          "kind": "fragment_root",
+          "target": "root_element",
+          "location": {
+            "start": {
+              "line": 1,
+              "column": 0
+            },
+            "end": {
+              "line": 4,
+              "column": 6
+            }
+          },
+          "tag_name": "div",
+          "attributes": [
+            {
+              "name": "data-upkeep-frame",
+              "value": "<%= upkeep_frame_id %>"
+            },
+            {
+              "name": "data-upkeep-template",
+              "value": "cc17523d96f0d8a7"
+            }
+          ],
+          "update_role": "morph or replace this rendered fragment when runtime observations match a committed change"
+        }
+      ],
+      "render_nodes": [],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/upkeep-app/app/views/comments/_comment.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 1,
+        "root_elements": 1,
+        "root_types": [
+          "Herb::AST::HTMLElementNode"
+        ],
+        "single_root": true,
+        "multi_root": false
+      },
+      "frontend_tag_plan": [
+        {
+          "kind": "fragment_root",
+          "target": "root_element",
+          "location": {
+            "start": {
+              "line": 1,
+              "column": 0
+            },
+            "end": {
+              "line": 3,
+              "column": 6
+            }
+          },
+          "tag_name": "div",
+          "attributes": [
+            {
+              "name": "data-upkeep-frame",
+              "value": "<%= upkeep_frame_id %>"
+            },
+            {
+              "name": "data-upkeep-template",
+              "value": "d14b6a3432c46792"
+            }
+          ],
+          "update_role": "morph or replace this rendered fragment when runtime observations match a committed change"
+        }
+      ],
+      "render_nodes": [],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/upkeep-app/app/views/comments/_guest_comment.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 1,
+        "root_elements": 1,
+        "root_types": [
+          "Herb::AST::HTMLElementNode"
+        ],
+        "single_root": true,
+        "multi_root": false
+      },
+      "frontend_tag_plan": [
+        {
+          "kind": "fragment_root",
+          "target": "root_element",
+          "location": {
+            "start": {
+              "line": 1,
+              "column": 0
+            },
+            "end": {
+              "line": 1,
+              "column": 197
+            }
+          },
+          "tag_name": "div",
+          "attributes": [
+            {
+              "name": "data-upkeep-frame",
+              "value": "<%= upkeep_frame_id %>"
+            },
+            {
+              "name": "data-upkeep-template",
+              "value": "72ab99277c4c0a70"
+            }
+          ],
+          "update_role": "morph or replace this rendered fragment when runtime observations match a committed change"
+        }
+      ],
+      "render_nodes": [],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/upkeep-app/app/views/comments/_staff_comment.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 1,
+        "root_elements": 1,
+        "root_types": [
+          "Herb::AST::HTMLElementNode"
+        ],
+        "single_root": true,
+        "multi_root": false
+      },
+      "frontend_tag_plan": [
+        {
+          "kind": "fragment_root",
+          "target": "root_element",
+          "location": {
+            "start": {
+              "line": 1,
+              "column": 0
+            },
+            "end": {
+              "line": 1,
+              "column": 197
+            }
+          },
+          "tag_name": "div",
+          "attributes": [
+            {
+              "name": "data-upkeep-frame",
+              "value": "<%= upkeep_frame_id %>"
+            },
+            {
+              "name": "data-upkeep-template",
+              "value": "bf3d0240f98ddbdb"
+            }
+          ],
+          "update_role": "morph or replace this rendered fragment when runtime observations match a committed change"
+        }
+      ],
+      "render_nodes": [],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/upkeep-app/app/views/featured_items/_featured_item.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 1,
+        "root_elements": 1,
+        "root_types": [
+          "Herb::AST::HTMLElementNode"
+        ],
+        "single_root": true,
+        "multi_root": false
+      },
+      "frontend_tag_plan": [
+        {
+          "kind": "fragment_root",
+          "target": "root_element",
+          "location": {
+            "start": {
+              "line": 1,
+              "column": 0
+            },
+            "end": {
+              "line": 5,
+              "column": 10
+            }
+          },
+          "tag_name": "section",
+          "attributes": [
+            {
+              "name": "data-upkeep-frame",
+              "value": "<%= upkeep_frame_id %>"
+            },
+            {
+              "name": "data-upkeep-template",
+              "value": "536f4641f1f5cc1f"
+            }
+          ],
+          "update_role": "morph or replace this rendered fragment when runtime observations match a committed change"
+        }
+      ],
+      "render_nodes": [],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/upkeep-app/app/views/featured_items/show.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 2,
+        "root_elements": 1,
+        "root_types": [
+          "Herb::AST::HTMLElementNode",
+          "Herb::AST::ERBRenderNode"
+        ],
+        "single_root": false,
+        "multi_root": false
+      },
+      "frontend_tag_plan": [
+        {
+          "kind": "render_site",
+          "target": "opaque_render_output",
+          "location": {
+            "start": {
+              "line": 2,
+              "column": 0
+            },
+            "end": {
+              "line": 2,
+              "column": 29
+            }
+          },
+          "site_id": "f022e0ea72256f1f",
+          "attributes": [
+            {
+              "name": "data-upkeep-render-site",
+              "value": "f022e0ea72256f1f"
+            }
+          ],
+          "render": {
+            "kind": "partial",
+            "partial": "featured_item",
+            "collection": null,
+            "object": null,
+            "as": null
+          },
+          "update_role": "record where ActionView runtime must confirm the rendered frame target"
+        }
+      ],
+      "render_nodes": [
+        {
+          "location": {
+            "start": {
+              "line": 2,
+              "column": 0
+            },
+            "end": {
+              "line": 2,
+              "column": 29
+            }
+          },
+          "site_id": "f022e0ea72256f1f",
+          "expression": "render \"featured_item\"",
+          "kind": "partial",
+          "partial": "featured_item",
+          "template_path": null,
+          "layout": null,
+          "collection": null,
+          "object": null,
+          "as": null,
+          "locals": [],
+          "block_arguments": []
+        }
+      ],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/upkeep-app/app/views/feed/_feed_item.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 1,
+        "root_elements": 1,
+        "root_types": [
+          "Herb::AST::HTMLElementNode"
+        ],
+        "single_root": true,
+        "multi_root": false
+      },
+      "frontend_tag_plan": [
+        {
+          "kind": "fragment_root",
+          "target": "root_element",
+          "location": {
+            "start": {
+              "line": 1,
+              "column": 0
+            },
+            "end": {
+              "line": 1,
+              "column": 74
+            }
+          },
+          "tag_name": "li",
+          "attributes": [
+            {
+              "name": "data-upkeep-frame",
+              "value": "<%= upkeep_frame_id %>"
+            },
+            {
+              "name": "data-upkeep-template",
+              "value": "3f25d699ffb58230"
+            }
+          ],
+          "update_role": "morph or replace this rendered fragment when runtime observations match a committed change"
+        }
+      ],
+      "render_nodes": [],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/upkeep-app/app/views/feed/_feed_item_mixed.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 1,
+        "root_elements": 1,
+        "root_types": [
+          "Herb::AST::HTMLElementNode"
+        ],
+        "single_root": true,
+        "multi_root": false
+      },
+      "frontend_tag_plan": [
+        {
+          "kind": "fragment_root",
+          "target": "root_element",
+          "location": {
+            "start": {
+              "line": 1,
+              "column": 0
+            },
+            "end": {
+              "line": 6,
+              "column": 5
+            }
+          },
+          "tag_name": "li",
+          "attributes": [
+            {
+              "name": "data-upkeep-frame",
+              "value": "<%= upkeep_frame_id %>"
+            },
+            {
+              "name": "data-upkeep-template",
+              "value": "e3471681817ee491"
+            }
+          ],
+          "update_role": "morph or replace this rendered fragment when runtime observations match a committed change"
+        }
+      ],
+      "render_nodes": [],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/upkeep-app/app/views/feed/_feed_item_signed.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 1,
+        "root_elements": 1,
+        "root_types": [
+          "Herb::AST::HTMLElementNode"
+        ],
+        "single_root": true,
+        "multi_root": false
+      },
+      "frontend_tag_plan": [
+        {
+          "kind": "fragment_root",
+          "target": "root_element",
+          "location": {
+            "start": {
+              "line": 1,
+              "column": 0
+            },
+            "end": {
+              "line": 1,
+              "column": 106
+            }
+          },
+          "tag_name": "li",
+          "attributes": [
+            {
+              "name": "data-upkeep-frame",
+              "value": "<%= upkeep_frame_id %>"
+            },
+            {
+              "name": "data-upkeep-template",
+              "value": "7e42309a10c68375"
+            }
+          ],
+          "update_role": "morph or replace this rendered fragment when runtime observations match a committed change"
+        }
+      ],
+      "render_nodes": [],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/upkeep-app/app/views/feed/mixed.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 2,
+        "root_elements": 2,
+        "root_types": [
+          "Herb::AST::HTMLElementNode",
+          "Herb::AST::HTMLElementNode"
+        ],
+        "single_root": false,
+        "multi_root": true
+      },
+      "frontend_tag_plan": [
+        {
+          "kind": "render_site",
+          "target": "collection_region",
+          "location": {
+            "start": {
+              "line": 3,
+              "column": 2
+            },
+            "end": {
+              "line": 3,
+              "column": 78
+            }
+          },
+          "site_id": "8c5c00f8c7c197b9",
+          "attributes": [
+            {
+              "name": "data-upkeep-render-site",
+              "value": "8c5c00f8c7c197b9"
+            }
+          ],
+          "render": {
+            "kind": "partial",
+            "partial": "feed/feed_item_mixed",
+            "collection": "@items",
+            "object": null,
+            "as": "item"
+          },
+          "update_role": "anchor collection membership while child partial roots carry per-record frame tags"
+        }
+      ],
+      "render_nodes": [
+        {
+          "location": {
+            "start": {
+              "line": 3,
+              "column": 2
+            },
+            "end": {
+              "line": 3,
+              "column": 78
+            }
+          },
+          "site_id": "8c5c00f8c7c197b9",
+          "expression": "render partial: \"feed/feed_item_mixed\", collection: @items, as: :item",
+          "kind": "partial",
+          "partial": "feed/feed_item_mixed",
+          "template_path": null,
+          "layout": null,
+          "collection": "@items",
+          "object": null,
+          "as": "item",
+          "locals": [],
+          "block_arguments": []
+        }
+      ],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/upkeep-app/app/views/feed/show.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 2,
+        "root_elements": 2,
+        "root_types": [
+          "Herb::AST::HTMLElementNode",
+          "Herb::AST::HTMLElementNode"
+        ],
+        "single_root": false,
+        "multi_root": true
+      },
+      "frontend_tag_plan": [
+        {
+          "kind": "render_site",
+          "target": "collection_region",
+          "location": {
+            "start": {
+              "line": 3,
+              "column": 2
+            },
+            "end": {
+              "line": 3,
+              "column": 72
+            }
+          },
+          "site_id": "a5700f626fba510a",
+          "attributes": [
+            {
+              "name": "data-upkeep-render-site",
+              "value": "a5700f626fba510a"
+            }
+          ],
+          "render": {
+            "kind": "partial",
+            "partial": "feed/feed_item",
+            "collection": "@items",
+            "object": null,
+            "as": "item"
+          },
+          "update_role": "anchor collection membership while child partial roots carry per-record frame tags"
+        }
+      ],
+      "render_nodes": [
+        {
+          "location": {
+            "start": {
+              "line": 3,
+              "column": 2
+            },
+            "end": {
+              "line": 3,
+              "column": 72
+            }
+          },
+          "site_id": "a5700f626fba510a",
+          "expression": "render partial: \"feed/feed_item\", collection: @items, as: :item",
+          "kind": "partial",
+          "partial": "feed/feed_item",
+          "template_path": null,
+          "layout": null,
+          "collection": "@items",
+          "object": null,
+          "as": "item",
+          "locals": [],
+          "block_arguments": []
+        }
+      ],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/upkeep-app/app/views/feed/signed.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 2,
+        "root_elements": 2,
+        "root_types": [
+          "Herb::AST::HTMLElementNode",
+          "Herb::AST::HTMLElementNode"
+        ],
+        "single_root": false,
+        "multi_root": true
+      },
+      "frontend_tag_plan": [
+        {
+          "kind": "render_site",
+          "target": "collection_region",
+          "location": {
+            "start": {
+              "line": 3,
+              "column": 2
+            },
+            "end": {
+              "line": 3,
+              "column": 79
+            }
+          },
+          "site_id": "aeee98152b400b5e",
+          "attributes": [
+            {
+              "name": "data-upkeep-render-site",
+              "value": "aeee98152b400b5e"
+            }
+          ],
+          "render": {
+            "kind": "partial",
+            "partial": "feed/feed_item_signed",
+            "collection": "@items",
+            "object": null,
+            "as": "item"
+          },
+          "update_role": "anchor collection membership while child partial roots carry per-record frame tags"
+        }
+      ],
+      "render_nodes": [
+        {
+          "location": {
+            "start": {
+              "line": 3,
+              "column": 2
+            },
+            "end": {
+              "line": 3,
+              "column": 79
+            }
+          },
+          "site_id": "aeee98152b400b5e",
+          "expression": "render partial: \"feed/feed_item_signed\", collection: @items, as: :item",
+          "kind": "partial",
+          "partial": "feed/feed_item_signed",
+          "template_path": null,
+          "layout": null,
+          "collection": "@items",
+          "object": null,
+          "as": "item",
+          "locals": [],
+          "block_arguments": []
+        }
+      ],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/upkeep-app/app/views/layouts/application.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 2,
+        "root_elements": 1,
+        "root_types": [
+          "Herb::AST::HTMLDoctypeNode",
+          "Herb::AST::HTMLElementNode"
+        ],
+        "single_root": false,
+        "multi_root": false
+      },
+      "frontend_tag_plan": [],
+      "render_nodes": [],
+      "helper_lowered_elements": [
+        {
+          "location": {
+            "start": {
+              "line": 23,
+              "column": 4
+            },
+            "end": {
+              "line": 23,
+              "column": 42
+            }
+          },
+          "tag_name": "script",
+          "element_source": "ActionView::Helpers::AssetTagHelper#javascript_include_tag"
+        }
+      ]
+    },
+    {
+      "path": "rails/upkeep/benchmark/upkeep-app/app/views/layouts/feed.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 2,
+        "root_elements": 1,
+        "root_types": [
+          "Herb::AST::HTMLDoctypeNode",
+          "Herb::AST::HTMLElementNode"
+        ],
+        "single_root": false,
+        "multi_root": false
+      },
+      "frontend_tag_plan": [],
+      "render_nodes": [],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/upkeep-app/app/views/m3_idioms/conditional_sibling.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 1,
+        "root_elements": 1,
+        "root_types": [
+          "Herb::AST::HTMLElementNode"
+        ],
+        "single_root": true,
+        "multi_root": false
+      },
+      "frontend_tag_plan": [],
+      "render_nodes": [],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/upkeep-app/app/views/m3_idioms/helper_hidden_collection.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 1,
+        "root_elements": 1,
+        "root_types": [
+          "Herb::AST::HTMLElementNode"
+        ],
+        "single_root": true,
+        "multi_root": false
+      },
+      "frontend_tag_plan": [],
+      "render_nodes": [],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/upkeep-app/app/views/m3_idioms/helper_hidden_partial.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 1,
+        "root_elements": 1,
+        "root_types": [
+          "Herb::AST::HTMLElementNode"
+        ],
+        "single_root": true,
+        "multi_root": false
+      },
+      "frontend_tag_plan": [],
+      "render_nodes": [],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/upkeep-app/app/views/m3_idioms/polymorphic.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 1,
+        "root_elements": 1,
+        "root_types": [
+          "Herb::AST::HTMLElementNode"
+        ],
+        "single_root": true,
+        "multi_root": false
+      },
+      "frontend_tag_plan": [
+        {
+          "kind": "render_site",
+          "target": "opaque_render_output",
+          "location": {
+            "start": {
+              "line": 4,
+              "column": 4
+            },
+            "end": {
+              "line": 4,
+              "column": 51
+            }
+          },
+          "site_id": "b9fcc94ae62c09d6",
+          "attributes": [
+            {
+              "name": "data-upkeep-render-site",
+              "value": "b9fcc94ae62c09d6"
+            }
+          ],
+          "render": {
+            "kind": "object",
+            "partial": null,
+            "collection": null,
+            "object": "@card.comments.order(:created_at)",
+            "as": null
+          },
+          "update_role": "record where ActionView runtime must confirm the rendered frame target"
+        }
+      ],
+      "render_nodes": [
+        {
+          "location": {
+            "start": {
+              "line": 4,
+              "column": 4
+            },
+            "end": {
+              "line": 4,
+              "column": 51
+            }
+          },
+          "site_id": "b9fcc94ae62c09d6",
+          "expression": "render @card.comments.order(:created_at)",
+          "kind": "object",
+          "partial": null,
+          "template_path": null,
+          "layout": null,
+          "collection": null,
+          "object": "@card.comments.order(:created_at)",
+          "as": null,
+          "locals": [],
+          "block_arguments": []
+        }
+      ],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/upkeep-app/app/views/m3_idioms/render_in_bare.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 1,
+        "root_elements": 1,
+        "root_types": [
+          "Herb::AST::HTMLElementNode"
+        ],
+        "single_root": true,
+        "multi_root": false
+      },
+      "frontend_tag_plan": [
+        {
+          "kind": "render_site",
+          "target": "opaque_render_output",
+          "location": {
+            "start": {
+              "line": 4,
+              "column": 4
+            },
+            "end": {
+              "line": 4,
+              "column": 45
+            }
+          },
+          "site_id": "0c4feeca191958c8",
+          "attributes": [
+            {
+              "name": "data-upkeep-render-site",
+              "value": "0c4feeca191958c8"
+            }
+          ],
+          "render": {
+            "kind": "object",
+            "partial": null,
+            "collection": null,
+            "object": "CardCountSummary.new(@card)",
+            "as": null
+          },
+          "update_role": "record where ActionView runtime must confirm the rendered frame target"
+        }
+      ],
+      "render_nodes": [
+        {
+          "location": {
+            "start": {
+              "line": 4,
+              "column": 4
+            },
+            "end": {
+              "line": 4,
+              "column": 45
+            }
+          },
+          "site_id": "0c4feeca191958c8",
+          "expression": "render CardCountSummary.new(@card)",
+          "kind": "object",
+          "partial": null,
+          "template_path": null,
+          "layout": null,
+          "collection": null,
+          "object": "CardCountSummary.new(@card)",
+          "as": null,
+          "locals": [],
+          "block_arguments": []
+        }
+      ],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/upkeep-app/app/views/m3_idioms/sibling_collections.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 1,
+        "root_elements": 1,
+        "root_types": [
+          "Herb::AST::HTMLElementNode"
+        ],
+        "single_root": true,
+        "multi_root": false
+      },
+      "frontend_tag_plan": [],
+      "render_nodes": [],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/upkeep-app/app/views/messages/_message.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 1,
+        "root_elements": 1,
+        "root_types": [
+          "Herb::AST::HTMLElementNode"
+        ],
+        "single_root": true,
+        "multi_root": false
+      },
+      "frontend_tag_plan": [
+        {
+          "kind": "fragment_root",
+          "target": "root_element",
+          "location": {
+            "start": {
+              "line": 1,
+              "column": 0
+            },
+            "end": {
+              "line": 3,
+              "column": 6
+            }
+          },
+          "tag_name": "div",
+          "attributes": [
+            {
+              "name": "data-upkeep-frame",
+              "value": "<%= upkeep_frame_id %>"
+            },
+            {
+              "name": "data-upkeep-template",
+              "value": "dec07900ed62f217"
+            }
+          ],
+          "update_role": "morph or replace this rendered fragment when runtime observations match a committed change"
+        }
+      ],
+      "render_nodes": [],
+      "helper_lowered_elements": []
+    },
+    {
+      "path": "rails/upkeep/benchmark/upkeep-app/app/views/rooms/show.html.erb",
+      "parse": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "root_shape": {
+        "significant_children": 1,
+        "root_elements": 1,
+        "root_types": [
+          "Herb::AST::HTMLElementNode"
+        ],
+        "single_root": true,
+        "multi_root": false
+      },
+      "frontend_tag_plan": [
+        {
+          "kind": "render_site",
+          "target": "collection_region",
+          "location": {
+            "start": {
+              "line": 6,
+              "column": 2
+            },
+            "end": {
+              "line": 6,
+              "column": 80
+            }
+          },
+          "site_id": "31b2bdc1b01ce60a",
+          "attributes": [
+            {
+              "name": "data-upkeep-render-site",
+              "value": "31b2bdc1b01ce60a"
+            }
+          ],
+          "render": {
+            "kind": "partial",
+            "partial": "messages/message",
+            "collection": "@messages",
+            "object": null,
+            "as": "message"
+          },
+          "update_role": "anchor collection membership while child partial roots carry per-record frame tags"
+        }
+      ],
+      "render_nodes": [
+        {
+          "location": {
+            "start": {
+              "line": 6,
+              "column": 2
+            },
+            "end": {
+              "line": 6,
+              "column": 80
+            }
+          },
+          "site_id": "31b2bdc1b01ce60a",
+          "expression": "render partial: \"messages/message\", collection: @messages, as: :message",
+          "kind": "partial",
+          "partial": "messages/message",
+          "template_path": null,
+          "layout": null,
+          "collection": "@messages",
+          "object": null,
+          "as": "message",
+          "locals": [],
+          "block_arguments": []
+        }
+      ],
+      "helper_lowered_elements": []
+    }
+  ]
+}

@@ -1,0 +1,76 @@
+# frozen_string_literal: true
+
+required_ruby = Gem::Version.new("3.2.0")
+if Gem::Version.new(RUBY_VERSION) < required_ruby
+  abort "Ruby #{required_ruby} or newer required. Run: MISE_TRUSTED_CONFIG_PATHS=/Volumes/FelipeSSD/professional/upkeep mise x ruby@3.4.7 -- ruby bin/run"
+end
+
+require_relative "../lib/upkeep"
+
+project_root = File.expand_path("..", __dir__)
+herb_report_path = File.join(project_root, "results", "herb_surface.json")
+active_record_report_path = File.join(project_root, "results", "active_record_surface.json")
+end_to_end_report_path = File.join(project_root, "results", "end_to_end_proof.json")
+identity_report_path = File.join(project_root, "results", "identity_safety_proof.json")
+
+probe = Upkeep::Probes::HerbSurface.new(project_root: project_root)
+herb_report = probe.run
+
+active_record_probe = Upkeep::Probes::ActiveRecordSurface.new(project_root: project_root)
+active_record_report = active_record_probe.run
+
+end_to_end_proof = Upkeep::Proofs::EndToEnd.new
+end_to_end_report = end_to_end_proof.run
+
+identity_proof = Upkeep::Proofs::IdentitySafety.new
+identity_report = identity_proof.run
+
+File.write(herb_report_path, JSON.pretty_generate(herb_report) + "\n")
+File.write(active_record_report_path, JSON.pretty_generate(active_record_report) + "\n")
+File.write(end_to_end_report_path, JSON.pretty_generate(end_to_end_report) + "\n")
+File.write(identity_report_path, JSON.pretty_generate(identity_report) + "\n")
+
+puts "Herb surface probe"
+puts "templates scanned: #{herb_report.fetch(:summary).fetch(:templates_scanned)}"
+puts "strict parse failures: #{herb_report.fetch(:summary).fetch(:strict_parse_failures)}"
+puts "render nodes: #{herb_report.fetch(:summary).fetch(:render_nodes)}"
+puts "helper-lowered elements: #{herb_report.fetch(:summary).fetch(:helper_lowered_elements)}"
+puts "frontend tag targets: #{herb_report.fetch(:summary).fetch(:frontend_tag_targets)}"
+puts "fragment-root tags: #{herb_report.fetch(:summary).fetch(:fragment_root_tags)}"
+puts "render-site tags: #{herb_report.fetch(:summary).fetch(:render_site_tags)}"
+puts "single-root partials: #{herb_report.fetch(:summary).fetch(:single_root_partials)}"
+puts "multi-root partials: #{herb_report.fetch(:summary).fetch(:multi_root_partials)}"
+puts "report: #{herb_report_path}"
+
+puts
+puts "Active Record surface probe"
+puts "read events: #{active_record_report.fetch(:summary).fetch(:read_events)}"
+puts "callback change events: #{active_record_report.fetch(:summary).fetch(:callback_change_events)}"
+puts "bulk change events: #{active_record_report.fetch(:summary).fetch(:bulk_change_events)}"
+puts "event types: #{active_record_report.fetch(:summary).fetch(:event_types).join(", ")}"
+puts "report: #{active_record_report_path}"
+
+puts
+puts "End-to-end proof"
+puts "cases: #{end_to_end_report.fetch(:summary).fetch(:cases)}"
+puts "passed: #{end_to_end_report.fetch(:summary).fetch(:passed)}"
+puts "failed: #{end_to_end_report.fetch(:summary).fetch(:failed)}"
+puts "narrow fragment cases: #{end_to_end_report.fetch(:summary).fetch(:narrow_fragment_cases)}"
+puts "render-site cases: #{end_to_end_report.fetch(:summary).fetch(:render_site_cases)}"
+puts "page fallback cases: #{end_to_end_report.fetch(:summary).fetch(:page_fallback_cases)}"
+puts "report: #{end_to_end_report_path}"
+
+puts
+puts "Identity safety proof"
+puts "cases: #{identity_report.fetch(:summary).fetch(:cases)}"
+puts "passed: #{identity_report.fetch(:summary).fetch(:passed)}"
+puts "failed: #{identity_report.fetch(:summary).fetch(:failed)}"
+puts "distinct identity payload cases: #{identity_report.fetch(:summary).fetch(:distinct_identity_payload_cases)}"
+puts "subscriber-specific cases: #{identity_report.fetch(:summary).fetch(:subscriber_specific_cases)}"
+puts "report: #{identity_report_path}"
+
+if herb_report.fetch(:summary).fetch(:strict_parse_failures).positive? ||
+    end_to_end_report.fetch(:summary).fetch(:failed).positive? ||
+    identity_report.fetch(:summary).fetch(:failed).positive?
+  exit 1
+end

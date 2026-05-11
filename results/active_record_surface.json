@@ -1,0 +1,938 @@
+{
+  "generated_at": "2026-05-11T18:14:29Z",
+  "summary": {
+    "read_events": 21,
+    "callback_change_events": 1,
+    "bulk_change_events": 1,
+    "event_types": [
+      "association_load",
+      "attribute_read",
+      "relation_calculate",
+      "relation_pluck",
+      "sql"
+    ]
+  },
+  "read_events": [
+    {
+      "type": "sql",
+      "name": "Upkeep::Probes::ActiveRecordSurface::Board Load",
+      "sql": "SELECT \"boards\".* FROM \"boards\" WHERE \"boards\".\"name\" = ? LIMIT ?"
+    },
+    {
+      "type": "attribute_read",
+      "model": "Upkeep::Probes::ActiveRecordSurface::Board",
+      "table": "boards",
+      "id": 1,
+      "attribute": "name"
+    },
+    {
+      "type": "attribute_read",
+      "model": "Upkeep::Probes::ActiveRecordSurface::Board",
+      "table": "boards",
+      "id": 1,
+      "attribute": "id"
+    },
+    {
+      "type": "association_load",
+      "owner_model": "Upkeep::Probes::ActiveRecordSurface::Board",
+      "owner_table": "boards",
+      "owner_id": 1,
+      "association": "cards",
+      "target_model": "Upkeep::Probes::ActiveRecordSurface::Card",
+      "target_table": "cards"
+    },
+    {
+      "type": "attribute_read",
+      "model": "Upkeep::Probes::ActiveRecordSurface::Board",
+      "table": "boards",
+      "id": 1,
+      "attribute": "id"
+    },
+    {
+      "type": "attribute_read",
+      "model": "Upkeep::Probes::ActiveRecordSurface::Board",
+      "table": "boards",
+      "id": 1,
+      "attribute": "id"
+    },
+    {
+      "type": "attribute_read",
+      "model": "Upkeep::Probes::ActiveRecordSurface::Board",
+      "table": "boards",
+      "id": 1,
+      "attribute": "id"
+    },
+    {
+      "type": "sql",
+      "name": "Upkeep::Probes::ActiveRecordSurface::Card Load",
+      "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = ?"
+    },
+    {
+      "type": "attribute_read",
+      "model": "Upkeep::Probes::ActiveRecordSurface::Card",
+      "table": "cards",
+      "id": 1,
+      "attribute": "title"
+    },
+    {
+      "type": "attribute_read",
+      "model": "Upkeep::Probes::ActiveRecordSurface::Card",
+      "table": "cards",
+      "id": 1,
+      "attribute": "status"
+    },
+    {
+      "type": "attribute_read",
+      "model": "Upkeep::Probes::ActiveRecordSurface::Card",
+      "table": "cards",
+      "id": 1,
+      "attribute": "position"
+    },
+    {
+      "type": "attribute_read",
+      "model": "Upkeep::Probes::ActiveRecordSurface::Card",
+      "table": "cards",
+      "id": 2,
+      "attribute": "title"
+    },
+    {
+      "type": "attribute_read",
+      "model": "Upkeep::Probes::ActiveRecordSurface::Card",
+      "table": "cards",
+      "id": 2,
+      "attribute": "status"
+    },
+    {
+      "type": "attribute_read",
+      "model": "Upkeep::Probes::ActiveRecordSurface::Card",
+      "table": "cards",
+      "id": 2,
+      "attribute": "position"
+    },
+    {
+      "type": "attribute_read",
+      "model": "Upkeep::Probes::ActiveRecordSurface::Card",
+      "table": "cards",
+      "id": 3,
+      "attribute": "title"
+    },
+    {
+      "type": "attribute_read",
+      "model": "Upkeep::Probes::ActiveRecordSurface::Card",
+      "table": "cards",
+      "id": 3,
+      "attribute": "status"
+    },
+    {
+      "type": "attribute_read",
+      "model": "Upkeep::Probes::ActiveRecordSurface::Card",
+      "table": "cards",
+      "id": 3,
+      "attribute": "position"
+    },
+    {
+      "type": "relation_pluck",
+      "model": "Upkeep::Probes::ActiveRecordSurface::Card",
+      "table": "cards",
+      "columns": [
+        "title"
+      ],
+      "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"status\" = 'open' ORDER BY \"cards\".\"position\" ASC"
+    },
+    {
+      "type": "sql",
+      "name": "Upkeep::Probes::ActiveRecordSurface::Card Pluck",
+      "sql": "SELECT \"cards\".\"title\" FROM \"cards\" WHERE \"cards\".\"status\" = ? ORDER BY \"cards\".\"position\" ASC"
+    },
+    {
+      "type": "relation_calculate",
+      "model": "Upkeep::Probes::ActiveRecordSurface::Card",
+      "table": "cards",
+      "operation": "count",
+      "column": "",
+      "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"status\" = 'open'"
+    },
+    {
+      "type": "sql",
+      "name": "Upkeep::Probes::ActiveRecordSurface::Card Count",
+      "sql": "SELECT COUNT(*) FROM \"cards\" WHERE \"cards\".\"status\" = ?"
+    }
+  ],
+  "callback_change_events": [
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Probes::ActiveRecordSurface::Card",
+      "table": "cards",
+      "id": 1,
+      "changed_attributes": [
+        "status"
+      ]
+    }
+  ],
+  "bulk_change_events": [
+    {
+      "type": "bulk_update",
+      "model": "Upkeep::Probes::ActiveRecordSurface::Card",
+      "table": "cards",
+      "updates": "{status: \"open\"}",
+      "predicate_sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"status\" = 'blocked'"
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::User",
+      "table": "users",
+      "id": 1,
+      "changed_attributes": [
+        "id",
+        "name",
+        "value_limit"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::User",
+      "table": "users",
+      "id": 2,
+      "changed_attributes": [
+        "id",
+        "name",
+        "value_limit"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Board",
+      "table": "boards",
+      "id": 1,
+      "changed_attributes": [
+        "id",
+        "name"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 1,
+      "changed_attributes": [
+        "board_id",
+        "id",
+        "position",
+        "status",
+        "title",
+        "value"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 2,
+      "changed_attributes": [
+        "board_id",
+        "id",
+        "position",
+        "status",
+        "title",
+        "value"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 3,
+      "changed_attributes": [
+        "board_id",
+        "id",
+        "position",
+        "status",
+        "title",
+        "value"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 1,
+      "changed_attributes": [
+        "title"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::User",
+      "table": "users",
+      "id": 1,
+      "changed_attributes": [
+        "id",
+        "name",
+        "value_limit"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::User",
+      "table": "users",
+      "id": 2,
+      "changed_attributes": [
+        "id",
+        "name",
+        "value_limit"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Board",
+      "table": "boards",
+      "id": 1,
+      "changed_attributes": [
+        "id",
+        "name"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 1,
+      "changed_attributes": [
+        "board_id",
+        "id",
+        "position",
+        "status",
+        "title",
+        "value"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 2,
+      "changed_attributes": [
+        "board_id",
+        "id",
+        "position",
+        "status",
+        "title",
+        "value"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 3,
+      "changed_attributes": [
+        "board_id",
+        "id",
+        "position",
+        "status",
+        "title",
+        "value"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 1,
+      "changed_attributes": [
+        "status"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::User",
+      "table": "users",
+      "id": 1,
+      "changed_attributes": [
+        "id",
+        "name",
+        "value_limit"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::User",
+      "table": "users",
+      "id": 2,
+      "changed_attributes": [
+        "id",
+        "name",
+        "value_limit"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Board",
+      "table": "boards",
+      "id": 1,
+      "changed_attributes": [
+        "id",
+        "name"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 1,
+      "changed_attributes": [
+        "board_id",
+        "id",
+        "position",
+        "status",
+        "title",
+        "value"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 2,
+      "changed_attributes": [
+        "board_id",
+        "id",
+        "position",
+        "status",
+        "title",
+        "value"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 3,
+      "changed_attributes": [
+        "board_id",
+        "id",
+        "position",
+        "status",
+        "title",
+        "value"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 4,
+      "changed_attributes": [
+        "board_id",
+        "id",
+        "position",
+        "status",
+        "title",
+        "value"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::User",
+      "table": "users",
+      "id": 1,
+      "changed_attributes": [
+        "id",
+        "name",
+        "value_limit"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::User",
+      "table": "users",
+      "id": 2,
+      "changed_attributes": [
+        "id",
+        "name",
+        "value_limit"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Board",
+      "table": "boards",
+      "id": 1,
+      "changed_attributes": [
+        "id",
+        "name"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 1,
+      "changed_attributes": [
+        "board_id",
+        "id",
+        "position",
+        "status",
+        "title",
+        "value"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 2,
+      "changed_attributes": [
+        "board_id",
+        "id",
+        "position",
+        "status",
+        "title",
+        "value"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 3,
+      "changed_attributes": [
+        "board_id",
+        "id",
+        "position",
+        "status",
+        "title",
+        "value"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 2,
+      "changed_attributes": [
+        "title"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::User",
+      "table": "users",
+      "id": 1,
+      "changed_attributes": [
+        "id",
+        "name",
+        "value_limit"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::User",
+      "table": "users",
+      "id": 2,
+      "changed_attributes": [
+        "id",
+        "name",
+        "value_limit"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Board",
+      "table": "boards",
+      "id": 1,
+      "changed_attributes": [
+        "id",
+        "name"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 1,
+      "changed_attributes": [
+        "board_id",
+        "id",
+        "position",
+        "status",
+        "title",
+        "value"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 2,
+      "changed_attributes": [
+        "board_id",
+        "id",
+        "position",
+        "status",
+        "title",
+        "value"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 3,
+      "changed_attributes": [
+        "board_id",
+        "id",
+        "position",
+        "status",
+        "title",
+        "value"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 4,
+      "changed_attributes": [
+        "board_id",
+        "id",
+        "position",
+        "status",
+        "title",
+        "value"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::User",
+      "table": "users",
+      "id": 1,
+      "changed_attributes": [
+        "id",
+        "name",
+        "value_limit"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::User",
+      "table": "users",
+      "id": 2,
+      "changed_attributes": [
+        "id",
+        "name",
+        "value_limit"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Board",
+      "table": "boards",
+      "id": 1,
+      "changed_attributes": [
+        "id",
+        "name"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 1,
+      "changed_attributes": [
+        "board_id",
+        "id",
+        "position",
+        "status",
+        "title",
+        "value"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 2,
+      "changed_attributes": [
+        "board_id",
+        "id",
+        "position",
+        "status",
+        "title",
+        "value"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 3,
+      "changed_attributes": [
+        "board_id",
+        "id",
+        "position",
+        "status",
+        "title",
+        "value"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 2,
+      "changed_attributes": [
+        "title"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::User",
+      "table": "users",
+      "id": 1,
+      "changed_attributes": [
+        "id",
+        "name",
+        "value_limit"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::User",
+      "table": "users",
+      "id": 2,
+      "changed_attributes": [
+        "id",
+        "name",
+        "value_limit"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Board",
+      "table": "boards",
+      "id": 1,
+      "changed_attributes": [
+        "id",
+        "name"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 1,
+      "changed_attributes": [
+        "board_id",
+        "id",
+        "position",
+        "status",
+        "title",
+        "value"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 2,
+      "changed_attributes": [
+        "board_id",
+        "id",
+        "position",
+        "status",
+        "title",
+        "value"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 3,
+      "changed_attributes": [
+        "board_id",
+        "id",
+        "position",
+        "status",
+        "title",
+        "value"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 1,
+      "changed_attributes": [
+        "value"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::User",
+      "table": "users",
+      "id": 1,
+      "changed_attributes": [
+        "id",
+        "name",
+        "value_limit"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::User",
+      "table": "users",
+      "id": 2,
+      "changed_attributes": [
+        "id",
+        "name",
+        "value_limit"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Board",
+      "table": "boards",
+      "id": 1,
+      "changed_attributes": [
+        "id",
+        "name"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 1,
+      "changed_attributes": [
+        "board_id",
+        "id",
+        "position",
+        "status",
+        "title",
+        "value"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 2,
+      "changed_attributes": [
+        "board_id",
+        "id",
+        "position",
+        "status",
+        "title",
+        "value"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 3,
+      "changed_attributes": [
+        "board_id",
+        "id",
+        "position",
+        "status",
+        "title",
+        "value"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::User",
+      "table": "users",
+      "id": 2,
+      "changed_attributes": [
+        "value_limit"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::User",
+      "table": "users",
+      "id": 1,
+      "changed_attributes": [
+        "id",
+        "name",
+        "value_limit"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::User",
+      "table": "users",
+      "id": 2,
+      "changed_attributes": [
+        "id",
+        "name",
+        "value_limit"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Board",
+      "table": "boards",
+      "id": 1,
+      "changed_attributes": [
+        "id",
+        "name"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 1,
+      "changed_attributes": [
+        "board_id",
+        "id",
+        "position",
+        "status",
+        "title",
+        "value"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 2,
+      "changed_attributes": [
+        "board_id",
+        "id",
+        "position",
+        "status",
+        "title",
+        "value"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 3,
+      "changed_attributes": [
+        "board_id",
+        "id",
+        "position",
+        "status",
+        "title",
+        "value"
+      ]
+    },
+    {
+      "type": "after_commit",
+      "model": "Upkeep::Domain::Card",
+      "table": "cards",
+      "id": 1,
+      "changed_attributes": [
+        "value"
+      ]
+    }
+  ]
+}
