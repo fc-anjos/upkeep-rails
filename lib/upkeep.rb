@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "upkeep/version"
 require_relative "upkeep/herb_loader"
 require_relative "upkeep/dependencies"
 require_relative "upkeep/dag"
@@ -14,3 +15,4 @@ require_relative "upkeep/targeting"
 require_relative "upkeep/proofs/end_to_end"
 require_relative "upkeep/proofs/identity_safety"
 require_relative "upkeep/proofs/auth_surfaces"
+require_relative "upkeep/rails"
