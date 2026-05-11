@@ -1,0 +1,7 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "rake"
+
+load File.expand_path("../Rakefile", __dir__)
+Rake::Task["proof"].invoke
