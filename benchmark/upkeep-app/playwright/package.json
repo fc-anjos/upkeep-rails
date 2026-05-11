@@ -1,0 +1,15 @@
+{
+  "name": "upkeep-app-playwright",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "install-browsers": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.52.0"
+  },
+  "dependencies": {
+    "@msgpack/msgpack": "^3.1.3"
+  }
+}

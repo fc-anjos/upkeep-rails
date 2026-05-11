@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-05-11T19:37:47Z",
+  "generated_at": "2026-05-11T19:49:46Z",
   "inputs": {
     "benchmark_apps": [
-      "rails/upkeep/benchmark/upkeep-app",
-      "rails/upkeep/benchmark/turbo-app"
+      "benchmark/upkeep-app",
+      "benchmark/turbo-app"
     ],
     "template_pattern": "app/views/**/*.html.erb",
     "herb_options": {
@@ -28,7 +28,7 @@
   },
   "templates": [
     {
-      "path": "rails/upkeep/benchmark/turbo-app/app/views/boards/show.html.erb",
+      "path": "benchmark/turbo-app/app/views/boards/show.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -57,11 +57,11 @@
               "column": 68
             }
           },
-          "site_id": "a6c3097b38813af2",
+          "site_id": "09ab5bdace2dbecf",
           "attributes": [
             {
               "name": "data-upkeep-render-site",
-              "value": "a6c3097b38813af2"
+              "value": "09ab5bdace2dbecf"
             }
           ],
           "render": {
@@ -86,7 +86,7 @@
               "column": 68
             }
           },
-          "site_id": "a6c3097b38813af2",
+          "site_id": "09ab5bdace2dbecf",
           "expression": "render partial: \"cards/card\", collection: @cards, as: :card",
           "kind": "partial",
           "partial": "cards/card",
@@ -102,7 +102,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/turbo-app/app/views/cards/_card.html.erb",
+      "path": "benchmark/turbo-app/app/views/cards/_card.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -139,7 +139,7 @@
             },
             {
               "name": "data-upkeep-template",
-              "value": "45645f6543a0b3a0"
+              "value": "277cf30ad5e650f8"
             }
           ],
           "update_role": "morph or replace this rendered fragment when runtime observations match a committed change"
@@ -149,7 +149,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/turbo-app/app/views/featured_items/_featured_item.html.erb",
+      "path": "benchmark/turbo-app/app/views/featured_items/_featured_item.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -186,7 +186,7 @@
             },
             {
               "name": "data-upkeep-template",
-              "value": "af042be6bd797feb"
+              "value": "ad518d86f5355d98"
             }
           ],
           "update_role": "morph or replace this rendered fragment when runtime observations match a committed change"
@@ -196,7 +196,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/turbo-app/app/views/featured_items/show.html.erb",
+      "path": "benchmark/turbo-app/app/views/featured_items/show.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -227,11 +227,11 @@
               "column": 29
             }
           },
-          "site_id": "b0ca8fd6e48ced48",
+          "site_id": "2d017fe9bd9dad8d",
           "attributes": [
             {
               "name": "data-upkeep-render-site",
-              "value": "b0ca8fd6e48ced48"
+              "value": "2d017fe9bd9dad8d"
             }
           ],
           "render": {
@@ -256,7 +256,7 @@
               "column": 29
             }
           },
-          "site_id": "b0ca8fd6e48ced48",
+          "site_id": "2d017fe9bd9dad8d",
           "expression": "render \"featured_item\"",
           "kind": "partial",
           "partial": "featured_item",
@@ -272,7 +272,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/turbo-app/app/views/feed/_feed_item.html.erb",
+      "path": "benchmark/turbo-app/app/views/feed/_feed_item.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -309,7 +309,7 @@
             },
             {
               "name": "data-upkeep-template",
-              "value": "3cfe612a3b5d2f80"
+              "value": "0961fe3748e69247"
             }
           ],
           "update_role": "morph or replace this rendered fragment when runtime observations match a committed change"
@@ -319,7 +319,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/turbo-app/app/views/feed/show.html.erb",
+      "path": "benchmark/turbo-app/app/views/feed/show.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -350,11 +350,11 @@
               "column": 72
             }
           },
-          "site_id": "490a86ad40a234f7",
+          "site_id": "5db8499fe9bc5164",
           "attributes": [
             {
               "name": "data-upkeep-render-site",
-              "value": "490a86ad40a234f7"
+              "value": "5db8499fe9bc5164"
             }
           ],
           "render": {
@@ -379,7 +379,7 @@
               "column": 72
             }
           },
-          "site_id": "490a86ad40a234f7",
+          "site_id": "5db8499fe9bc5164",
           "expression": "render partial: \"feed/feed_item\", collection: @items, as: :item",
           "kind": "partial",
           "partial": "feed/feed_item",
@@ -395,7 +395,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/turbo-app/app/views/layouts/application.html.erb",
+      "path": "benchmark/turbo-app/app/views/layouts/application.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -416,7 +416,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/turbo-app/app/views/messages/_message.html.erb",
+      "path": "benchmark/turbo-app/app/views/messages/_message.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -453,7 +453,7 @@
             },
             {
               "name": "data-upkeep-template",
-              "value": "1c9c69ce76755252"
+              "value": "6c120dbf8c336975"
             }
           ],
           "update_role": "morph or replace this rendered fragment when runtime observations match a committed change"
@@ -463,7 +463,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/turbo-app/app/views/rooms/show.html.erb",
+      "path": "benchmark/turbo-app/app/views/rooms/show.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -495,11 +495,11 @@
               "column": 80
             }
           },
-          "site_id": "41badbf4a9c8e9e7",
+          "site_id": "ebc6ad4f83631142",
           "attributes": [
             {
               "name": "data-upkeep-render-site",
-              "value": "41badbf4a9c8e9e7"
+              "value": "ebc6ad4f83631142"
             }
           ],
           "render": {
@@ -524,7 +524,7 @@
               "column": 80
             }
           },
-          "site_id": "41badbf4a9c8e9e7",
+          "site_id": "ebc6ad4f83631142",
           "expression": "render partial: \"messages/message\", collection: @messages, as: :message",
           "kind": "partial",
           "partial": "messages/message",
@@ -540,7 +540,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/upkeep-app/app/views/boards/show.html.erb",
+      "path": "benchmark/upkeep-app/app/views/boards/show.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -569,11 +569,11 @@
               "column": 68
             }
           },
-          "site_id": "dc5baffb1e6f63ca",
+          "site_id": "c0c7d00da752c1bc",
           "attributes": [
             {
               "name": "data-upkeep-render-site",
-              "value": "dc5baffb1e6f63ca"
+              "value": "c0c7d00da752c1bc"
             }
           ],
           "render": {
@@ -598,7 +598,7 @@
               "column": 68
             }
           },
-          "site_id": "dc5baffb1e6f63ca",
+          "site_id": "c0c7d00da752c1bc",
           "expression": "render partial: \"cards/card\", collection: @cards, as: :card",
           "kind": "partial",
           "partial": "cards/card",
@@ -614,7 +614,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/upkeep-app/app/views/cards/_card.html.erb",
+      "path": "benchmark/upkeep-app/app/views/cards/_card.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -651,7 +651,7 @@
             },
             {
               "name": "data-upkeep-template",
-              "value": "e87c9b8e0a7d85b8"
+              "value": "dcc1727646e01dd1"
             }
           ],
           "update_role": "morph or replace this rendered fragment when runtime observations match a committed change"
@@ -661,7 +661,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/upkeep-app/app/views/cards/_summary.html.erb",
+      "path": "benchmark/upkeep-app/app/views/cards/_summary.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -698,7 +698,7 @@
             },
             {
               "name": "data-upkeep-template",
-              "value": "cc17523d96f0d8a7"
+              "value": "3f40085180a550f2"
             }
           ],
           "update_role": "morph or replace this rendered fragment when runtime observations match a committed change"
@@ -708,7 +708,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/upkeep-app/app/views/comments/_comment.html.erb",
+      "path": "benchmark/upkeep-app/app/views/comments/_comment.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -745,7 +745,7 @@
             },
             {
               "name": "data-upkeep-template",
-              "value": "d14b6a3432c46792"
+              "value": "b67b8d426b1916a4"
             }
           ],
           "update_role": "morph or replace this rendered fragment when runtime observations match a committed change"
@@ -755,7 +755,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/upkeep-app/app/views/comments/_guest_comment.html.erb",
+      "path": "benchmark/upkeep-app/app/views/comments/_guest_comment.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -792,7 +792,7 @@
             },
             {
               "name": "data-upkeep-template",
-              "value": "72ab99277c4c0a70"
+              "value": "b5b0e522ca948e97"
             }
           ],
           "update_role": "morph or replace this rendered fragment when runtime observations match a committed change"
@@ -802,7 +802,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/upkeep-app/app/views/comments/_staff_comment.html.erb",
+      "path": "benchmark/upkeep-app/app/views/comments/_staff_comment.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -839,7 +839,7 @@
             },
             {
               "name": "data-upkeep-template",
-              "value": "bf3d0240f98ddbdb"
+              "value": "092a30c811f60be2"
             }
           ],
           "update_role": "morph or replace this rendered fragment when runtime observations match a committed change"
@@ -849,7 +849,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/upkeep-app/app/views/featured_items/_featured_item.html.erb",
+      "path": "benchmark/upkeep-app/app/views/featured_items/_featured_item.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -886,7 +886,7 @@
             },
             {
               "name": "data-upkeep-template",
-              "value": "536f4641f1f5cc1f"
+              "value": "b9384df84518f7a8"
             }
           ],
           "update_role": "morph or replace this rendered fragment when runtime observations match a committed change"
@@ -896,7 +896,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/upkeep-app/app/views/featured_items/show.html.erb",
+      "path": "benchmark/upkeep-app/app/views/featured_items/show.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -926,11 +926,11 @@
               "column": 29
             }
           },
-          "site_id": "f022e0ea72256f1f",
+          "site_id": "8aa448921bcc7de4",
           "attributes": [
             {
               "name": "data-upkeep-render-site",
-              "value": "f022e0ea72256f1f"
+              "value": "8aa448921bcc7de4"
             }
           ],
           "render": {
@@ -955,7 +955,7 @@
               "column": 29
             }
           },
-          "site_id": "f022e0ea72256f1f",
+          "site_id": "8aa448921bcc7de4",
           "expression": "render \"featured_item\"",
           "kind": "partial",
           "partial": "featured_item",
@@ -971,7 +971,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/upkeep-app/app/views/feed/_feed_item.html.erb",
+      "path": "benchmark/upkeep-app/app/views/feed/_feed_item.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -1008,7 +1008,7 @@
             },
             {
               "name": "data-upkeep-template",
-              "value": "3f25d699ffb58230"
+              "value": "0895731db9dfdebe"
             }
           ],
           "update_role": "morph or replace this rendered fragment when runtime observations match a committed change"
@@ -1018,7 +1018,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/upkeep-app/app/views/feed/_feed_item_mixed.html.erb",
+      "path": "benchmark/upkeep-app/app/views/feed/_feed_item_mixed.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -1055,7 +1055,7 @@
             },
             {
               "name": "data-upkeep-template",
-              "value": "e3471681817ee491"
+              "value": "73f7f622cd8a34ed"
             }
           ],
           "update_role": "morph or replace this rendered fragment when runtime observations match a committed change"
@@ -1065,7 +1065,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/upkeep-app/app/views/feed/_feed_item_signed.html.erb",
+      "path": "benchmark/upkeep-app/app/views/feed/_feed_item_signed.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -1102,7 +1102,7 @@
             },
             {
               "name": "data-upkeep-template",
-              "value": "7e42309a10c68375"
+              "value": "c933603238a6db99"
             }
           ],
           "update_role": "morph or replace this rendered fragment when runtime observations match a committed change"
@@ -1112,7 +1112,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/upkeep-app/app/views/feed/mixed.html.erb",
+      "path": "benchmark/upkeep-app/app/views/feed/mixed.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -1142,11 +1142,11 @@
               "column": 78
             }
           },
-          "site_id": "8c5c00f8c7c197b9",
+          "site_id": "cdf411d30dcd0107",
           "attributes": [
             {
               "name": "data-upkeep-render-site",
-              "value": "8c5c00f8c7c197b9"
+              "value": "cdf411d30dcd0107"
             }
           ],
           "render": {
@@ -1171,7 +1171,7 @@
               "column": 78
             }
           },
-          "site_id": "8c5c00f8c7c197b9",
+          "site_id": "cdf411d30dcd0107",
           "expression": "render partial: \"feed/feed_item_mixed\", collection: @items, as: :item",
           "kind": "partial",
           "partial": "feed/feed_item_mixed",
@@ -1187,7 +1187,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/upkeep-app/app/views/feed/show.html.erb",
+      "path": "benchmark/upkeep-app/app/views/feed/show.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -1217,11 +1217,11 @@
               "column": 72
             }
           },
-          "site_id": "a5700f626fba510a",
+          "site_id": "c7291a0fc96f6e21",
           "attributes": [
             {
               "name": "data-upkeep-render-site",
-              "value": "a5700f626fba510a"
+              "value": "c7291a0fc96f6e21"
             }
           ],
           "render": {
@@ -1246,7 +1246,7 @@
               "column": 72
             }
           },
-          "site_id": "a5700f626fba510a",
+          "site_id": "c7291a0fc96f6e21",
           "expression": "render partial: \"feed/feed_item\", collection: @items, as: :item",
           "kind": "partial",
           "partial": "feed/feed_item",
@@ -1262,7 +1262,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/upkeep-app/app/views/feed/signed.html.erb",
+      "path": "benchmark/upkeep-app/app/views/feed/signed.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -1292,11 +1292,11 @@
               "column": 79
             }
           },
-          "site_id": "aeee98152b400b5e",
+          "site_id": "c5e16f4842207dbd",
           "attributes": [
             {
               "name": "data-upkeep-render-site",
-              "value": "aeee98152b400b5e"
+              "value": "c5e16f4842207dbd"
             }
           ],
           "render": {
@@ -1321,7 +1321,7 @@
               "column": 79
             }
           },
-          "site_id": "aeee98152b400b5e",
+          "site_id": "c5e16f4842207dbd",
           "expression": "render partial: \"feed/feed_item_signed\", collection: @items, as: :item",
           "kind": "partial",
           "partial": "feed/feed_item_signed",
@@ -1337,7 +1337,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/upkeep-app/app/views/layouts/application.html.erb",
+      "path": "benchmark/upkeep-app/app/views/layouts/application.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -1373,7 +1373,7 @@
       ]
     },
     {
-      "path": "rails/upkeep/benchmark/upkeep-app/app/views/layouts/feed.html.erb",
+      "path": "benchmark/upkeep-app/app/views/layouts/feed.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -1394,7 +1394,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/upkeep-app/app/views/m3_idioms/conditional_sibling.html.erb",
+      "path": "benchmark/upkeep-app/app/views/m3_idioms/conditional_sibling.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -1414,7 +1414,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/upkeep-app/app/views/m3_idioms/helper_hidden_collection.html.erb",
+      "path": "benchmark/upkeep-app/app/views/m3_idioms/helper_hidden_collection.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -1434,7 +1434,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/upkeep-app/app/views/m3_idioms/helper_hidden_partial.html.erb",
+      "path": "benchmark/upkeep-app/app/views/m3_idioms/helper_hidden_partial.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -1454,7 +1454,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/upkeep-app/app/views/m3_idioms/polymorphic.html.erb",
+      "path": "benchmark/upkeep-app/app/views/m3_idioms/polymorphic.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -1483,11 +1483,11 @@
               "column": 51
             }
           },
-          "site_id": "b9fcc94ae62c09d6",
+          "site_id": "95f5335cad928f1d",
           "attributes": [
             {
               "name": "data-upkeep-render-site",
-              "value": "b9fcc94ae62c09d6"
+              "value": "95f5335cad928f1d"
             }
           ],
           "render": {
@@ -1512,7 +1512,7 @@
               "column": 51
             }
           },
-          "site_id": "b9fcc94ae62c09d6",
+          "site_id": "95f5335cad928f1d",
           "expression": "render @card.comments.order(:created_at)",
           "kind": "object",
           "partial": null,
@@ -1528,7 +1528,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/upkeep-app/app/views/m3_idioms/render_in_bare.html.erb",
+      "path": "benchmark/upkeep-app/app/views/m3_idioms/render_in_bare.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -1557,11 +1557,11 @@
               "column": 45
             }
           },
-          "site_id": "0c4feeca191958c8",
+          "site_id": "73ca6e0410e432e6",
           "attributes": [
             {
               "name": "data-upkeep-render-site",
-              "value": "0c4feeca191958c8"
+              "value": "73ca6e0410e432e6"
             }
           ],
           "render": {
@@ -1586,7 +1586,7 @@
               "column": 45
             }
           },
-          "site_id": "0c4feeca191958c8",
+          "site_id": "73ca6e0410e432e6",
           "expression": "render CardCountSummary.new(@card)",
           "kind": "object",
           "partial": null,
@@ -1602,7 +1602,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/upkeep-app/app/views/m3_idioms/sibling_collections.html.erb",
+      "path": "benchmark/upkeep-app/app/views/m3_idioms/sibling_collections.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -1622,7 +1622,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/upkeep-app/app/views/messages/_message.html.erb",
+      "path": "benchmark/upkeep-app/app/views/messages/_message.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -1659,7 +1659,7 @@
             },
             {
               "name": "data-upkeep-template",
-              "value": "dec07900ed62f217"
+              "value": "0e96edbc67ab7709"
             }
           ],
           "update_role": "morph or replace this rendered fragment when runtime observations match a committed change"
@@ -1669,7 +1669,7 @@
       "helper_lowered_elements": []
     },
     {
-      "path": "rails/upkeep/benchmark/upkeep-app/app/views/rooms/show.html.erb",
+      "path": "benchmark/upkeep-app/app/views/rooms/show.html.erb",
       "parse": {
         "ok": true,
         "errors": [],
@@ -1698,11 +1698,11 @@
               "column": 80
             }
           },
-          "site_id": "31b2bdc1b01ce60a",
+          "site_id": "81e06b0d804e9f8c",
           "attributes": [
             {
               "name": "data-upkeep-render-site",
-              "value": "31b2bdc1b01ce60a"
+              "value": "81e06b0d804e9f8c"
             }
           ],
           "render": {
@@ -1727,7 +1727,7 @@
               "column": 80
             }
           },
-          "site_id": "31b2bdc1b01ce60a",
+          "site_id": "81e06b0d804e9f8c",
           "expression": "render partial: \"messages/message\", collection: @messages, as: :message",
           "kind": "partial",
           "partial": "messages/message",

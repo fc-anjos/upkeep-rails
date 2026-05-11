@@ -1,0 +1,6 @@
+<div>
+  <h1>Polymorphic partial: card <%= @card.id %></h1>
+  <div id="m3-polymorphic">
+    <%= render @card.comments.order(:created_at) %>
+  </div>
+</div>
