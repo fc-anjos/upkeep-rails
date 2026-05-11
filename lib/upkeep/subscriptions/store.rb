@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "securerandom"
+
 module Upkeep
   module Subscriptions
     Subscription = Data.define(:id, :subscriber_id, :recorder, :graph, :metadata) do
@@ -81,8 +83,7 @@ module Upkeep
       private
 
       def next_subscription_id
-        @next_id += 1
-        "subscription-#{@next_id}"
+        "subscription-#{SecureRandom.uuid}"
       end
     end
   end

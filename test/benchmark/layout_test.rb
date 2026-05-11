@@ -3,6 +3,8 @@
 require "test_helper"
 require "pathname"
 require_relative "../../benchmark/runner/config"
+require_relative "../../benchmark/runner/k6_runner"
+require_relative "../../benchmark/runner/metrics_collector"
 
 class BenchmarkLayoutTest < Minitest::Test
   def test_runner_defaults_to_in_repo_benchmark_apps
@@ -34,7 +36,54 @@ class BenchmarkLayoutTest < Minitest::Test
     assert_empty generated_artifacts
   end
 
+  def test_k6_runner_writes_comparison_report_summary_names
+    runner = Upkeep::Benchmark::Runner::K6Runner.new(matrix_config)
+
+    assert_equal "matrix-chat-warm-upkeep.json", runner.send(:summary_file_for, "matrix/chat_upkeep.js", "matrix-chat_upkeep")
+    assert_equal "matrix-chat-warm-turbo.json", runner.send(:summary_file_for, "matrix/chat_turbo.js", "matrix-chat_turbo")
+    assert_equal "matrix-chat-cold-upkeep.json", runner.send(:summary_file_for, "matrix/chat_upkeep_cold_connect_churn.js", "matrix-chat_upkeep_cold_connect_churn")
+    assert_equal "matrix-board-upkeep.json", runner.send(:summary_file_for, "matrix/board_upkeep.js", "matrix-board_upkeep")
+  end
+
+  def test_matrix_metrics_poll_uses_lightweight_upkeep_endpoint
+    collector = Upkeep::Benchmark::Runner::MetricsCollector.new(matrix_config)
+
+    assert_equal "/bench/metrics", collector.send(:metrics_path_for, "upkeep", "before")
+    assert_equal "/bench/metrics", collector.send(:metrics_path_for, "upkeep", "final")
+  end
+
+  def test_memory_ceiling_metrics_poll_can_request_memory_snapshots
+    collector = Upkeep::Benchmark::Runner::MetricsCollector.new(memory_ceiling_config)
+
+    assert_equal "/bench/metrics?memory_phase=before", collector.send(:metrics_path_for, "upkeep", "before")
+    assert_equal "/bench/metrics?memory_phase=final", collector.send(:metrics_path_for, "upkeep", "final")
+  end
+
   private
+
+  def matrix_config
+    config_for(
+      "BENCH_FAMILY" => "matrix",
+      "BENCH_WORKLOAD" => "compare",
+      "BENCH_TIER" => "gate"
+    )
+  end
+
+  def memory_ceiling_config
+    config_for(
+      "BENCH_FAMILY" => "memory_ceiling",
+      "BENCH_WORKLOAD" => "shared_feed_churn",
+      "BENCH_TIER" => "smoke"
+    )
+  end
+
+  def config_for(env)
+    Upkeep::Benchmark::Runner::Config.new(
+      env: env,
+      bench_dir: benchmark_root.to_s,
+      timestamp: "test"
+    )
+  end
 
   def tracked_benchmark_files
     Dir.chdir(project_root) { `git ls-files benchmark`.split("\n") }

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "rbconfig"
 
 module Upkeep
   module Benchmark
@@ -16,15 +17,15 @@ module Upkeep
 
         def setup(app_dir, role)
           puts "-- Setting up #{File.basename(app_dir)} --"
-          with_app_bundle(app_dir, "bundle", "install", "--quiet")
+          with_app_bundle(app_dir, ruby, "-S", "bundle", "install", "--quiet")
 
           setup_env = {
             "NUM_USERS" => config.num_users.to_s,
             "LOW_SHARING_BOARDS" => config.env.fetch("LOW_SHARING_BOARDS", "0"),
             "SECRET_KEY_BASE" => config.bench_secret_key_base
           }
-          with_app_bundle(app_dir, "env", *setup_env.map { |key, value| "#{key}=#{value}" }, "bundle", "exec", "bin/rails", "db:create", "RAILS_ENV=benchmark", allow_failure: true, quiet: true)
-          with_app_bundle(app_dir, "env", *setup_env.map { |key, value| "#{key}=#{value}" }, "bundle", "exec", "bin/rails", "db:migrate", "db:seed", "RAILS_ENV=benchmark")
+          with_app_bundle(app_dir, ruby, "-S", "bundle", "exec", ruby, "bin/rails", "db:create", "RAILS_ENV=benchmark", env: setup_env, allow_failure: true, quiet: true)
+          with_app_bundle(app_dir, ruby, "-S", "bundle", "exec", ruby, "bin/rails", "db:migrate", "db:seed", "RAILS_ENV=benchmark", env: setup_env)
         end
 
         def start(app_dir, port, role)
@@ -37,7 +38,7 @@ module Upkeep
 
           pid = Process.spawn(
             command_env_for(app_dir, role),
-            "bundle", "exec", "bin/rails", "server", "-p", port.to_s, "-e", "benchmark",
+            ruby, "-S", "bundle", "exec", ruby, "bin/rails", "server", "-p", port.to_s, "-e", "benchmark",
             chdir: app_dir,
             out: log_file,
             err: [ :child, :out ],
@@ -83,13 +84,17 @@ module Upkeep
             role == "upkeep" ? { "UPKEEP_BENCH_DATABASE" => config.upkeep_database } : { "TURBO_BENCH_DATABASE" => config.turbo_database }
           end
 
-          def with_app_bundle(app_dir, *command, allow_failure: false, quiet: false)
-            command_env = { "BUNDLE_GEMFILE" => File.join(app_dir, "Gemfile") }
+          def with_app_bundle(app_dir, *command, env: {}, allow_failure: false, quiet: false)
+            command_env = { "BUNDLE_GEMFILE" => File.join(app_dir, "Gemfile") }.merge(env)
             out = quiet ? File::NULL : $stdout
             err = quiet ? File::NULL : $stderr
             ok = system(command_env, *command, chdir: app_dir, out: out, err: err, unsetenv_others: false)
             raise "command failed in #{app_dir}: #{command.join(" ")}" unless ok || allow_failure
             ok
+          end
+
+          def ruby
+            RbConfig.ruby
           end
 
           def wait_for_http!(url, retries:, log_file:, label:)

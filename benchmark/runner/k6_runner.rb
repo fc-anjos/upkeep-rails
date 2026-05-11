@@ -38,8 +38,17 @@ module Upkeep
         end
 
         private
-          def summary_file_for(_script, log_stem)
-            "#{log_stem.tr("_", "-")}.json"
+          SUMMARY_FILES = {
+            "matrix/chat_upkeep.js" => "matrix-chat-warm-upkeep.json",
+            "matrix/chat_turbo.js" => "matrix-chat-warm-turbo.json",
+            "matrix/chat_upkeep_cold_connect_churn.js" => "matrix-chat-cold-upkeep.json",
+            "matrix/chat_turbo_cold_connect_churn.js" => "matrix-chat-cold-turbo.json",
+            "matrix/board_upkeep.js" => "matrix-board-upkeep.json",
+            "matrix/board_turbo.js" => "matrix-board-turbo.json"
+          }.freeze
+
+          def summary_file_for(script, log_stem)
+            SUMMARY_FILES.fetch(script) { "#{log_stem.tr("_", "-")}.json" }
           end
 
           def k6_env(base_url, ws_url, summary_file)

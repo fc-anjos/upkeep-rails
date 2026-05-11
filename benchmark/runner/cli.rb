@@ -5,6 +5,7 @@ require "json"
 require "net/http"
 require "open3"
 require "optparse"
+require "rbconfig"
 require "shellwords"
 require "timeout"
 require "uri"
@@ -194,7 +195,7 @@ module Upkeep
             }
             system_status(
               command_env,
-              "ruby", script,
+              ruby, script,
               "--base-url=http://localhost:#{upkeep_port}",
               "--ws-url=ws://localhost:#{relay_ws_port}",
               "--metrics-url=#{relay_metrics_url}",
@@ -233,7 +234,7 @@ module Upkeep
           def run_memory_ceiling_topology_sweep
             system_status(
               {},
-              "ruby", File.join(bench_dir, "routes/memory_ceiling/topology_sweep.rb"),
+              ruby, File.join(bench_dir, "routes/memory_ceiling/topology_sweep.rb"),
               "--bench-dir=#{bench_dir}",
               "--results-dir=#{results_dir}",
               "--timestamp=#{timestamp}",
@@ -298,7 +299,7 @@ module Upkeep
             FileUtils.mkdir_p(File.dirname(output))
             File.write(output, "")
             pid = Process.spawn(
-              "ruby", "-I#{File.join(bench_dir, "shared")}", "-e",
+              ruby, "-I#{File.join(bench_dir, "shared")}", "-e",
               rss_sampler_code(app_pidfile, output, metrics_url, app_role_prefix),
               out: File::NULL,
               err: File::NULL
@@ -391,8 +392,12 @@ module Upkeep
           end
 
           def run_ruby(*args)
-            status = system_status({}, "ruby", *args)
+            status = system_status({}, ruby, *args)
             raise "ruby command failed: #{args.join(" ")}" unless status.zero?
+          end
+
+          def ruby
+            RbConfig.ruby
           end
 
           def system_status(command_env, *command)
