@@ -10,9 +10,22 @@ class RailsCaptureCard < ActiveRecord::Base
   end
 end
 
+class RailsCaptureCardsController < ActionController::Base
+  def index
+    @cards = RailsCaptureCard.where(status: params.fetch(:status)).order(:id)
+    render template: "controller_cards/index"
+  end
+
+  def show
+    @card = RailsCaptureCard.find(params.fetch(:id))
+    render template: "controller_cards/show"
+  end
+end
+
 class ActionViewCaptureTest < Minitest::Test
   def setup
     Upkeep::Rails::Install.call
+    RailsCaptureCardsController.view_paths = [resolver]
 
     ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: ":memory:")
     ActiveRecord::Base.logger = nil
@@ -65,6 +78,53 @@ class ActionViewCaptureTest < Minitest::Test
     assert_includes replayed_html, "Review"
   end
 
+  def test_controller_page_recipe_reruns_action_with_request_parameters
+    create_card!("Plan", status: "open")
+    create_card!("Archived", status: "closed")
+
+    html, recorder = capture_controller_request("/cards?status=open")
+
+    assert_includes html, "Plan"
+    refute_includes html, "Archived"
+
+    create_card!("Review", status: "open")
+    create_card!("Done", status: "closed")
+
+    page_frame = recorder.graph.node("page:rails:controller_cards/index")
+    replayed_html = page_frame.payload.fetch(:recipe).render
+
+    assert_includes replayed_html, "Plan"
+    assert_includes replayed_html, "Review"
+    refute_includes replayed_html, "Archived"
+    refute_includes replayed_html, "Done"
+    assert_equal({
+      class: "RailsCaptureCardsController",
+      action: "index",
+      request_method: "GET",
+      path: "/cards",
+      query_string_digest: Digest::SHA256.hexdigest("status=open")[0, 16],
+      path_parameters: []
+    }, page_frame.payload.fetch(:controller))
+  end
+
+  def test_controller_page_recipe_reruns_action_with_path_parameters
+    card = create_card!("Plan")
+
+    html, recorder = capture_controller_request(:show, "/cards/#{card.id}", path_parameters: { id: card.id })
+
+    assert_includes html, "Plan"
+
+    card.update!(title: "Plan v2")
+
+    page_frame = recorder.graph.node("page:rails:controller_cards/show")
+    replayed_html = page_frame.payload.fetch(:recipe).render
+
+    assert_includes replayed_html, "Plan v2"
+    refute_includes replayed_html, ">Plan<"
+    assert_equal ["id"], page_frame.payload.fetch(:controller).fetch(:path_parameters)
+  end
+
+
   def test_collection_render_records_render_site_and_replays_membership_change
     create_card!("Plan")
     create_card!("Build")
@@ -104,8 +164,8 @@ class ActionViewCaptureTest < Minitest::Test
 
   private
 
-  def create_card!(title)
-    RailsCaptureCard.create!(title: title, status: "open")
+  def create_card!(title, status: "open")
+    RailsCaptureCard.create!(title: title, status: status)
   end
 
   def capture_render(template, locals)
@@ -115,6 +175,26 @@ class ActionViewCaptureTest < Minitest::Test
     end
 
     result || [nil, recorder]
+  end
+
+  def capture_controller_request(action_or_path, path = nil, path_parameters: {})
+    action = path ? action_or_path : :index
+    path ||= action_or_path
+
+    result, recorder = Upkeep::Runtime::Observation.capture_request do
+      env = Rack::MockRequest.env_for(path)
+      env["action_dispatch.request.path_parameters"] = path_parameters if path_parameters.any?
+      _status, _headers, body = RailsCaptureCardsController.action(action).call(env)
+      [collect_body(body), Upkeep::Runtime::Observation.recorder]
+    end
+
+    result || [nil, recorder]
+  end
+
+  def collect_body(body)
+    body.each.to_a.join
+  ensure
+    body.close if body.respond_to?(:close)
   end
 
   def view
@@ -138,6 +218,18 @@ class ActionViewCaptureTest < Minitest::Test
           <ul>
             <%= render partial: "cards/card", collection: cards, as: :card %>
           </ul>
+        </main>
+      ERB
+      "controller_cards/index.html.erb" => <<~ERB,
+        <main>
+          <ul>
+            <%= render partial: "cards/card", collection: @cards, as: :card %>
+          </ul>
+        </main>
+      ERB
+      "controller_cards/show.html.erb" => <<~ERB,
+        <main>
+          <%= render partial: "cards/card", locals: { card: @card } %>
         </main>
       ERB
       "cards/_card.html.erb" => <<~ERB
