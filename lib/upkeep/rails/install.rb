@@ -10,6 +10,7 @@ module Upkeep
         return if @installed
 
         Runtime::Install.call if defined?(::ActiveRecord::Base)
+        ActionViewCapture.install if defined?(::ActionView::Template)
 
         @installed = true
       end
