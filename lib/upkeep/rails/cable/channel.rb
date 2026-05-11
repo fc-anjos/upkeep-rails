@@ -7,19 +7,22 @@ module Upkeep
     module Cable
       class Channel < ::ActionCable::Channel::Base
         def subscribed
-          @upkeep_identity = SubscriberIdentity.derive(connection)
-          stream_from @upkeep_identity.stream_name
+          @upkeep_identities = SubscriberIdentity.derive_all(connection)
 
-          Upkeep::Rails.transport.connect(
-            subscriber_id: @upkeep_identity.subscriber_id,
-            adapter: Delivery::ActionCableAdapter.new(server: connection.server)
-          )
+          @upkeep_identities.each do |identity|
+            stream_from identity.stream_name
+
+            Upkeep::Rails.transport.connect(
+              subscriber_id: identity.subscriber_id,
+              adapter: Delivery::ActionCableAdapter.new(server: connection.server)
+            )
+          end
         rescue UnidentifiedSubscriber
           reject
         end
 
         def unsubscribed
-          Upkeep::Rails.transport.disconnect(@upkeep_identity.subscriber_id) if @upkeep_identity
+          Array(@upkeep_identities).each { |identity| Upkeep::Rails.transport.disconnect(identity.subscriber_id) }
         end
       end
     end

@@ -106,6 +106,12 @@ module Upkeep
       def events
         @events
       end
+
+      def drain
+        events = @events
+        @events = []
+        events
+      end
     end
 
     module Ambient
@@ -380,9 +386,10 @@ module Upkeep
             key: "id",
             value: user&.id,
             metadata: {
+              model: user&.class&.name,
               table: user&.class&.table_name,
               id: user&.id
-            }
+            }.compact
           )
 
           Observation.record_dependency(dependency)

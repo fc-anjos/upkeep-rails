@@ -14,14 +14,47 @@ module Upkeep
         module_function
 
         def derive(connection)
-          identifiers = Array(connection.identifiers)
-          raise UnidentifiedSubscriber, "ActionCable connection has no server identifiers" if identifiers.empty?
+          derive_all(connection).last
+        end
 
-          for_identifiers(identifiers.to_h { |name| [name.to_sym, connection.public_send(name)] })
+        def derive_all(connection)
+          identities = []
+          request_components = request_components(connection.request) if connection.respond_to?(:request)
+          identifier_components = identifier_components(connection)
+
+          identities << for_components(request_components) if request_components&.any?
+          identities << for_components(Array(request_components) + identifier_components) if identifier_components.any?
+          identities = identities.uniq(&:subscriber_id)
+
+          raise UnidentifiedSubscriber, "ActionCable connection has no server identifiers" if identities.empty?
+
+          identities
+        end
+
+        def derive_from_request(request, recorder:)
+          components = request_components(request) + recorder_components(recorder)
+          raise UnidentifiedSubscriber, "request has no canonical subscriber identity" if components.empty?
+
+          for_components(components)
+        end
+
+        def identifier_components(connection)
+          identifiers = Array(connection.identifiers)
+          identifiers.map { |name| component_for(name, connection.public_send(name)) }
+        end
+
+        def request_components(request)
+          session_id = session_id_for(request)
+          return [] unless session_id
+
+          [scalar_component(:rails_session, session_id)]
         end
 
         def for_identifiers(identifiers)
-          components = identifiers.map { |name, value| component_for(name, value) }
+          for_components(identifiers.map { |name, value| component_for(name, value) })
+        end
+
+        def for_components(components)
           canonical_bytes = JSON.generate(components.sort_by { |component| component.fetch(:name) })
           subscriber_id = "action_cable:#{Digest::SHA256.hexdigest(canonical_bytes)}"
 
@@ -30,6 +63,39 @@ module Upkeep
             Delivery::ActionCableAdapter.stream_name_for(subscriber_id),
             components
           )
+        end
+
+        def recorder_components(recorder)
+          recorder.graph.dependency_nodes
+            .map(&:payload)
+            .select(&:identity?)
+            .filter_map { |dependency| component_for_dependency(dependency) }
+            .uniq
+        end
+
+        def component_for_dependency(dependency)
+          if dependency.source == :current_attribute && current_user_dependency?(dependency)
+            model_component(:current_user, dependency.key.fetch(:value))
+          elsif dependency.source == "Current.user"
+            model_component(:current_user, dependency.metadata)
+          elsif dependency.source == :warden_user
+            model_component(:"warden_#{dependency.metadata.fetch(:scope)}", dependency.key.fetch(:value))
+          end
+        end
+
+        def current_user_dependency?(dependency)
+          dependency.metadata.fetch(:name) == "user"
+        end
+
+        def model_component(name, identity)
+          return unless identity.is_a?(Hash) && identity[:model] && identity[:id]
+
+          {
+            name: name.to_s,
+            kind: "model",
+            model: identity.fetch(:model),
+            id: identity.fetch(:id).to_s
+          }
         end
 
         def component_for(name, value)
@@ -53,13 +119,7 @@ module Upkeep
         def active_record_component(name, record)
           raise UnidentifiedSubscriber, "ActionCable identifier #{name} is an unsaved record" unless record.id
 
-          {
-            name: name.to_s,
-            kind: "active_record",
-            model: record.class.name,
-            table: record.class.table_name,
-            id: record.id.to_s
-          }
+          model_component(name, model: record.class.name, id: record.id)
         end
 
         def scalar?(value)
@@ -85,6 +145,24 @@ module Upkeep
             kind: "global_id",
             value: value.to_gid_param
           }
+        end
+
+        def session_id_for(request)
+          return unless request&.respond_to?(:session)
+
+          session = request.session
+          session_id = session.id if session.respond_to?(:id)
+          session_id = session_id.public_id if session_id.respond_to?(:public_id)
+          session_id = session_id.private_id if session_id.respond_to?(:private_id)
+          session_id = session[:session_id] if blank?(session_id) && session.respond_to?(:[])
+
+          session_id.to_s unless blank?(session_id)
+        rescue StandardError
+          nil
+        end
+
+        def blank?(value)
+          value.nil? || value == ""
         end
       end
     end

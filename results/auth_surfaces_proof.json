@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-11T20:14:00Z",
+  "generated_at": "2026-05-11T20:24:21Z",
   "summary": {
     "cases": 2,
     "passed": 2,
@@ -444,6 +444,7 @@
                     "visibility": "identity_bound",
                     "precision": "identity",
                     "metadata": {
+                      "model": "Upkeep::Domain::User",
                       "table": "users",
                       "id": 1
                     }
@@ -551,6 +552,7 @@
                     "visibility": "identity_bound",
                     "precision": "identity",
                     "metadata": {
+                      "model": "Upkeep::Domain::User",
                       "table": "users",
                       "id": 1
                     }
@@ -658,6 +660,7 @@
                     "visibility": "identity_bound",
                     "precision": "identity",
                     "metadata": {
+                      "model": "Upkeep::Domain::User",
                       "table": "users",
                       "id": 1
                     }
@@ -1122,6 +1125,7 @@
                   "visibility": "identity_bound",
                   "precision": "identity",
                   "metadata": {
+                    "model": "Upkeep::Domain::User",
                     "table": "users",
                     "id": 1
                   }
@@ -2099,6 +2103,7 @@
                     "visibility": "identity_bound",
                     "precision": "identity",
                     "metadata": {
+                      "model": "Upkeep::Domain::User",
                       "table": "users",
                       "id": 2
                     }
@@ -2206,6 +2211,7 @@
                     "visibility": "identity_bound",
                     "precision": "identity",
                     "metadata": {
+                      "model": "Upkeep::Domain::User",
                       "table": "users",
                       "id": 2
                     }
@@ -2313,6 +2319,7 @@
                     "visibility": "identity_bound",
                     "precision": "identity",
                     "metadata": {
+                      "model": "Upkeep::Domain::User",
                       "table": "users",
                       "id": 2
                     }
@@ -2777,6 +2784,7 @@
                   "visibility": "identity_bound",
                   "precision": "identity",
                   "metadata": {
+                    "model": "Upkeep::Domain::User",
                     "table": "users",
                     "id": 2
                   }
@@ -3483,6 +3491,7 @@
                   "visibility": "identity_bound",
                   "precision": "identity",
                   "metadata": {
+                    "model": "Upkeep::Domain::User",
                     "table": "users",
                     "id": 1
                   }
@@ -3808,6 +3817,7 @@
                     "visibility": "identity_bound",
                     "precision": "identity",
                     "metadata": {
+                      "model": "Upkeep::Domain::User",
                       "table": "users",
                       "id": 1
                     }
@@ -3915,6 +3925,7 @@
                     "visibility": "identity_bound",
                     "precision": "identity",
                     "metadata": {
+                      "model": "Upkeep::Domain::User",
                       "table": "users",
                       "id": 1
                     }
@@ -4022,6 +4033,7 @@
                     "visibility": "identity_bound",
                     "precision": "identity",
                     "metadata": {
+                      "model": "Upkeep::Domain::User",
                       "table": "users",
                       "id": 1
                     }
@@ -4486,6 +4498,7 @@
                   "visibility": "identity_bound",
                   "precision": "identity",
                   "metadata": {
+                    "model": "Upkeep::Domain::User",
                     "table": "users",
                     "id": 1
                   }
@@ -5168,6 +5181,7 @@
                   "visibility": "identity_bound",
                   "precision": "identity",
                   "metadata": {
+                    "model": "Upkeep::Domain::User",
                     "table": "users",
                     "id": 2
                   }
@@ -5493,6 +5507,7 @@
                     "visibility": "identity_bound",
                     "precision": "identity",
                     "metadata": {
+                      "model": "Upkeep::Domain::User",
                       "table": "users",
                       "id": 2
                     }
@@ -5600,6 +5615,7 @@
                     "visibility": "identity_bound",
                     "precision": "identity",
                     "metadata": {
+                      "model": "Upkeep::Domain::User",
                       "table": "users",
                       "id": 2
                     }
@@ -5707,6 +5723,7 @@
                     "visibility": "identity_bound",
                     "precision": "identity",
                     "metadata": {
+                      "model": "Upkeep::Domain::User",
                       "table": "users",
                       "id": 2
                     }
@@ -6171,6 +6188,7 @@
                   "visibility": "identity_bound",
                   "precision": "identity",
                   "metadata": {
+                    "model": "Upkeep::Domain::User",
                     "table": "users",
                     "id": 2
                   }
