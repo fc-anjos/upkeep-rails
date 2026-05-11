@@ -132,6 +132,42 @@ module Upkeep
         }
       end
 
+      def to_h
+        {
+          nodes: nodes.values.map { |node| serialize_node(node) },
+          edges: edges.map(&:to_h)
+        }
+      end
+
+      def self.from_h(snapshot)
+        snapshot = symbolize_keys(snapshot)
+        graph = new
+        graph.nodes.clear
+        graph.edges.clear
+
+        snapshot.fetch(:nodes).each do |node_snapshot|
+          node_snapshot = symbolize_keys(node_snapshot)
+          kind = node_snapshot.fetch(:kind).to_sym
+          graph.nodes[node_snapshot.fetch(:id)] = Node.new(
+            node_snapshot.fetch(:id),
+            kind,
+            deserialize_payload(kind, node_snapshot.fetch(:payload, {}))
+          )
+        end
+
+        snapshot.fetch(:edges).each do |edge_snapshot|
+          edge_snapshot = symbolize_keys(edge_snapshot)
+          graph.edges << Edge.new(
+            edge_snapshot.fetch(:from),
+            edge_snapshot.fetch(:to),
+            edge_snapshot.fetch(:reason).to_sym
+          )
+        end
+
+        graph.send(:rebuild_dependency_index)
+        graph
+      end
+
       def frame_reports
         frame_nodes.map do |node|
           {
@@ -154,6 +190,75 @@ module Upkeep
             dependency: node.payload.to_h,
             owners: dependency_owner_ids(node.id)
           }
+        end
+      end
+
+      private
+
+      def rebuild_dependency_index
+        @dependencies_by_node = Hash.new { |hash, key| hash[key] = [] }
+
+        edges.each do |edge|
+          next unless edge.reason == :depends_on
+
+          dependency = nodes.fetch(edge.to).payload
+          @dependencies_by_node[edge.from] << dependency
+        end
+      end
+
+      class << self
+        def deserialize_payload(kind, payload)
+          payload = symbolize_keys(payload)
+
+          case kind
+          when :dependency
+            Dependencies.from_h(payload)
+          when :frame
+            deserialize_frame_payload(payload)
+          else
+            payload
+          end
+        end
+
+        def deserialize_frame_payload(payload)
+          payload.each_with_object({}) do |(key, value), frame_payload|
+            frame_payload[key] = key == :recipe && value ? Replay::Recipe.from_h(value) : value
+          end
+        end
+
+        def symbolize_keys(value)
+          case value
+          when Hash
+            value.each_with_object({}) do |(key, nested_value), result|
+              normalized_key = key.respond_to?(:to_sym) ? key.to_sym : key
+              result[normalized_key] = symbolize_keys(nested_value)
+            end
+          when Array
+            value.map { |nested_value| symbolize_keys(nested_value) }
+          else
+            value
+          end
+        end
+      end
+
+      def serialize_node(node)
+        {
+          id: node.id,
+          kind: node.kind,
+          payload: serialize_payload(node)
+        }
+      end
+
+      def serialize_payload(node)
+        case node.kind
+        when :dependency
+          node.payload.to_h
+        when :frame
+          node.payload.each_with_object({}) do |(key, value), frame_payload|
+            frame_payload[key] = key == :recipe && value ? value.to_h : value
+          end
+        else
+          node.payload
         end
       end
     end

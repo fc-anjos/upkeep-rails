@@ -67,14 +67,10 @@ class BenchmarkSurfaceTest < ActionDispatch::IntegrationTest
 
     get board_path(@board)
     assert_response :success
+    assert_instance_of Upkeep::Subscriptions::ActiveRecordStore, Upkeep::Rails.subscriptions
     subscription = Upkeep::Rails.subscriptions.subscriptions.first
     assert subscription
     assert_select "script[data-upkeep-subscription]"
-
-    Upkeep::Rails.transport.connect(
-      subscriber_id: subscription.subscriber_id,
-      adapter: Upkeep::Delivery::ActionCableAdapter.new(server: ActionCable.server)
-    )
 
     broadcasts = capture_broadcasts(subscription.metadata.fetch(:stream_name)) do
       patch board_card_path(@board, @card), params: { card: { title: "Streamed graph capture" } }

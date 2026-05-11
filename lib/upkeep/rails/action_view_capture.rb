@@ -10,6 +10,13 @@ module Upkeep
     module ActionViewCapture
       module_function
 
+      REPLAY_HTTP_ENV_KEYS = %w[
+        HTTP_ACCEPT
+        HTTP_HOST
+        HTTP_X_FORWARDED_HOST
+        HTTP_X_FORWARDED_PROTO
+      ].freeze
+
       def install
         return if @installed
 
@@ -26,16 +33,18 @@ module Upkeep
       def capture_template(template, view, locals, implicit_locals:, add_to_stack:, block:)
         captured_locals = locals.dup
         metadata = template_metadata(template, captured_locals)
-        controller = controller_for_page(metadata, view)
-        metadata = metadata.merge(controller: controller_metadata(controller)) if controller
+        controller = controller_for_view(view)
+        page_controller = controller if metadata.fetch(:kind) == "page"
+        metadata = metadata.merge(controller: controller_metadata(page_controller)) if page_controller
         frame_id = frame_id_for_template(metadata, captured_locals)
-        recipe = if controller
-          controller_page_recipe(frame_id: frame_id, controller: controller, metadata: metadata)
+        recipe = if page_controller
+          controller_page_recipe(frame_id: frame_id, controller: page_controller, metadata: metadata)
         else
           template_recipe(
             frame_id: frame_id,
             template: template,
             view: view,
+            controller: controller,
             locals: captured_locals,
             metadata: metadata,
             implicit_locals: implicit_locals,
@@ -56,6 +65,7 @@ module Upkeep
           partial: partial,
           collection: collection,
           context: context,
+          controller: controller_for_view(context),
           options: captured_options,
           metadata: metadata,
           block: block
@@ -89,15 +99,22 @@ module Upkeep
         }
       end
 
-      def template_recipe(frame_id:, template:, view:, locals:, metadata:, implicit_locals:, add_to_stack:, block:)
+      def template_recipe(frame_id:, template:, view:, controller:, locals:, metadata:, implicit_locals:, add_to_stack:, block:)
         target_kind = metadata.fetch(:kind) == "fragment" ? "fragment" : "page"
-        Replay::Recipe.new(
+        ::Upkeep::Replay::Recipe.new(
           kind: metadata.fetch(:kind).to_sym,
           frame_id: frame_id,
           target_kind: target_kind,
           target_id: frame_id,
           template: metadata.fetch(:template),
-          metadata: metadata
+          metadata: metadata,
+          runtime: "rails",
+          replay: {
+            type: target_kind == "fragment" ? "fragment" : "template",
+            controller_class: controller&.class&.name,
+            template: metadata.fetch(:template),
+            locals: snapshot_hash(locals)
+          }.compact
         ) do
           template.render(
             view,
@@ -115,26 +132,41 @@ module Upkeep
         action_name = controller.action_name
         env = replay_env(controller.request.env, path_parameters: controller.request.path_parameters)
 
-        Replay::Recipe.new(
+        ::Upkeep::Replay::Recipe.new(
           kind: :page,
           frame_id: frame_id,
           target_kind: "page",
           target_id: frame_id,
           template: metadata.fetch(:template),
-          metadata: metadata
+          metadata: metadata,
+          runtime: "rails",
+          replay: {
+            type: "controller_page",
+            controller_class: controller_class.name,
+            action: action_name,
+            env: serializable_replay_env(controller.request.env, path_parameters: controller.request.path_parameters)
+          }
         ) do
           _status, _headers, body = controller_class.action(action_name).call(replay_env(env))
           collect_response_body(body)
         end
       end
 
-      def collection_recipe(frame_id:, partial:, collection:, context:, options:, metadata:, block:)
-        Replay::Recipe.new(
+      def collection_recipe(frame_id:, partial:, collection:, context:, controller:, options:, metadata:, block:)
+        ::Upkeep::Replay::Recipe.new(
           kind: :render_site,
           frame_id: frame_id,
           target_kind: "render_site",
           target_id: metadata.fetch(:site_id),
-          metadata: metadata
+          metadata: metadata,
+          runtime: "rails",
+          replay: {
+            type: "collection",
+            controller_class: controller&.class&.name,
+            partial: partial == :derived ? "derived" : partial.to_s,
+            collection: snapshot_value(collection),
+            options: snapshot_render_options(options)
+          }.compact
         ) do
           replay_options = replay_render_options(options)
           replay_options[:partial] = partial unless partial == :derived
@@ -143,8 +175,7 @@ module Upkeep
         end
       end
 
-      def controller_for_page(metadata, view)
-        return unless metadata.fetch(:kind) == "page"
+      def controller_for_view(view)
         return unless view.respond_to?(:controller)
 
         controller = view.controller
@@ -164,6 +195,12 @@ module Upkeep
         }
       end
 
+      def serializable_replay_env(env, path_parameters: nil)
+        replay_env(env, path_parameters: path_parameters).reject do |key, _value|
+          key == "rack.input" || key == "rack.errors"
+        end
+      end
+
       def replay_env(env, path_parameters: nil)
         copy = env.each_with_object({}) do |(key, value), replay|
           replay[key] = replay_env_value(value) if replay_env_key?(key)
@@ -176,11 +213,13 @@ module Upkeep
       end
 
       def replay_env_key?(key)
-        key.start_with?("HTTP_") ||
-          key.start_with?("rack.") ||
+        return false if key == "HTTP_COOKIE"
+
+        REPLAY_HTTP_ENV_KEYS.include?(key) ||
           key.start_with?("REQUEST_") ||
           key.start_with?("SERVER_") ||
           key.start_with?("REMOTE_") ||
+          key == "rack.url_scheme" ||
           %w[
             CONTENT_LENGTH
             CONTENT_TYPE
@@ -266,6 +305,36 @@ module Upkeep
 
       def replay_locals(locals)
         locals.transform_values { |value| replay_value(value) }
+      end
+
+      def snapshot_hash(values)
+        values.each_with_object({}) do |(key, value), snapshot|
+          next if key.to_s.end_with?("_iteration")
+
+          snapshot[key.to_s] = snapshot_value(value)
+        end
+      end
+
+      def snapshot_render_options(options)
+        options.each_with_object({}) do |(key, value), snapshot|
+          snapshot[key.to_s] = key == :locals ? { type: "hash", entries: snapshot_hash(value || {}) } : snapshot_value(value)
+        end
+      end
+
+      def snapshot_value(value)
+        if value.is_a?(ActiveRecord::Base)
+          { type: "active_record", model: value.class.name, id: value.id }
+        elsif value.respond_to?(:klass) && value.respond_to?(:to_sql)
+          { type: "active_record_relation", model: value.klass.name, sql: value.to_sql }
+        elsif value.is_a?(Array)
+          { type: "array", items: value.map { |item| snapshot_value(item) } }
+        elsif value.is_a?(Hash)
+          { type: "hash", entries: snapshot_hash(value) }
+        elsif value.nil? || value.is_a?(String) || value.is_a?(Numeric) || value == true || value == false || value.is_a?(Symbol)
+          { type: "literal", value: value }
+        else
+          { type: "unsupported", class: value.class.name }
+        end
       end
 
       def replay_value(value)

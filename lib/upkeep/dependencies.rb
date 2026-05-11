@@ -199,7 +199,67 @@ module Upkeep
       end
     end
 
+    class Restored < Base
+      def initialize(source:, key:, metadata:, visibility:, precision:)
+        super(source: source, key: key, metadata: metadata)
+        @visibility = visibility.to_sym
+        @precision = precision.to_sym
+      end
+
+      def identity?
+        visibility == :identity_bound
+      end
+
+      def identity_key
+        return unless identity?
+
+        { source: source, key: key.fetch(:key), value: key.fetch(:value) }
+      end
+
+      attr_reader :visibility, :precision
+    end
+
     module_function
+
+    def from_h(snapshot)
+      snapshot = symbolize_keys(snapshot)
+      source = snapshot.fetch(:source)
+      key = symbolize_keys(snapshot.fetch(:key))
+      metadata = symbolize_keys(snapshot.fetch(:metadata, {}))
+
+      case source.to_sym
+      when :active_record_attribute
+        ActiveRecordAttribute.new(
+          table: key.fetch(:table),
+          id: key.fetch(:id),
+          attribute: key.fetch(:attribute),
+          model: metadata[:model]
+        )
+      when :active_record_collection
+        ActiveRecordCollection.new(
+          table: key.fetch(:table),
+          columns: metadata.fetch(:columns),
+          sql: metadata.fetch(:sql)
+        )
+      else
+        if snapshot.fetch(:visibility).to_sym == :identity_bound
+          Identity.new(
+            source: source,
+            key: key.fetch(:key),
+            value: key.fetch(:value),
+            metadata: metadata
+          )
+        else
+          Restored.new(
+            source: source,
+            key: key,
+            metadata: metadata,
+            visibility: snapshot.fetch(:visibility),
+            precision: snapshot.fetch(:precision)
+          )
+        end
+      end
+    end
 
     def model_identity(value)
       return nil unless value
@@ -232,6 +292,20 @@ module Upkeep
       Digest::SHA256.hexdigest(Marshal.dump(value))[0, 16]
     rescue TypeError
       Digest::SHA256.hexdigest(value.inspect)[0, 16]
+    end
+
+    def symbolize_keys(value)
+      case value
+      when Hash
+        value.each_with_object({}) do |(key, nested_value), result|
+          normalized_key = key.respond_to?(:to_sym) ? key.to_sym : key
+          result[normalized_key] = symbolize_keys(nested_value)
+        end
+      when Array
+        value.map { |nested_value| symbolize_keys(nested_value) }
+      else
+        value
+      end
     end
   end
 end

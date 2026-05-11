@@ -10,6 +10,28 @@ module Upkeep
       def replay_recipe(frame_id)
         graph.node(frame_id).payload[:recipe]
       end
+
+      def to_h
+        {
+          id: id,
+          subscriber_id: subscriber_id,
+          recorder: recorder.to_h,
+          metadata: metadata
+        }
+      end
+
+      def self.from_h(snapshot)
+        snapshot = Dependencies.symbolize_keys(snapshot)
+        recorder = Runtime::Recorder.from_h(snapshot.fetch(:recorder))
+
+        new(
+          snapshot.fetch(:id),
+          snapshot.fetch(:subscriber_id),
+          recorder,
+          recorder.graph,
+          snapshot.fetch(:metadata, {})
+        )
+      end
     end
 
     class Store
@@ -41,6 +63,12 @@ module Upkeep
 
       def subscriptions
         @subscriptions.values
+      end
+
+      def reset
+        @subscriptions = {}
+        @reverse_index = ReverseIndex.new
+        @next_id = 0
       end
 
       def summary

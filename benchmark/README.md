@@ -10,8 +10,9 @@ runtime SQLite databases, temporary files, Bundler lockfiles, and credentials
 are excluded from version control.
 
 `benchmark/bin/run` defaults to the `matrix` family, which targets these two
-apps. The Rails cable subscription path still needs package-native subscriber
-identity derivation before streamed delivery is a benchmark gate.
+apps. The Upkeep app suite covers package-native subscriber identity derivation,
+automatic subscription registration, persisted reverse-index planning, and
+streamed delivery through the derived subscriber stream.
 
 The root package test command runs both benchmark app test suites after the gem
 tests and before the proof runner:
