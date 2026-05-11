@@ -106,6 +106,7 @@ module Upkeep
           changes: changes,
           frames_observed: initial.recorder.events_by_frame.transform_values(&:size),
           request_events_observed: initial.recorder.request_events.size,
+          graph_summary: initial.recorder.graph.summary,
           initial_html_digest: Targeting::Extraction.digest_html(patched_html),
           full_after_html_digest: Targeting::Extraction.digest_html(full_after.html)
         }
@@ -134,4 +135,3 @@ module Upkeep
     end
   end
 end
-

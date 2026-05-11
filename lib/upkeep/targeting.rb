@@ -14,12 +14,15 @@ module Upkeep
         render_site_targets = []
         fragment_targets = []
 
-        recorder.events_by_frame.each do |frame_id, events|
-          if frame_id.start_with?("page:") && events_intersect_change?(events, changes)
+        recorder.graph.frame_nodes.each do |node|
+          frame_id = node.id
+          dependencies = recorder.graph.dependencies_for(frame_id)
+
+          if frame_id.start_with?("page:") && dependencies_intersect_change?(dependencies, changes)
             page_targets << Target.new("page", frame_id, "page frame dependency matched committed change")
-          elsif frame_id.start_with?("site:") && events_intersect_change?(events, changes)
+          elsif frame_id.start_with?("site:") && dependencies_intersect_change?(dependencies, changes)
             render_site_targets << Target.new("render_site", frame_id.delete_prefix("site:"), "render-site dependency matched committed change")
-          elsif frame_id.start_with?("fragment:") && events_intersect_record_change?(events, changes)
+          elsif frame_id.start_with?("fragment:") && dependencies_intersect_narrow_change?(dependencies, changes)
             fragment_targets << Target.new("fragment", frame_id, "record attribute read matched committed attributes")
           end
         end
@@ -28,7 +31,7 @@ module Upkeep
         return uniq_targets(render_site_targets) if render_site_targets.any?
         return uniq_targets(fragment_targets) if fragment_targets.any?
 
-        if events_intersect_change?(recorder.request_events, changes)
+        if dependencies_intersect_change?(recorder.graph.dependencies_for(Runtime::Recorder::REQUEST_NODE_ID), changes)
           page_id = recorder.frame_metadata.keys.find { |id| id.start_with?("page:") }
           return [Target.new("page", page_id, "request-level dependency matched committed change")]
         end
@@ -36,40 +39,13 @@ module Upkeep
         []
       end
 
-      def events_intersect_change?(events, changes)
-        events_intersect_record_change?(events, changes) || events_intersect_collection_change?(events, changes)
+      def dependencies_intersect_change?(dependencies, changes)
+        dependencies.any? { |dependency| changes.any? { |change| dependency.matches_change?(change) } }
       end
 
-      def events_intersect_record_change?(events, changes)
-        attribute_reads = events.select { |event| event.fetch(:type) == "attribute_read" }
-
-        changes.any? do |change|
-          table = change.fetch(:table)
-          id = change[:id]
-          attrs = change.fetch(:changed_attributes, [])
-
-          attribute_reads.any? do |event|
-            event.fetch(:table) == table &&
-              (!id || event.fetch(:id) == id) &&
-              attrs.include?(event.fetch(:attribute))
-          end
-        end
-      end
-
-      def events_intersect_collection_change?(events, changes)
-        collection_dependencies = events.select { |event| event.fetch(:type) == "collection_dependency" }
-
-        changes.any? do |change|
-          table = change.fetch(:table)
-          attrs = change.fetch(:changed_attributes, [])
-
-          collection_dependencies.any? do |event|
-            next false unless event.fetch(:table) == table
-
-            event.fetch(:columns).intersect?(attrs) ||
-              change.fetch(:type).to_s.include?("create") ||
-              change.fetch(:type).to_s.include?("delete")
-          end
+      def dependencies_intersect_narrow_change?(dependencies, changes)
+        dependencies.any? do |dependency|
+          dependency.narrow_frame_safe? && changes.any? { |change| dependency.matches_change?(change) }
         end
       end
 
@@ -159,4 +135,3 @@ module Upkeep
     end
   end
 end
-

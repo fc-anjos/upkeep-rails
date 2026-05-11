@@ -155,11 +155,18 @@ module Upkeep
         return unless collection.respond_to?(:klass) && collection.respond_to?(:to_sql)
 
         sql = collection.to_sql
-        Runtime::Observation.record({
+        columns = (Runtime::Observation.columns_from_sql(sql) + [collection.klass.primary_key]).compact.uniq.sort
+        dependency = Dependencies::ActiveRecordCollection.new(
+          table: collection.klass.table_name,
+          sql: sql,
+          columns: columns
+        )
+
+        Runtime::Observation.record_dependency(dependency, event: {
           type: "collection_dependency",
           table: collection.klass.table_name,
           sql: sql,
-          columns: (Runtime::Observation.columns_from_sql(sql) + [collection.klass.primary_key]).compact.uniq.sort
+          columns: columns
         })
       end
 

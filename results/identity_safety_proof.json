@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-11T18:14:29Z",
+  "generated_at": "2026-05-11T18:28:22Z",
   "summary": {
     "cases": 3,
     "passed": 3,
@@ -42,12 +42,17 @@
               "identity_signature": "a3b67d858e1b5e49",
               "identity_profile": [
                 {
-                  "type": "identity_read",
                   "source": "Current.user",
-                  "key": "id",
-                  "value": 1,
-                  "table": "users",
-                  "id": 1
+                  "key": {
+                    "key": "id",
+                    "value": 1
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "table": "users",
+                    "id": 1
+                  }
                 }
               ]
             }
@@ -61,7 +66,18 @@
               "html": "<li class=\"card\" id=\"secure_card_1\" data-upkeep-frame=\"fragment:cards/_secure_card:cards:1\" data-upkeep-template=\"74fa0df3fd61475d\">\n  <span class=\"title\">Plan</span>\n  <span class=\"value\">$90</span>\n</li>"
             }
           ],
-          "patched_equals_full": true
+          "patched_equals_full": true,
+          "graph_summary": {
+            "nodes": 21,
+            "edges": 29,
+            "frames": 5,
+            "dependencies": 15,
+            "dependency_sources": [
+              "Current.user",
+              "active_record_attribute",
+              "active_record_collection"
+            ]
+          }
         },
         {
           "subscriber": "Bob",
@@ -75,12 +91,17 @@
               "identity_signature": "c7cb10cf8f5cfb3e",
               "identity_profile": [
                 {
-                  "type": "identity_read",
                   "source": "Current.user",
-                  "key": "id",
-                  "value": 2,
-                  "table": "users",
-                  "id": 2
+                  "key": {
+                    "key": "id",
+                    "value": 2
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "table": "users",
+                    "id": 2
+                  }
                 }
               ]
             }
@@ -94,7 +115,18 @@
               "html": "<li class=\"card\" id=\"secure_card_1\" data-upkeep-frame=\"fragment:cards/_secure_card:cards:1\" data-upkeep-template=\"74fa0df3fd61475d\">\n  <span class=\"title\">Plan</span>\n  <span class=\"value\">Hidden</span>\n</li>"
             }
           ],
-          "patched_equals_full": true
+          "patched_equals_full": true,
+          "graph_summary": {
+            "nodes": 21,
+            "edges": 29,
+            "frames": 5,
+            "dependencies": 15,
+            "dependency_sources": [
+              "Current.user",
+              "active_record_attribute",
+              "active_record_collection"
+            ]
+          }
         }
       ]
     },
@@ -126,7 +158,18 @@
           "value_limit": 100,
           "selected_targets": [],
           "patch_payloads": [],
-          "patched_equals_full": true
+          "patched_equals_full": true,
+          "graph_summary": {
+            "nodes": 21,
+            "edges": 29,
+            "frames": 5,
+            "dependencies": 15,
+            "dependency_sources": [
+              "Current.user",
+              "active_record_attribute",
+              "active_record_collection"
+            ]
+          }
         },
         {
           "subscriber": "Bob",
@@ -140,12 +183,17 @@
               "identity_signature": "c7cb10cf8f5cfb3e",
               "identity_profile": [
                 {
-                  "type": "identity_read",
                   "source": "Current.user",
-                  "key": "id",
-                  "value": 2,
-                  "table": "users",
-                  "id": 2
+                  "key": {
+                    "key": "id",
+                    "value": 2
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "table": "users",
+                    "id": 2
+                  }
                 }
               ]
             },
@@ -156,12 +204,17 @@
               "identity_signature": "c7cb10cf8f5cfb3e",
               "identity_profile": [
                 {
-                  "type": "identity_read",
                   "source": "Current.user",
-                  "key": "id",
-                  "value": 2,
-                  "table": "users",
-                  "id": 2
+                  "key": {
+                    "key": "id",
+                    "value": 2
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "table": "users",
+                    "id": 2
+                  }
                 }
               ]
             },
@@ -172,12 +225,17 @@
               "identity_signature": "c7cb10cf8f5cfb3e",
               "identity_profile": [
                 {
-                  "type": "identity_read",
                   "source": "Current.user",
-                  "key": "id",
-                  "value": 2,
-                  "table": "users",
-                  "id": 2
+                  "key": {
+                    "key": "id",
+                    "value": 2
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "table": "users",
+                    "id": 2
+                  }
                 }
               ]
             }
@@ -205,7 +263,18 @@
               "html": "<li class=\"card\" id=\"secure_card_3\" data-upkeep-frame=\"fragment:cards/_secure_card:cards:3\" data-upkeep-template=\"74fa0df3fd61475d\">\n  <span class=\"title\">Review</span>\n  <span class=\"value\">Hidden</span>\n</li>"
             }
           ],
-          "patched_equals_full": true
+          "patched_equals_full": true,
+          "graph_summary": {
+            "nodes": 21,
+            "edges": 29,
+            "frames": 5,
+            "dependencies": 15,
+            "dependency_sources": [
+              "Current.user",
+              "active_record_attribute",
+              "active_record_collection"
+            ]
+          }
         }
       ]
     },
@@ -239,31 +308,20 @@
               "kind": "render_site",
               "id": "8a3db56ad4cf3d11",
               "reason": "render-site dependency matched committed change",
-              "identity_signature": "c29ac897c5b7f69d",
+              "identity_signature": "a3b67d858e1b5e49",
               "identity_profile": [
                 {
-                  "type": "identity_read",
                   "source": "Current.user",
-                  "key": "id",
-                  "value": 1,
-                  "table": "users",
-                  "id": 1
-                },
-                {
-                  "type": "identity_read",
-                  "source": "Current.user",
-                  "key": "id",
-                  "value": 1,
-                  "table": "users",
-                  "id": 1
-                },
-                {
-                  "type": "identity_read",
-                  "source": "Current.user",
-                  "key": "id",
-                  "value": 1,
-                  "table": "users",
-                  "id": 1
+                  "key": {
+                    "key": "id",
+                    "value": 1
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "table": "users",
+                    "id": 1
+                  }
                 }
               ]
             }
@@ -272,12 +330,22 @@
             {
               "kind": "render_site",
               "id": "8a3db56ad4cf3d11",
-              "identity_signature": "c29ac897c5b7f69d",
+              "identity_signature": "a3b67d858e1b5e49",
               "html_digest": "1f489ab302c72a4f1a359a9e346bac2284deee8d3e059d3a34f55ff2dca156b3",
               "html": "<upkeep-render-site data-upkeep-render-site=\"8a3db56ad4cf3d11\"><li class=\"card\" id=\"secure_card_1\" data-upkeep-frame=\"fragment:cards/_secure_card:cards:1\" data-upkeep-template=\"74fa0df3fd61475d\">\n  <span class=\"title\">Plan</span>\n  <span class=\"value\">$45</span>\n</li>\n<li class=\"card\" id=\"secure_card_2\" data-upkeep-frame=\"fragment:cards/_secure_card:cards:2\" data-upkeep-template=\"74fa0df3fd61475d\">\n  <span class=\"title\">Build</span>\n  <span class=\"value\">$40</span>\n</li>\n</upkeep-render-site>"
             }
           ],
-          "patched_equals_full": true
+          "patched_equals_full": true,
+          "graph_summary": {
+            "nodes": 17,
+            "edges": 26,
+            "frames": 4,
+            "dependencies": 12,
+            "dependency_sources": [
+              "Current.user",
+              "active_record_attribute"
+            ]
+          }
         },
         {
           "subscriber": "Bob",
@@ -288,31 +356,20 @@
               "kind": "render_site",
               "id": "8a3db56ad4cf3d11",
               "reason": "render-site dependency matched committed change",
-              "identity_signature": "59e294dfdf6d9e6d",
+              "identity_signature": "c7cb10cf8f5cfb3e",
               "identity_profile": [
                 {
-                  "type": "identity_read",
                   "source": "Current.user",
-                  "key": "id",
-                  "value": 2,
-                  "table": "users",
-                  "id": 2
-                },
-                {
-                  "type": "identity_read",
-                  "source": "Current.user",
-                  "key": "id",
-                  "value": 2,
-                  "table": "users",
-                  "id": 2
-                },
-                {
-                  "type": "identity_read",
-                  "source": "Current.user",
-                  "key": "id",
-                  "value": 2,
-                  "table": "users",
-                  "id": 2
+                  "key": {
+                    "key": "id",
+                    "value": 2
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "table": "users",
+                    "id": 2
+                  }
                 }
               ]
             }
@@ -321,12 +378,22 @@
             {
               "kind": "render_site",
               "id": "8a3db56ad4cf3d11",
-              "identity_signature": "59e294dfdf6d9e6d",
+              "identity_signature": "c7cb10cf8f5cfb3e",
               "html_digest": "1f489ab302c72a4f1a359a9e346bac2284deee8d3e059d3a34f55ff2dca156b3",
               "html": "<upkeep-render-site data-upkeep-render-site=\"8a3db56ad4cf3d11\"><li class=\"card\" id=\"secure_card_1\" data-upkeep-frame=\"fragment:cards/_secure_card:cards:1\" data-upkeep-template=\"74fa0df3fd61475d\">\n  <span class=\"title\">Plan</span>\n  <span class=\"value\">$45</span>\n</li>\n<li class=\"card\" id=\"secure_card_2\" data-upkeep-frame=\"fragment:cards/_secure_card:cards:2\" data-upkeep-template=\"74fa0df3fd61475d\">\n  <span class=\"title\">Build</span>\n  <span class=\"value\">$40</span>\n</li>\n</upkeep-render-site>"
             }
           ],
-          "patched_equals_full": true
+          "patched_equals_full": true,
+          "graph_summary": {
+            "nodes": 14,
+            "edges": 18,
+            "frames": 3,
+            "dependencies": 10,
+            "dependency_sources": [
+              "Current.user",
+              "active_record_attribute"
+            ]
+          }
         }
       ]
     }

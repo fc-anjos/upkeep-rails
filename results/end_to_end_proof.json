@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-11T18:14:29Z",
+  "generated_at": "2026-05-11T18:28:22Z",
   "summary": {
     "cases": 6,
     "passed": 6,
@@ -39,6 +39,16 @@
         "fragment:cards/_card:cards:3": 3
       },
       "request_events_observed": 2,
+      "graph_summary": {
+        "nodes": 18,
+        "edges": 20,
+        "frames": 5,
+        "dependencies": 12,
+        "dependency_sources": [
+          "active_record_attribute",
+          "active_record_collection"
+        ]
+      },
       "initial_html_digest": "5bb96f5231595a74f59992d18ac832659e35602b2b41ad51304736c11fd1d816",
       "full_after_html_digest": "5bb96f5231595a74f59992d18ac832659e35602b2b41ad51304736c11fd1d816"
     },
@@ -72,6 +82,16 @@
         "fragment:cards/_card:cards:3": 3
       },
       "request_events_observed": 2,
+      "graph_summary": {
+        "nodes": 18,
+        "edges": 20,
+        "frames": 5,
+        "dependencies": 12,
+        "dependency_sources": [
+          "active_record_attribute",
+          "active_record_collection"
+        ]
+      },
       "initial_html_digest": "e690a3872aff5ea785945b6d7d62c29e1840fe7b56a24287ba29a4a319e772d4",
       "full_after_html_digest": "e690a3872aff5ea785945b6d7d62c29e1840fe7b56a24287ba29a4a319e772d4"
     },
@@ -110,6 +130,16 @@
         "fragment:cards/_card:cards:3": 3
       },
       "request_events_observed": 2,
+      "graph_summary": {
+        "nodes": 18,
+        "edges": 20,
+        "frames": 5,
+        "dependencies": 12,
+        "dependency_sources": [
+          "active_record_attribute",
+          "active_record_collection"
+        ]
+      },
       "initial_html_digest": "95788085da070f066b31cae355638a38399f4f1fb659c9d59d1a0f5ccd5c719f",
       "full_after_html_digest": "95788085da070f066b31cae355638a38399f4f1fb659c9d59d1a0f5ccd5c719f"
     },
@@ -139,6 +169,15 @@
         "page:boards/inline": 11
       },
       "request_events_observed": 2,
+      "graph_summary": {
+        "nodes": 13,
+        "edges": 12,
+        "frames": 1,
+        "dependencies": 11,
+        "dependency_sources": [
+          "active_record_attribute"
+        ]
+      },
       "initial_html_digest": "ec8541f7c5a41f4101aed6ad3696182785c55cd5019cc5a84096337e7a1f7b31",
       "full_after_html_digest": "ec8541f7c5a41f4101aed6ad3696182785c55cd5019cc5a84096337e7a1f7b31"
     },
@@ -176,6 +215,16 @@
         "fragment:cards/_card:cards:3": 3
       },
       "request_events_observed": 2,
+      "graph_summary": {
+        "nodes": 17,
+        "edges": 19,
+        "frames": 4,
+        "dependencies": 12,
+        "dependency_sources": [
+          "active_record_attribute",
+          "active_record_collection"
+        ]
+      },
       "initial_html_digest": "dcd180b1328e4bfa69fe60e0f7cd73345fc43107ceaf5fdb0954daa6a2e3a7a3",
       "full_after_html_digest": "dcd180b1328e4bfa69fe60e0f7cd73345fc43107ceaf5fdb0954daa6a2e3a7a3"
     },
@@ -205,6 +254,15 @@
         "page:boards/preloaded_plain": 1
       },
       "request_events_observed": 9,
+      "graph_summary": {
+        "nodes": 10,
+        "edges": 9,
+        "frames": 1,
+        "dependencies": 8,
+        "dependency_sources": [
+          "active_record_attribute"
+        ]
+      },
       "initial_html_digest": "55f83c7573565006ddc1092b37d4f8267bd72228e274710421626d0a988c439a",
       "full_after_html_digest": "55f83c7573565006ddc1092b37d4f8267bd72228e274710421626d0a988c439a"
     }

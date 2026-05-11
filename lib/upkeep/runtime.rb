@@ -46,6 +46,10 @@ module Upkeep
         Thread.current[THREAD_KEY]&.record(event)
       end
 
+      def record_dependency(dependency, event:)
+        Thread.current[THREAD_KEY]&.record_dependency(dependency, event: event)
+      end
+
       def recorder
         Thread.current[THREAD_KEY]
       end
@@ -60,17 +64,23 @@ module Upkeep
     end
 
     class Recorder
-      attr_reader :events_by_frame, :request_events, :frame_metadata
+      REQUEST_NODE_ID = :request
+
+      attr_reader :events_by_frame, :request_events, :frame_metadata, :graph
 
       def initialize
         @events_by_frame = Hash.new { |hash, key| hash[key] = [] }
         @request_events = []
         @frame_metadata = {}
         @frame_stack = []
+        @graph = DAG::Graph.new
+        @graph.add_node(REQUEST_NODE_ID, kind: :request, payload: {})
       end
 
       def with_frame(frame_id, metadata)
         @frame_metadata[frame_id] ||= metadata
+        @graph.add_node(frame_id, kind: :frame, payload: metadata)
+        @graph.add_edge(current_owner, frame_id, reason: :contains)
         @frame_stack.push(frame_id)
         yield
       ensure
@@ -85,27 +95,28 @@ module Upkeep
         end
       end
 
+      def record_dependency(dependency, event:)
+        record(event)
+        @graph.add_dependency(current_owner, dependency)
+      end
+
       def current_frame
         @frame_stack.last
       end
 
+      def current_owner
+        current_frame || REQUEST_NODE_ID
+      end
+
       def identity_profile(frame_id)
-        Array(events_by_frame[frame_id]).select { |event| event.fetch(:type) == "identity_read" }
+        @graph.dependencies_for(frame_id).select(&:identity?).map(&:to_h)
       end
 
       def identity_signature(frame_id)
-        profile = identity_profile(frame_id)
-        return "public" if profile.empty?
+        identity_dependencies = @graph.dependencies_for(frame_id).select(&:identity?)
+        return "public" if identity_dependencies.empty?
 
-        identity_values = profile.map do |event|
-          {
-            source: event[:source],
-            key: event[:key],
-            value: event[:value]
-          }
-        end
-
-        Digest::SHA256.hexdigest(identity_values.sort_by(&:inspect).inspect)[0, 16]
+        Digest::SHA256.hexdigest(identity_dependencies.map(&:identity_key).sort_by(&:inspect).inspect)[0, 16]
       end
     end
 
@@ -141,7 +152,17 @@ module Upkeep
 
         def user
           user = Thread.current[THREAD_KEY]
-          Observation.record({
+          dependency = Dependencies::Identity.new(
+            source: "Current.user",
+            key: "id",
+            value: user&.id,
+            metadata: {
+              table: user&.class&.table_name,
+              id: user&.id
+            }
+          )
+
+          Observation.record_dependency(dependency, event: {
             type: "identity_read",
             source: "Current.user",
             key: "id",
@@ -158,7 +179,14 @@ module Upkeep
       def _read_attribute(attr_name, &block)
         value = super
 
-        Observation.record({
+        dependency = Dependencies::ActiveRecordAttribute.new(
+          table: self.class.table_name,
+          model: self.class.name,
+          id: primary_key_value(attr_name, value),
+          attribute: attr_name.to_s
+        )
+
+        Observation.record_dependency(dependency, event: {
           type: "attribute_read",
           table: self.class.table_name,
           model: self.class.name,
