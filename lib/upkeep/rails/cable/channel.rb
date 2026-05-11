@@ -7,10 +7,20 @@ module Upkeep
     module Cable
       class Channel < ::ActionCable::Channel::Base
         def subscribed
-          @upkeep_identities = SubscriberIdentity.derive_all(connection)
-          @upkeep_identities.each { |identity| stream_from identity.stream_name }
-        rescue UnidentifiedSubscriber
+          subscription = Upkeep::Rails.subscriptions.fetch(subscription_id)
+          stream_from stream_name_for(subscription)
+        rescue KeyError, ActiveRecord::RecordNotFound
           reject
+        end
+
+        private
+
+        def subscription_id
+          params.fetch(:subscription_id)
+        end
+
+        def stream_name_for(subscription)
+          subscription.metadata.fetch(:stream_name)
         end
       end
     end

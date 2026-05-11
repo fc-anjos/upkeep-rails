@@ -1,13 +1,8 @@
 // Chat benchmark for Upkeep cold-connect churn.
 // Measures login + page + WebSocket + subscribe setup pressure under churn.
 
-import http from "k6/http";
-import ws from "k6/ws";
-import { check, fail } from "k6";
-import { BASE_URL, WS_URL, ROOM_ID, NUM_USERS, buildColdAdmissionOptions } from "../utils/config.js";
-import { login } from "../utils/auth.js";
-import { findBetween } from "../utils/index.js";
-import { buildHandleSummary, relayWsUrl } from "../utils/relay_scenario.js";
+import { BASE_URL, ROOM_ID, NUM_USERS, buildColdAdmissionOptions } from "../utils/config.js";
+import { establishScenarioContext, disconnectScenarioContext, buildHandleSummary } from "../utils/scenario.js";
 
 // Cold-connect is a capacity gate, not an optimization gate. VUs are
 // admitted in hardware-sized waves (see buildColdAdmissionOptions) so
@@ -27,20 +22,20 @@ export const options = {
 };
 
 export default function () {
-  const userIdx = (__VU % NUM_USERS) + 1;
-  const jar = login(BASE_URL, `user${userIdx}@bench.test`, "benchpass123");
-
-  const pageRes = http.get(`${BASE_URL}/rooms/${ROOM_ID}`, { jar });
-  check(pageRes, { "page loaded": (r) => r.status === 200 });
-  const token = findBetween(pageRes.body, 'data-context-token="', '"');
-  if (!token) fail("could not extract context_token");
-
-  const wsResult = ws.connect(relayWsUrl(WS_URL, token), {}, function (sock) {
-    sock.setInterval(function () {}, 1000);
-    sock.setTimeout(function () { sock.close(); }, 200);
+  const ctx = establishScenarioContext({
+    baseUrl: BASE_URL,
+    wsUrl: `${BASE_URL.replace(/^http/, "ws")}/cable`,
+    numUsers: NUM_USERS,
+    iterations: 0,
+    pagePath: `/rooms/${ROOM_ID}`,
+    channel: {
+      name: "Upkeep::Rails::Cable::Channel",
+      tokenAttr: "data-upkeep-subscription",
+      paramKey: "subscription_id",
+    },
   });
 
-  check(wsResult, { "ws connected": (r) => r && r.status === 101 });
+  disconnectScenarioContext(ctx);
 }
 
 export const handleSummary = buildHandleSummary("results/matrix-chat-cold-upkeep.json");

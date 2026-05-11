@@ -53,6 +53,17 @@ export default function () {
   const setupAdmission = warmSetupAdmissionForVu(__VU);
   const seenMarkers = new Set();
 
+  const recordDeliveryMarkers = function (serialized) {
+    if (!serialized) return;
+
+    for (const { marker, sendTs } of extractChatBenchmarkMarkers(serialized)) {
+      if (seenMarkers.has(marker)) continue;
+      seenMarkers.add(marker);
+      observedDeliveryMarkers.add(1);
+      rtt.add(Date.now() - sendTs);
+    }
+  };
+
   const config = {
     baseUrl: TURBO_BASE,
     wsUrl: TURBO_WS,
@@ -64,7 +75,6 @@ export default function () {
       tokenAttr: "signed-stream-name",
       paramKey: "signed_stream_name",
     },
-    awaitWriterMessage: false,
     writerRatio: 10,
     writerStartVu: warmSetupProfile().workerCapacity + 1,
     initialJitter: false,
@@ -79,16 +89,13 @@ export default function () {
       postLatency.add(res.timings.duration);
       return { sendTs };
     },
+    onWriterReceive(ctx, msg, sendTs, serialized) {
+      recordDeliveryMarkers(serialized || "");
+    },
     onReaderReceive(ctx, msgs) {
       for (const raw of msgs) {
         const serialized = serializeCableApplicationMessage(raw);
-        if (!serialized) continue;
-        for (const { marker, sendTs } of extractChatBenchmarkMarkers(serialized)) {
-          if (seenMarkers.has(marker)) continue;
-          seenMarkers.add(marker);
-          observedDeliveryMarkers.add(1);
-          rtt.add(Date.now() - sendTs);
-        }
+        recordDeliveryMarkers(serialized);
       }
     },
   };

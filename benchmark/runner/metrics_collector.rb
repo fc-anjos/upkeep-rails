@@ -52,6 +52,7 @@ module Upkeep
         private
           def metrics_path_for(app_name, label)
             return "/bench/metrics" unless app_name == "upkeep"
+            return "/bench/metrics" unless config.family == "memory_ceiling"
 
             case label
             when "before" then "/bench/metrics?memory_phase=before"
@@ -69,7 +70,8 @@ module Upkeep
               sleep 1 if index < attempts - 1
             end
 
-            raise "dispatch /metrics unreachable at #{config.relay_metrics_url} (label=#{label})"
+            warn "WARN: dispatch metrics unreachable at #{config.relay_metrics_url} (label=#{label})"
+            nil
           end
 
           def scrape_dispatch_memory(label)

@@ -60,7 +60,7 @@ function loadPageAndToken(baseUrl, pagePath, jar, channel) {
   pageRender.add(Date.now() - renderStart);
   check(pageRes, { "page loaded": (r) => r.status === 200 });
 
-  const token = findBetween(pageRes.body, `${channel.tokenAttr}="`, '"');
+  const token = extractSubscriptionToken(pageRes.body, channel);
   if (!token) {
     console.error(`[diag] token-missing VU=${__VU} path=${pagePath} status=${pageRes.status} len=${(pageRes.body||"").length} ct=${pageRes.headers["Content-Type"]||""} loc=${pageRes.headers["Location"]||""}`);
     console.error(`[diag] body-head: ${(pageRes.body||"").slice(0, 400).replace(/\n/g, " ")}`);
@@ -76,6 +76,23 @@ function loadPageAndToken(baseUrl, pagePath, jar, channel) {
     csrfToken,
     requestId: benchHeader(pageRes, "X-Bench-Request-Id"),
   };
+}
+
+function extractSubscriptionToken(body, channel) {
+  if (channel.tokenAttr === "data-upkeep-subscription") {
+    const marker = findBetween(body, "data-upkeep-subscription>", "</script>");
+    if (!marker) return "";
+
+    try {
+      const payload = JSON.parse(marker);
+      return payload.subscription_id || "";
+    } catch (error) {
+      console.error(`[diag] invalid upkeep subscription marker: ${error}`);
+      return "";
+    }
+  }
+
+  return findBetween(body, `${channel.tokenAttr}="`, '"');
 }
 
 function benchConnectId(label = "primary") {

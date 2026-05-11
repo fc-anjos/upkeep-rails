@@ -8,7 +8,7 @@
 import http from "k6/http";
 import { Trend } from "k6/metrics";
 import { BASE_URL, WS_URL, BOARD_ID, NUM_USERS, ITERATIONS, buildOptions } from "../utils/config.js";
-import { runRelayScenario, buildHandleSummary } from "../utils/relay_scenario.js";
+import { runScenario, buildHandleSummary } from "../utils/scenario.js";
 
 const patchLatency = new Trend("patch_latency", true);
 
@@ -18,12 +18,17 @@ const statuses = ["todo", "in_progress", "done"];
 export const options = buildOptions();
 
 export default function () {
-  runRelayScenario({
+  runScenario({
     baseUrl: BASE_URL,
-    wsUrl: WS_URL,
+    wsUrl: `${BASE_URL.replace(/^http/, "ws")}/cable`,
     numUsers: NUM_USERS,
     iterations: ITERATIONS,
     pagePath: `/boards/${BOARD_ID}`,
+    channel: {
+      name: "Upkeep::Rails::Cable::Channel",
+      tokenAttr: "data-upkeep-subscription",
+      paramKey: "subscription_id",
+    },
     writerRatio: parseInt(__ENV.WRITER_RATIO || "20"),
     onWrite(ctx, i) {
       const cardId = cardIds[i % cardIds.length];
