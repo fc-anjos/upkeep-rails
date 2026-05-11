@@ -9,6 +9,7 @@ module Upkeep
         :target,
         :frame_id,
         :identity_signature,
+        :sharing_signature,
         :recipe,
         :matched_dependency_keys,
         :action
@@ -81,6 +82,8 @@ module Upkeep
         recipe = subscription.replay_recipe(frame_id)
         return unless recipe
 
+        identity_signature = subscription.identity_signature(frame_id)
+        sharing_signature = SharedStreams.signature_for(recipe) if identity_signature == "public" && frame.payload.fetch(:kind) == "render_site"
         action, recipe = delivery_strategy(frame, recipe, entries, changes)
 
         PlannedTarget.new(
@@ -88,7 +91,8 @@ module Upkeep
           subscription.subscriber_id,
           target,
           frame_id,
-          subscription.identity_signature(frame_id),
+          identity_signature,
+          sharing_signature,
           recipe,
           dependency_keys,
           action
@@ -125,7 +129,7 @@ module Upkeep
 
       def deduplicate_targets(targets)
         targets.each_with_object({}) do |target, indexed_targets|
-          key = [target.subscriber_id, target.target.kind, target.target.id, target.identity_signature, target.action]
+          key = [target.subscriber_id, target.target.kind, target.target.id, target.identity_signature, target.sharing_signature, target.action]
           indexed_targets[key] = merge_target(indexed_targets[key], target)
         end.values
       end
@@ -139,6 +143,7 @@ module Upkeep
           existing.target,
           existing.frame_id,
           existing.identity_signature,
+          existing.sharing_signature,
           existing.recipe,
           (existing.matched_dependency_keys + target.matched_dependency_keys).uniq,
           existing.action

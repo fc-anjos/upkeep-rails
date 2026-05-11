@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "tmpdir"
 
 class RuntimeDeliveryUser < ActiveRecord::Base
   self.table_name = "runtime_delivery_users"
@@ -47,7 +48,8 @@ class ControllerRuntimeTest < Minitest::Test
     Upkeep::Rails::Install.call
     RuntimeDeliveryCardsController.view_paths = [resolver]
 
-    ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: ":memory:")
+    @database_dir = Dir.mktmpdir("upkeep-controller-runtime")
+    ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: File.join(@database_dir, "test.sqlite3"))
     ActiveRecord::Base.logger = nil
     ActiveRecord::Schema.verbose = false
 
@@ -66,6 +68,8 @@ class ControllerRuntimeTest < Minitest::Test
 
   def teardown
     RuntimeDeliveryCurrent.reset
+    Upkeep::Rails.reset_runtime!
+    FileUtils.rm_rf(@database_dir) if @database_dir
   end
 
   def test_get_registers_subscription_and_injects_client_marker
@@ -94,14 +98,31 @@ class ControllerRuntimeTest < Minitest::Test
     subscription = Upkeep::Rails.subscriptions.subscriptions.first
     adapter = RecordingAdapter.new
     Upkeep::Rails.transport.connect(subscriber_id: subscription.subscriber_id, adapter: adapter)
+    subscription.metadata.fetch(:shared_stream_names, []).each do |stream_name|
+      Upkeep::Rails.transport.connect(subscriber_id: "shared:#{stream_name}", adapter: adapter)
+    end
 
     _status, _headers, body = RuntimeDeliveryCardsController.action(:update).call(
       env_for("/cards/#{card.id}", method: "PATCH", params: { id: card.id, title: "Plan v2" })
     )
     collect_body(body)
+    Upkeep::Rails.drain_delivery!
 
     assert_equal 1, adapter.bodies.size
     assert_includes adapter.bodies.first, "Plan v2"
+  end
+
+  def test_change_log_capture_keeps_request_events_out_of_the_global_journal
+    event = { table: "runtime_delivery_cards", changed_attributes: ["title"] }
+
+    result, changes = Upkeep::Runtime::ChangeLog.capture do
+      Upkeep::Runtime::ChangeLog.record(event)
+      :captured
+    end
+
+    assert_equal :captured, result
+    assert_equal [event], changes
+    assert_empty Upkeep::Runtime::ChangeLog.events
   end
 
   private

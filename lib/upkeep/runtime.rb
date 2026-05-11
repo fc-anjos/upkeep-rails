@@ -100,26 +100,55 @@ module Upkeep
     end
 
     module ChangeLog
+      THREAD_KEY = :upkeep_change_log_events
       @events = []
+      @mutex = Mutex.new
 
       module_function
 
       def reset
-        @events = []
+        @mutex.synchronize { @events = [] }
+        Thread.current[THREAD_KEY] = nil
       end
 
       def record(event)
-        @events << event
+        if (events = Thread.current[THREAD_KEY])
+          events << event
+        else
+          @mutex.synchronize { @events << event }
+        end
       end
 
       def events
-        @events
+        if (events = Thread.current[THREAD_KEY])
+          events
+        else
+          @mutex.synchronize { @events.dup }
+        end
       end
 
       def drain
-        events = @events
-        @events = []
-        events
+        if (events = Thread.current[THREAD_KEY])
+          drained = events.dup
+          events.clear
+          drained
+        else
+          @mutex.synchronize do
+            events = @events
+            @events = []
+            events
+          end
+        end
+      end
+
+      def capture
+        previous = Thread.current[THREAD_KEY]
+        events = []
+        Thread.current[THREAD_KEY] = events
+
+        [yield, events.dup]
+      ensure
+        Thread.current[THREAD_KEY] = previous
       end
     end
 

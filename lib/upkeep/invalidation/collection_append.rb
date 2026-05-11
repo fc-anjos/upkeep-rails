@@ -20,11 +20,12 @@ module Upkeep
 
         collection = symbolize_keys(replay.fetch(:collection))
         return unless collection[:type] == "active_record_relation"
+        return unless collection[:primary_key]
         return unless appendable_sql?(collection.fetch(:sql))
 
         model = constantize(collection.fetch(:model))
         record = model.find_by(id: change.fetch(:id))
-        return unless record && relation_appends_record?(model, collection.fetch(:sql), record)
+        return unless record && relation_appends_record?(model, collection, record)
 
         Replay::Recipe.new(
           kind: :render_site_append,
@@ -52,9 +53,17 @@ module Upkeep
         change[:id] && change.fetch(:type).to_s.include?("create")
       end
 
-      def relation_appends_record?(model, sql, record)
-        last_record = model.find_by_sql(sql).last
-        last_record && last_record.id.to_s == record.id.to_s
+      def relation_appends_record?(model, collection, record)
+        primary_key = collection.fetch(:primary_key)
+        snapshot_ids = collection.fetch(:member_ids, []).map(&:to_s)
+        candidate_ids = (snapshot_ids + [record.public_send(primary_key).to_s]).uniq
+        ordered_ids = model.find_by_sql(collection.fetch(:sql)).filter_map do |candidate|
+          candidate_id = candidate.public_send(primary_key).to_s
+          candidate_id if candidate_ids.include?(candidate_id)
+        end
+
+        ordered_ids.last == record.public_send(primary_key).to_s &&
+          (snapshot_ids - ordered_ids).empty?
       end
 
       def appendable_sql?(sql)

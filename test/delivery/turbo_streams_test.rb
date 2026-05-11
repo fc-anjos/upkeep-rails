@@ -79,6 +79,48 @@ class TurboStreamsDeliveryTest < Minitest::Test
     refute_includes stream.html, "Build"
   end
 
+  def test_public_collection_create_uses_shared_delivery_stream
+    create_delivery_card!("Plan")
+    create_delivery_card!("Build")
+
+    store = Upkeep::Subscriptions::Store.new
+    register_controller_subscription(store, subscriber_id: "subscriber-a")
+    register_controller_subscription(store, subscriber_id: "subscriber-b")
+
+    Upkeep::Runtime::ChangeLog.reset
+    create_delivery_card!("Review")
+
+    batch = delivery.build(plan_for(store))
+
+    assert_equal 1, batch.envelopes.size
+    assert_match(/\Ashared:upkeep:shared:/, batch.envelopes.first.subscriber_id)
+    assert_match(/\Aupkeep:shared:/, batch.envelopes.first.stream_name)
+    assert_includes batch.envelopes.first.body, "Review"
+  end
+
+  def test_queued_collection_create_appends_when_later_rows_already_exist
+    create_delivery_card!("Plan")
+    create_delivery_card!("Build")
+
+    store = Upkeep::Subscriptions::Store.new
+    register_controller_subscription(store, subscriber_id: "subscriber-a")
+
+    Upkeep::Runtime::ChangeLog.reset
+    review = create_delivery_card!("Review")
+    create_delivery_card!("Ship")
+
+    first_create = Upkeep::Runtime::ChangeLog.events.find { |event| event.fetch(:id) == review.id }
+    batch = delivery.build(Upkeep::Invalidation::Planner.new(store: store).plan([first_create]))
+    stream = batch.streams.first
+    turbo_stream = Nokogiri::HTML5.fragment(stream.to_html).at_css("turbo-stream")
+
+    assert_equal "append", turbo_stream["action"]
+    assert_includes stream.html, "Review"
+    refute_includes stream.html, "Plan"
+    refute_includes stream.html, "Build"
+    refute_includes stream.html, "Ship"
+  end
+
   def test_collection_create_replaces_when_created_record_is_not_appended_by_the_relation
     create_delivery_card!("Plan")
     create_delivery_card!("Build")
@@ -139,6 +181,7 @@ class TurboStreamsDeliveryTest < Minitest::Test
     assert_equal "public", stream_report.fetch(:identity_signature)
     assert_equal 64, stream_report.fetch(:html_digest).length
     assert_equal ["subscriber-a"], stream_report.fetch(:subscriber_ids)
+    assert_nil stream_report[:shared_stream_name]
     assert_operator stream_report.fetch(:matched_dependency_keys).size, :>, 0
     assert_equal ["subscriber-a"], report.fetch(:envelopes).map { |envelope| envelope.fetch(:subscriber_id) }
   end
