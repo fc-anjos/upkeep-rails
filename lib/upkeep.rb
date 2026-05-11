@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require_relative "upkeep/herb_loader"
+require_relative "upkeep/dependencies"
+require_relative "upkeep/dag"
 require_relative "upkeep/probes/herb_surface"
 require_relative "upkeep/probes/active_record_surface"
 require_relative "upkeep/runtime"

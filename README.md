@@ -20,6 +20,8 @@ The runtime code lives under `lib/upkeep/`:
   fragment-root, and render-site coverage against benchmark templates.
 - `probes/active_record_surface.rb` checks Rails 8.1 Active Record read and write
   observation hooks.
+- `dependencies.rb` defines open dependency objects produced by observers.
+- `dag.rb` stores generic nodes, edges, and dependency attachments.
 - `runtime.rb` captures frame-scoped reads, request identity reads, and committed
   write facts.
 - `domain.rb` defines the in-memory Rails domain used by the proofs.
@@ -61,7 +63,7 @@ The runner checks:
 - frontend tag plans for partial roots and render sites;
 - Active Record relation execution, attribute reads, association loads,
   callback writes, and bulk writes;
-- end-to-end DOM patch correctness across narrow fragment, render-site, and
+- end-to-end DOM patch correctness through dependency-driven narrow fragment, render-site, and
   page-fallback strategies;
 - subscriber-specific patch extraction where two users share the same DOM target
   but require different payloads.
