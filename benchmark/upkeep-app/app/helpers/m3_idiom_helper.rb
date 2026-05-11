@@ -1,19 +1,17 @@
 module M3IdiomHelper
-  # Helper-hidden collection render: the M3 idiom under test.
-  # The framework observes this call at the read site and derives a stable
-  # rtg_* stream id from the call-site + template anchor.
+  # Helper-hidden collection render: the render call lives behind a helper
+  # method while Rails still resolves the collection boundary at runtime.
   def comments_for_card(card)
     render partial: "comments/comment", collection: card.comments.order(:created_at), as: :comment
   end
 
-  # Helper-hidden single-record partial render (Idiom #2).
+  # Helper-hidden single-record partial render.
   def card_summary(card)
     render partial: "cards/summary", locals: { card: card }
   end
 
-  # Sibling collections under the same parent card, distinguished by
-  # pinned scope (Idiom #6). Distinct call sites produce distinct stream ids
-  # so mutations to one scope do not bleed into the other.
+  # Sibling collections under the same parent card, distinguished by pinned
+  # scope and separate helper call sites.
   def pinned_comments_for(card)
     render partial: "comments/comment", collection: card.comments.where(pinned: true).order(:created_at), as: :comment
   end
@@ -22,9 +20,8 @@ module M3IdiomHelper
     render partial: "comments/comment", collection: card.comments.where(pinned: false).order(:created_at), as: :comment
   end
 
-  # Conditional sibling (Idiom #7): two collection renders, second gated by
-  # card.show_archived. Per-subscription prior_call_sites storage (Unit 7 v2)
-  # is required for the D6 cross-render decline to fire.
+  # Conditional sibling: two collection renders, with the second gated by
+  # card.show_archived.
   def card_panels(card)
     panels = []
     panels << render(partial: "comments/comment", collection: card.comments.where(pinned: false), as: :comment)

@@ -23,23 +23,28 @@ class BenchmarkLayoutTest < Minitest::Test
   end
 
   def test_benchmark_tree_excludes_generated_runtime_artifacts
-    generated_artifacts = Dir[
-      benchmark_root.join("results/**/*").to_s,
-      benchmark_root.join("**/*.sqlite3*").to_s,
-      benchmark_root.join("**/*.log").to_s,
-      benchmark_root.join("**/node_modules/**/*").to_s,
-      benchmark_root.join("**/playwright-report/**/*").to_s,
-      benchmark_root.join("**/test-results/**/*").to_s,
-      benchmark_root.join("**/config/master.key").to_s,
-      benchmark_root.join("**/config/credentials.yml.enc").to_s
-    ]
+    generated_artifacts = tracked_benchmark_files.grep(
+      %r{
+        \Abenchmark/(results/|.+/
+          (Gemfile\.lock|log/.+|tmp/.+|storage/.+\.sqlite3.*|node_modules/.+|playwright-report/.+|test-results/.+|config/(master\.key|credentials\.yml\.enc))
+        )\z
+      }x
+    )
 
     assert_empty generated_artifacts
   end
 
   private
 
+  def tracked_benchmark_files
+    Dir.chdir(project_root) { `git ls-files benchmark`.split("\n") }
+  end
+
   def benchmark_root
-    Pathname(__dir__).join("../../benchmark").expand_path
+    project_root.join("benchmark")
+  end
+
+  def project_root
+    Pathname(__dir__).join("../..").expand_path
   end
 end

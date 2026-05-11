@@ -1,9 +1,8 @@
 // Shared-feed memory ceiling workload.
 //
-// Clients connect straight to dispatch's `Upkeep::Relay::WSServer`
-// using the signed `data-context-token` the page render embeds. The
-// HTTP page render goes through Rails (subscription registered, token
-// issued); the long-lived WebSocket runs on the dispatch runtime.
+// Clients connect to the benchmark WebSocket endpoint using the signed
+// `data-context-token` the page render embeds. The HTTP page render goes
+// through Rails; the long-lived WebSocket carries delivery frames.
 //
 // Frame counting is bytes-only: dispatch sends binary msgpack
 // envelopes; this workload counts every received frame as a delivery

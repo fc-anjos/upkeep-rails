@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-11T19:49:46Z",
+  "generated_at": "2026-05-11T20:04:03Z",
   "inputs": {
     "benchmark_apps": [
       "benchmark/upkeep-app",
@@ -18,7 +18,7 @@
     "templates_scanned": 33,
     "strict_parse_failures": 0,
     "render_nodes": 12,
-    "helper_lowered_elements": 1,
+    "helper_lowered_elements": 0,
     "frontend_tag_targets": 26,
     "fragment_root_tags": 14,
     "render_site_tags": 12,
@@ -781,7 +781,7 @@
             },
             "end": {
               "line": 1,
-              "column": 197
+              "column": 118
             }
           },
           "tag_name": "div",
@@ -828,7 +828,7 @@
             },
             "end": {
               "line": 1,
-              "column": 197
+              "column": 118
             }
           },
           "tag_name": "div",
@@ -1355,22 +1355,7 @@
       },
       "frontend_tag_plan": [],
       "render_nodes": [],
-      "helper_lowered_elements": [
-        {
-          "location": {
-            "start": {
-              "line": 23,
-              "column": 4
-            },
-            "end": {
-              "line": 23,
-              "column": 42
-            }
-          },
-          "tag_name": "script",
-          "element_source": "ActionView::Helpers::AssetTagHelper#javascript_include_tag"
-        }
-      ]
+      "helper_lowered_elements": []
     },
     {
       "path": "benchmark/upkeep-app/app/views/layouts/feed.html.erb",

@@ -1,0 +1,65 @@
+# frozen_string_literal: true
+
+require "test_helper"
+
+class BenchmarkSurfaceTest < ActionDispatch::IntegrationTest
+  PASSWORD = "secret123"
+
+  setup do
+    @alice = create_user("Alice", "alice@example.com")
+    @bob = create_user("Bob", "bob@example.com")
+
+    @room = Room.create!(name: "General")
+    RoomMembership.create!(room: @room, user: @alice)
+    Message.create!(room: @room, user: @alice, body: "Hello from the room")
+
+    @board = Board.create!(name: "Launch Board", creator: @alice)
+    Access.create!(board: @board, user: @alice)
+    Card.create!(board: @board, creator: @alice, title: "Wire graph capture")
+
+    @private_board = Board.create!(name: "Private Board", creator: @bob)
+    Access.create!(board: @private_board, user: @bob)
+    Card.create!(board: @private_board, creator: @bob, title: "Hidden card value")
+
+    FeedItem.create!(title: "Shared feed item", body: "Public benchmark row")
+  end
+
+  test "renders authenticated board and room surfaces" do
+    sign_in(@alice)
+
+    get board_path(@board)
+    assert_response :success
+    assert_select "h1", "Launch Board"
+    assert_select "#cards", text: /Wire graph capture/
+
+    get room_path(@room)
+    assert_response :success
+    assert_select "h1", "General"
+    assert_select "#messages", text: /Hello from the room/
+  end
+
+  test "keeps unauthorized board bytes out of the response" do
+    sign_in(@alice)
+
+    get board_path(@private_board)
+    assert_response :forbidden
+    refute_includes response.body, "Hidden card value"
+  end
+
+  test "renders shared Turbo feed surface" do
+    get feed_path
+    assert_response :success
+    assert_select "#feed_items", text: /Shared feed item/
+  end
+
+  private
+
+  def create_user(name, email)
+    User.create!(name: name, email: email, password: PASSWORD)
+  end
+
+  def sign_in(user)
+    post "/sessions", params: { email: user.email, password: PASSWORD }, as: :json
+    assert_response :success
+  end
+end
