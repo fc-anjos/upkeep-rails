@@ -25,13 +25,96 @@ module Upkeep
           foreign_key: "subscription_id"
       end
 
-      class PersistentReverseIndex
-        def initialize(reverse_index:, index_record:)
-          @reverse_index = reverse_index
-          @index_record = index_record
+      class ActiveRegistry
+        def initialize
+          @mutex = Mutex.new
+          @subscriptions = {}
+          @reverse_index = ReverseIndex.new
+        end
+
+        def register(subscription)
+          @mutex.synchronize do
+            @subscriptions[subscription.id] = subscription
+            @reverse_index.index(subscription)
+          end
+        end
+
+        def fetch(id)
+          @mutex.synchronize { @subscriptions[id] }
+        end
+
+        def subscriptions
+          @mutex.synchronize { @subscriptions.values }
         end
 
         def entries_for(changes)
+          @mutex.synchronize { @reverse_index.entries_for(changes) }
+        end
+
+        def reset
+          @mutex.synchronize do
+            @subscriptions = {}
+            @reverse_index = ReverseIndex.new
+          end
+        end
+
+        def covers?(persistent_count)
+          count >= persistent_count
+        end
+
+        def count
+          @mutex.synchronize { @subscriptions.size }
+        end
+
+        def summary
+          @mutex.synchronize do
+            @reverse_index.summary.merge(subscriptions: @subscriptions.size)
+          end
+        end
+      end
+
+      class PersistentReverseIndex
+        def initialize(reverse_index:, index_record:, active_registry: nil, subscription_count: nil)
+          @reverse_index = reverse_index
+          @index_record = index_record
+          @active_registry = active_registry
+          @subscription_count = subscription_count
+        end
+
+        def entries_for(changes)
+          active_entries = active_registry&.entries_for(changes) || []
+          return active_entries if active_registry&.covers?(persistent_subscription_count)
+
+          merge_entries(active_entries, persistent_entries_for(changes))
+        end
+
+        def summary
+          persistent = persistent_summary
+          active = active_registry&.summary || { subscriptions: 0, lookup_keys: 0, entries: 0 }
+          mode = active_registry&.covers?(persistent_subscription_count) ? :active : :active_and_persistent
+          totals = mode == :active ? active : {
+            lookup_keys: active.fetch(:lookup_keys) + persistent.fetch(:lookup_keys),
+            entries: active.fetch(:entries) + persistent.fetch(:entries)
+          }
+
+          {
+            lookup_keys: totals.fetch(:lookup_keys),
+            entries: totals.fetch(:entries),
+            mode: mode,
+            active: active,
+            persistent: persistent
+          }
+        end
+
+        def self.digest(value)
+          Digest::SHA256.hexdigest(Marshal.dump(value))
+        end
+
+        private
+
+        attr_reader :reverse_index, :index_record, :active_registry, :subscription_count
+
+        def persistent_entries_for(changes)
           lookup_keys = Array(changes).flat_map { |change| reverse_index.lookup_keys_for_change(change) }.uniq
           lookup_key_digests = lookup_keys.map { |lookup_key| self.class.digest(lookup_key) }
           lookup_keys_by_digest = lookup_keys.group_by { |lookup_key| self.class.digest(lookup_key) }
@@ -42,20 +125,22 @@ module Upkeep
             .uniq { |entry| [entry.subscription_id, entry.owner_id, entry.dependency_cache_key] }
         end
 
-        def summary
+        def persistent_summary
           {
             lookup_keys: index_record.distinct.count(:lookup_key_digest),
             entries: index_record.count
           }
         end
 
-        def self.digest(value)
-          Digest::SHA256.hexdigest(Marshal.dump(value))
+        def persistent_subscription_count
+          subscription_count ? subscription_count.call : 0
         end
 
-        private
-
-        attr_reader :reverse_index, :index_record
+        def merge_entries(active_entries, persistent_entries)
+          (active_entries + persistent_entries).uniq do |entry|
+            [entry.subscription_id, entry.owner_id, entry.dependency_cache_key]
+          end
+        end
 
         def entry_for_record(record, lookup_keys_by_digest)
           lookup_key = load(record.lookup_key_snapshot)
@@ -80,7 +165,13 @@ module Upkeep
         @subscription_record = subscription_record
         @index_record = index_record
         @index_builder = ReverseIndex.new
-        @reverse_index = PersistentReverseIndex.new(reverse_index: @index_builder, index_record: index_record)
+        @active_registry = ActiveRegistry.new
+        @reverse_index = PersistentReverseIndex.new(
+          reverse_index: @index_builder,
+          index_record: index_record,
+          active_registry: @active_registry,
+          subscription_count: -> { subscription_record.count }
+        )
       end
 
       def self.available?
@@ -113,18 +204,29 @@ module Upkeep
           index_subscription(subscription)
         end
 
+        active_registry.register(subscription)
         subscription
       end
 
       def fetch(id)
+        active_registry.fetch(id) || fetch_persisted(id)
+      end
+
+      def fetch_persisted(id)
         Subscription.from_h(load(subscription_record.find(id).recorder_snapshot))
       end
 
       def subscriptions
+        return active_registry.subscriptions if active_registry.covers?(subscription_record.count)
+
+        active_subscriptions = active_registry.subscriptions.to_h { |subscription| [subscription.id, subscription] }
+
         subscription_record.order(:created_at, :id).map { |record| Subscription.from_h(load(record.recorder_snapshot)) }
+          .map { |subscription| active_subscriptions.fetch(subscription.id, subscription) }
       end
 
       def reset
+        active_registry.reset
         index_record.delete_all
         subscription_record.delete_all
       end
@@ -132,13 +234,14 @@ module Upkeep
       def summary
         {
           subscriptions: subscription_record.count,
+          active_subscriptions: active_registry.count,
           reverse_index: reverse_index.summary
         }
       end
 
       private
 
-      attr_reader :subscription_record, :index_record, :index_builder
+      attr_reader :subscription_record, :index_record, :index_builder, :active_registry
 
       def index_subscription(subscription)
         rows = index_builder.entries_for_subscription(subscription).flat_map do |entry|

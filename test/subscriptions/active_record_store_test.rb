@@ -78,6 +78,26 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     refute_includes plan.targets.first.render, "Archived"
   end
 
+  def test_active_registry_covers_planning_when_it_matches_persistent_subscription_count
+    card = PersistentSubscriptionCard.create!(title: "Plan", status: "open")
+
+    _html, recorder = capture_controller_request("/cards?status=open")
+    store = Upkeep::Subscriptions::ActiveRecordStore.new
+    store.register(subscriber_id: "subscriber-a", recorder: recorder, metadata: { stream_name: "stream-a" })
+
+    Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.delete_all
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.update!(title: "Plan v2")
+
+    plan = Upkeep::Invalidation::Planner.new(store: store).plan(Upkeep::Runtime::ChangeLog.events)
+
+    assert_equal :active, store.summary.fetch(:reverse_index).fetch(:mode)
+    assert_equal ["subscriber-a"], plan.targets.map(&:subscriber_id)
+    assert_equal ["fragment"], plan.targets.map { |target| target.target.kind }
+    assert_includes plan.targets.first.render, "Plan v2"
+  end
+
   private
 
   def capture_controller_request(path)
