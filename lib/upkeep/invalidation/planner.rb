@@ -10,7 +10,8 @@ module Upkeep
         :frame_id,
         :identity_signature,
         :recipe,
-        :matched_dependency_keys
+        :matched_dependency_keys,
+        :action
       ) do
         def render
           recipe.render
@@ -39,7 +40,7 @@ module Upkeep
 
         targets = matched_entries
           .group_by(&:subscription_id)
-          .flat_map { |subscription_id, entries| targets_for_subscription(store.fetch(subscription_id), entries) }
+          .flat_map { |subscription_id, entries| targets_for_subscription(store.fetch(subscription_id), entries, changes) }
 
         Plan.new(deduplicate_targets(targets), candidate_entries, matched_entries)
       end
@@ -48,19 +49,21 @@ module Upkeep
 
       attr_reader :store
 
-      def targets_for_subscription(subscription, entries)
-        frames_by_id = Hash.new { |hash, key| hash[key] = { node: nil, dependency_keys: [] } }
+      def targets_for_subscription(subscription, entries, changes)
+        frames_by_id = Hash.new { |hash, key| hash[key] = { node: nil, dependency_keys: [], entries: [] } }
 
         entries.each do |entry|
           subscription.graph.nearest_frame_nodes_from(entry.owner_id).each do |frame|
             bucket = frames_by_id[frame.id]
             bucket[:node] ||= frame
             bucket[:dependency_keys] << entry.dependency_cache_key
+            bucket[:entries] << entry
           end
         end
 
         remove_contained_frames(subscription.graph, frames_by_id.values.map { |bucket| bucket.fetch(:node) }).filter_map do |frame|
-          build_target(subscription, frame, frames_by_id.fetch(frame.id).fetch(:dependency_keys).uniq)
+          bucket = frames_by_id.fetch(frame.id)
+          build_target(subscription, frame, bucket.fetch(:dependency_keys).uniq, bucket.fetch(:entries), changes)
         end
       end
 
@@ -70,13 +73,15 @@ module Upkeep
         end
       end
 
-      def build_target(subscription, frame, dependency_keys)
+      def build_target(subscription, frame, dependency_keys, entries, changes)
         target = target_for_frame(frame)
         return unless target
 
         frame_id = Targeting::Extraction.frame_id_for(target)
         recipe = subscription.replay_recipe(frame_id)
         return unless recipe
+
+        action, recipe = delivery_strategy(frame, recipe, entries, changes)
 
         PlannedTarget.new(
           subscription.id,
@@ -85,7 +90,8 @@ module Upkeep
           frame_id,
           subscription.identity_signature(frame_id),
           recipe,
-          dependency_keys
+          dependency_keys,
+          action
         )
       end
 
@@ -100,9 +106,26 @@ module Upkeep
         end
       end
 
+      def delivery_strategy(frame, recipe, entries, changes)
+        append_recipe = append_recipe_for(frame, recipe, entries, changes)
+        return ["append", append_recipe] if append_recipe
+
+        ["replace", recipe]
+      end
+
+      def append_recipe_for(frame, recipe, entries, changes)
+        return unless frame.payload.fetch(:kind) == "render_site"
+        return unless entries.any? { |entry| entry.dependency.source == :active_record_collection }
+
+        create_changes = changes.select { |change| change[:id] && change.fetch(:type).to_s.include?("create") }
+        return unless create_changes.one?
+
+        CollectionAppend.build(recipe: recipe, change: create_changes.first)
+      end
+
       def deduplicate_targets(targets)
         targets.each_with_object({}) do |target, indexed_targets|
-          key = [target.subscriber_id, target.target.kind, target.target.id, target.identity_signature]
+          key = [target.subscriber_id, target.target.kind, target.target.id, target.identity_signature, target.action]
           indexed_targets[key] = merge_target(indexed_targets[key], target)
         end.values
       end
@@ -117,7 +140,8 @@ module Upkeep
           existing.frame_id,
           existing.identity_signature,
           existing.recipe,
-          (existing.matched_dependency_keys + target.matched_dependency_keys).uniq
+          (existing.matched_dependency_keys + target.matched_dependency_keys).uniq,
+          existing.action
         )
       end
     end

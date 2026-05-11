@@ -83,7 +83,7 @@ module Upkeep
         html = planned_target.render
 
         Stream.new(
-          "replace",
+          planned_target.action,
           planned_target.target,
           target_selector_for(planned_target.target),
           html,
@@ -96,7 +96,7 @@ module Upkeep
 
       def merge_streams(streams)
         streams.each_with_object({}) do |stream, indexed_streams|
-          key = [stream.target.kind, stream.target.id, stream.identity_signature, stream.html_digest]
+          key = [stream.action, stream.target.kind, stream.target.id, stream.identity_signature, stream.html_digest]
           indexed_streams[key] = merge_stream(indexed_streams[key], stream)
         end.values
       end
