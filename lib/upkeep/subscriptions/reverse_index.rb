@@ -10,19 +10,10 @@ module Upkeep
       end
 
       def index(subscription)
-        subscription.graph.dependency_nodes.each do |node|
-          subscription.graph.dependency_owner_ids(node.id).each do |owner_id|
-            entry = Entry.new(
-              subscription.id,
-              owner_id,
-              node.payload.cache_key,
-              node.payload
-            )
-
-            lookup_keys_for_dependency(node.payload).each do |lookup_key|
-              entries = @entries_by_lookup_key[lookup_key]
-              entries << entry unless entries.include?(entry)
-            end
+        entries_for_subscription(subscription).each do |entry|
+          lookup_keys_for_dependency(entry.dependency).each do |lookup_key|
+            entries = @entries_by_lookup_key[lookup_key]
+            entries << entry unless entries.include?(entry)
           end
         end
       end
@@ -41,7 +32,18 @@ module Upkeep
         }
       end
 
-      private
+      def entries_for_subscription(subscription)
+        subscription.graph.dependency_nodes.flat_map do |node|
+          subscription.graph.dependency_owner_ids(node.id).map do |owner_id|
+            Entry.new(
+              subscription.id,
+              owner_id,
+              node.payload.cache_key,
+              node.payload
+            )
+          end
+        end
+      end
 
       def lookup_keys_for_dependency(dependency)
         case dependency.source
@@ -52,13 +54,6 @@ module Upkeep
         else
           [[:dependency_cache_key, dependency.cache_key]]
         end
-      end
-
-      def active_record_attribute_lookup_keys(key)
-        [
-          [:active_record_attribute, key.fetch(:table), key.fetch(:id), key.fetch(:attribute)],
-          [:active_record_attribute_any_id, key.fetch(:table), key.fetch(:attribute)]
-        ]
       end
 
       def lookup_keys_for_change(change)
@@ -74,6 +69,15 @@ module Upkeep
         end
 
         keys << [:active_record_collection_table, table]
+      end
+
+      private
+
+      def active_record_attribute_lookup_keys(key)
+        [
+          [:active_record_attribute, key.fetch(:table), key.fetch(:id), key.fetch(:attribute)],
+          [:active_record_attribute_any_id, key.fetch(:table), key.fetch(:attribute)]
+        ]
       end
     end
   end

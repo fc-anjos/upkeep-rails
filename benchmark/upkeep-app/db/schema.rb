@@ -84,37 +84,26 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_29_000004) do
     t.datetime "updated_at", null: false
   end
 
-  create_table "upkeep_endpoints", id: :string, force: :cascade do |t|
-    t.boolean "active"
-    t.boolean "connected"
-    t.datetime "created_at"
-    t.datetime "expires_at"
-    t.string "node_id"
-    t.string "originator_token", null: false
+  create_table "upkeep_subscription_index_entries", force: :cascade do |t|
+    t.binary "dependency_cache_key_snapshot", null: false
+    t.binary "dependency_snapshot", null: false
+    t.datetime "created_at", null: false
+    t.string "lookup_key_digest", null: false
+    t.binary "lookup_key_snapshot", null: false
+    t.binary "owner_id_snapshot", null: false
     t.string "subscription_id", null: false
-    t.string "transport_address"
-    t.datetime "updated_at"
-    t.index ["originator_token"], name: "index_upkeep_endpoints_on_originator_token"
-    t.index ["subscription_id"], name: "index_upkeep_endpoints_on_subscription_id"
+    t.datetime "updated_at", null: false
+    t.index ["lookup_key_digest"], name: "index_upkeep_subscription_index_entries_on_lookup_key_digest"
+    t.index ["subscription_id"], name: "index_upkeep_subscription_index_entries_on_subscription_id"
   end
 
   create_table "upkeep_subscriptions", id: :string, force: :cascade do |t|
-    t.datetime "created_at"
-    t.integer "digest_version", null: false
-    t.string "envelope_digest", null: false
-    t.datetime "expires_at"
-    t.string "fragment_address", null: false
-    t.json "fragment_bindings"
-    t.json "fragment_hashes"
-    t.json "fragment_locals"
-    t.json "fragment_locals_digests"
-    t.json "fragment_record_index"
-    t.binary "read_set_bytes", null: false
-    t.integer "refcount", default: 0, null: false
-    t.binary "snapshot"
-    t.json "snapshot_data"
-    t.string "snapshot_hash"
-    t.string "tenant_key"
+    t.datetime "created_at", null: false
+    t.json "metadata"
+    t.binary "recorder_snapshot", null: false
+    t.string "subscriber_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["subscriber_id"], name: "index_upkeep_subscriptions_on_subscriber_id"
   end
 
   create_table "users", force: :cascade do |t|
@@ -136,5 +125,5 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_29_000004) do
   add_foreign_key "messages", "users"
   add_foreign_key "room_memberships", "rooms"
   add_foreign_key "room_memberships", "users"
-  add_foreign_key "upkeep_endpoints", "upkeep_subscriptions", column: "subscription_id", on_delete: :cascade
+  add_foreign_key "upkeep_subscription_index_entries", "upkeep_subscriptions", column: "subscription_id", on_delete: :cascade
 end

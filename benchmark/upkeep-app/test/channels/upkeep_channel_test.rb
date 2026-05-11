@@ -21,11 +21,10 @@ class UpkeepChannelTest < ActionCable::Channel::TestCase
 
     assert subscription.confirmed?
     assert_has_stream identity.stream_name
-    assert Upkeep::Rails.transport.connected?(identity.subscriber_id)
     refute Upkeep::Rails.transport.connected?("attacker")
   end
 
-  test "disconnects the transport connection on unsubscribe" do
+  test "keeps connection state out of transport on unsubscribe" do
     identity = Upkeep::Rails::Cable::SubscriberIdentity.for_identifiers(current_user: @user)
     stub_connection(current_user: @user)
     subscribe

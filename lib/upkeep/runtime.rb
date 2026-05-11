@@ -51,10 +51,19 @@ module Upkeep
 
       attr_reader :graph
 
-      def initialize
+      def initialize(graph: nil)
         @frame_stack = []
-        @graph = DAG::Graph.new
-        @graph.add_node(REQUEST_NODE_ID, kind: :request, payload: {})
+        @graph = graph || DAG::Graph.new
+        @graph.add_node(REQUEST_NODE_ID, kind: :request, payload: {}) unless @graph.node?(REQUEST_NODE_ID)
+      end
+
+      def self.from_h(snapshot)
+        snapshot = Dependencies.symbolize_keys(snapshot)
+        new(graph: DAG::Graph.from_h(snapshot.fetch(:graph)))
+      end
+
+      def to_h
+        { graph: graph.to_h }
       end
 
       def with_frame(frame_id, metadata)

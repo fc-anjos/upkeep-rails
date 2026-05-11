@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "rails/configuration"
+require_relative "rails/replay"
 require_relative "rails/action_view_capture"
 require_relative "rails/cable"
 require_relative "rails/client_subscription"
@@ -20,16 +21,18 @@ module Upkeep
       end
 
       def subscriptions
-        @subscriptions ||= Subscriptions::Store.new
+        @subscriptions = nil if @subscriptions && subscription_store_stale?(@subscriptions)
+        @subscriptions ||= build_subscription_store
       end
 
       def transport
-        @transport ||= Delivery::Transport.new
+        @transport ||= Delivery::BroadcastTransport.new
       end
 
       def reset_runtime!
-        @subscriptions = Subscriptions::Store.new
-        @transport = Delivery::Transport.new
+        @subscriptions = build_subscription_store
+        @subscriptions.reset
+        @transport = Delivery::BroadcastTransport.new
       end
 
       def register_controller_subscription(controller, recorder)
@@ -73,6 +76,18 @@ module Upkeep
           controller.response.media_type == "text/html" &&
           controller.response.body.to_s.include?("</") &&
           recorder.graph.frame_nodes.any?
+      end
+
+      def build_subscription_store
+        if Subscriptions::ActiveRecordStore.available?
+          Subscriptions::ActiveRecordStore.new
+        else
+          Subscriptions::Store.new
+        end
+      end
+
+      def subscription_store_stale?(store)
+        store.is_a?(Subscriptions::ActiveRecordStore) && !Subscriptions::ActiveRecordStore.available?
       end
     end
   end
