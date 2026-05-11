@@ -12,6 +12,7 @@ module Upkeep
         :html,
         :html_digest,
         :identity_signature,
+        :shared_stream_name,
         :subscriber_ids,
         :matched_dependency_keys
       ) do
@@ -31,6 +32,7 @@ module Upkeep
             target: target.to_h,
             target_selector: target_selector,
             identity_signature: identity_signature,
+            shared_stream_name: shared_stream_name,
             html_digest: html_digest,
             subscriber_ids: subscriber_ids,
             matched_dependency_keys: matched_dependency_keys
@@ -38,7 +40,15 @@ module Upkeep
         end
       end
 
-      Envelope = Data.define(:subscriber_id, :streams) do
+      Envelope = Data.define(:subscriber_id, :streams, :stream_name) do
+        def self.subscriber(subscriber_id, streams)
+          new(subscriber_id, streams, nil)
+        end
+
+        def self.shared(stream_name, streams)
+          new("shared:#{stream_name}", streams, stream_name)
+        end
+
         def body
           streams.map(&:to_html).join("\n")
         end
@@ -53,15 +63,11 @@ module Upkeep
 
       Batch = Data.define(:streams) do
         def envelopes
-          streams
-            .flat_map(&:subscriber_ids)
-            .uniq
-            .sort_by(&:to_s)
-            .map { |subscriber_id| envelope_for(subscriber_id) }
+          shared_envelopes + subscriber_envelopes
         end
 
         def envelope_for(subscriber_id)
-          Envelope.new(subscriber_id, streams.select { |stream| stream.for_subscriber?(subscriber_id) })
+          Envelope.subscriber(subscriber_id, streams.select { |stream| stream.for_subscriber?(subscriber_id) })
         end
 
         def report
@@ -69,6 +75,24 @@ module Upkeep
             streams: streams.map(&:report),
             envelopes: envelopes.map(&:report)
           }
+        end
+
+        private
+
+        def shared_envelopes
+          streams
+            .select(&:shared_stream_name)
+            .group_by(&:shared_stream_name)
+            .map { |stream_name, shared_streams| Envelope.shared(stream_name, shared_streams) }
+        end
+
+        def subscriber_envelopes
+          direct_streams = streams.reject(&:shared_stream_name)
+          direct_streams
+            .flat_map(&:subscriber_ids)
+            .uniq
+            .sort_by(&:to_s)
+            .map { |subscriber_id| Envelope.subscriber(subscriber_id, direct_streams.select { |stream| stream.for_subscriber?(subscriber_id) }) }
         end
       end
 
@@ -89,6 +113,7 @@ module Upkeep
           html,
           Targeting::Extraction.digest_html(html),
           planned_target.identity_signature,
+          shared_stream_name_for(planned_target),
           [planned_target.subscriber_id],
           planned_target.matched_dependency_keys
         )
@@ -96,7 +121,7 @@ module Upkeep
 
       def merge_streams(streams)
         streams.each_with_object({}) do |stream, indexed_streams|
-          key = [stream.action, stream.target.kind, stream.target.id, stream.identity_signature, stream.html_digest]
+          key = [stream.action, stream.target.kind, stream.target.id, stream.identity_signature, stream.shared_stream_name, stream.html_digest]
           indexed_streams[key] = merge_stream(indexed_streams[key], stream)
         end.values
       end
@@ -111,8 +136,19 @@ module Upkeep
           existing.html,
           existing.html_digest,
           existing.identity_signature,
+          existing.shared_stream_name,
           (existing.subscriber_ids + stream.subscriber_ids).uniq.sort_by(&:to_s),
           (existing.matched_dependency_keys + stream.matched_dependency_keys).uniq
+        )
+      end
+
+      def shared_stream_name_for(planned_target)
+        return unless planned_target.sharing_signature
+
+        SharedStreams.stream_name(
+          target: planned_target.target,
+          identity_signature: planned_target.identity_signature,
+          sharing_signature: planned_target.sharing_signature
         )
       end
 

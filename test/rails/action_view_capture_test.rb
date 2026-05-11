@@ -126,8 +126,8 @@ class ActionViewCaptureTest < Minitest::Test
 
 
   def test_collection_render_records_render_site_and_replays_membership_change
-    create_card!("Plan")
-    create_card!("Build")
+    plan = create_card!("Plan")
+    build = create_card!("Build")
 
     _html, recorder = capture_render("boards/collection", cards: RailsCaptureCard.order(:id))
 
@@ -137,9 +137,11 @@ class ActionViewCaptureTest < Minitest::Test
     targets = Upkeep::Targeting::Selector.new.select(recorder, Upkeep::Runtime::ChangeLog.events)
     recipe = recorder.graph.node(Upkeep::Targeting::Extraction.frame_id_for(targets.first)).payload.fetch(:recipe)
     replayed_html = recipe.render
+    collection_snapshot = recipe.replay.fetch(:collection)
 
     assert_equal ["render_site"], targets.map(&:kind).uniq
     assert_includes replayed_html, "Review"
+    assert_equal [plan.id.to_s, build.id.to_s], collection_snapshot.fetch(:member_ids)
     assert_includes recorder.graph.summary.fetch(:dependency_sources), "active_record_collection"
   end
 

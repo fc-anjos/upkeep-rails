@@ -28,6 +28,7 @@ class BenchmarkSurfaceTest < ActionDispatch::IntegrationTest
     Card.create!(board: @private_board, creator: @bob, title: "Hidden card value")
 
     FeedItem.create!(title: "Shared feed item", body: "Public benchmark row")
+    Upkeep::Runtime::ChangeLog.reset
   end
 
   test "renders authenticated board and room surfaces" do
@@ -72,9 +73,11 @@ class BenchmarkSurfaceTest < ActionDispatch::IntegrationTest
     assert subscription
     assert_select "script[data-upkeep-subscription]"
 
-    broadcasts = capture_broadcasts(subscription.metadata.fetch(:stream_name)) do
+    stream_names = ([subscription.metadata.fetch(:stream_name)] + subscription.metadata.fetch(:shared_stream_names, [])).uniq
+    broadcasts = capture_broadcasts_for(stream_names) do
       patch board_card_path(@board, @card), params: { card: { title: "Streamed graph capture" } }
       assert_response :ok
+      Upkeep::Rails.drain_delivery!
     end
 
     assert_equal 1, broadcasts.size
@@ -91,5 +94,15 @@ class BenchmarkSurfaceTest < ActionDispatch::IntegrationTest
   def sign_in(user)
     post "/sessions", params: { email: user.email, password: PASSWORD }, as: :json
     assert_response :success
+  end
+
+  def capture_broadcasts_for(stream_names, &mutation)
+    captures = {}
+    nested = stream_names.reverse_each.reduce(mutation) do |inner, stream_name|
+      proc { captures[stream_name] = capture_broadcasts(stream_name, &inner) }
+    end
+
+    nested.call
+    captures.values.flatten
   end
 end

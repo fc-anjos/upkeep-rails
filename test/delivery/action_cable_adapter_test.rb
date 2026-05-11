@@ -42,6 +42,15 @@ class ActionCableAdapterTest < Minitest::Test
     refute_includes stream_name, "person@example.com"
   end
 
+  def test_broadcasts_to_envelope_stream_name_when_present
+    server = RecordingCableServer.new
+    adapter = Upkeep::Delivery::ActionCableAdapter.new(server: server)
+
+    adapter.deliver(shared_envelope("upkeep:shared:abc123", "turbo-stream-body"))
+
+    assert_equal [["upkeep:shared:abc123", "turbo-stream-body"]], server.broadcasts
+  end
+
   def test_instruments_delivery_with_digest_and_stream_evidence
     server = RecordingCableServer.new
     adapter = Upkeep::Delivery::ActionCableAdapter.new(server: server)
@@ -93,5 +102,9 @@ class ActionCableAdapterTest < Minitest::Test
 
   def envelope(subscriber_id, body)
     Envelope.new(subscriber_id, body)
+  end
+
+  def shared_envelope(stream_name, body)
+    Struct.new(:subscriber_id, :body, :stream_name).new("shared:#{stream_name}", body, stream_name)
   end
 end

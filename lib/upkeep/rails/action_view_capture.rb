@@ -325,7 +325,13 @@ module Upkeep
         if value.is_a?(ActiveRecord::Base)
           { type: "active_record", model: value.class.name, id: value.id }
         elsif value.respond_to?(:klass) && value.respond_to?(:to_sql)
-          { type: "active_record_relation", model: value.klass.name, sql: value.to_sql }
+          {
+            type: "active_record_relation",
+            model: value.klass.name,
+            sql: value.to_sql,
+            primary_key: value.klass.primary_key,
+            member_ids: relation_member_ids(value)
+          }
         elsif value.is_a?(Array)
           { type: "array", items: value.map { |item| snapshot_value(item) } }
         elsif value.is_a?(Hash)
@@ -335,6 +341,13 @@ module Upkeep
         else
           { type: "unsupported", class: value.class.name }
         end
+      end
+
+      def relation_member_ids(relation)
+        primary_key = relation.klass.primary_key
+        return [] unless primary_key
+
+        relation.pluck(primary_key).map(&:to_s)
       end
 
       def replay_value(value)

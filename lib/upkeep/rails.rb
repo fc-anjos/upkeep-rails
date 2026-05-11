@@ -30,6 +30,8 @@ module Upkeep
       end
 
       def reset_runtime!
+        @delivery_dispatcher&.shutdown
+        @delivery_dispatcher = nil
         @subscriptions = build_subscription_store
         @subscriptions.reset
         @transport = Delivery::BroadcastTransport.new
@@ -44,7 +46,8 @@ module Upkeep
           recorder: recorder,
           metadata: {
             path: controller.request.fullpath,
-            stream_name: identity.stream_name
+            stream_name: identity.stream_name,
+            shared_stream_names: SharedStreams.names_for_recorder(recorder)
           }
         )
 
@@ -63,12 +66,29 @@ module Upkeep
         changes = Array(changes)
         return Delivery::Transport::DispatchReport.new([]) if changes.empty?
 
+        delivery_dispatcher.enqueue(changes)
+      end
+
+      def deliver_changes_now!(changes = Runtime::ChangeLog.drain)
+        changes = Array(changes)
+        return Delivery::Transport::DispatchReport.new([]) if changes.empty?
+
         plan = Invalidation::Planner.new(store: subscriptions).plan(changes)
         batch = Delivery::TurboStreams.new.build(plan)
         transport.deliver(batch)
       end
 
+      def drain_delivery!
+        @delivery_dispatcher&.drain
+      end
+
       private
+
+      def delivery_dispatcher
+        @delivery_dispatcher ||= Delivery::AsyncDispatcher.new do |changes|
+          deliver_changes_now!(changes)
+        end
+      end
 
       def subscription_response?(controller, recorder)
         controller.request.get? &&
