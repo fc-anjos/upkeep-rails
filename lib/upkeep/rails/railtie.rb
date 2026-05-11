@@ -13,6 +13,7 @@ module Upkeep
 
       initializer "upkeep_rails.install" do
         ActiveSupport.on_load(:active_record) { Upkeep::Rails::Install.call }
+        ActiveSupport.on_load(:action_controller_base) { Upkeep::Rails::Install.call }
         ActiveSupport.on_load(:action_view) { Upkeep::Rails::Install.call }
       end
     end

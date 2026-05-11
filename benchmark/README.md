@@ -23,5 +23,5 @@ bin/test
 The benchmark app suites are smoke gates for the Rails surfaces the harness
 drives: authenticated boards, shared feeds, rooms, authorization boundaries, and
 the Upkeep app's helper-hidden render idioms. The Upkeep app suite also covers
-the Rails cable subscriber boundary and streamed delivery through the canonical
-subscriber stream.
+the Rails cable subscriber boundary, automatic subscription registration, and
+streamed delivery through the canonical subscriber stream.
