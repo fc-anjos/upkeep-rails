@@ -10,46 +10,34 @@ module Upkeep
 
     class Selector
       def select(recorder, changes)
-        page_targets = []
-        render_site_targets = []
-        fragment_targets = []
+        graph = recorder.graph
 
-        recorder.graph.frame_nodes.each do |node|
-          frame_id = node.id
-          dependencies = recorder.graph.dependencies_for(frame_id)
+        frame_nodes =
+          graph.dependency_node_ids_matching(changes)
+            .flat_map { |dependency_id| graph.dependency_owner_ids(dependency_id) }
+            .flat_map { |owner_id| graph.nearest_frame_nodes_from(owner_id) }
 
-          if frame_id.start_with?("page:") && dependencies_intersect_change?(dependencies, changes)
-            page_targets << Target.new("page", frame_id, "page frame dependency matched committed change")
-          elsif frame_id.start_with?("site:") && dependencies_intersect_change?(dependencies, changes)
-            render_site_targets << Target.new("render_site", frame_id.delete_prefix("site:"), "render-site dependency matched committed change")
-          elsif frame_id.start_with?("fragment:") && dependencies_intersect_narrow_change?(dependencies, changes)
-            fragment_targets << Target.new("fragment", frame_id, "record attribute read matched committed attributes")
-          end
-        end
-
-        return uniq_targets(page_targets) if page_targets.any?
-        return uniq_targets(render_site_targets) if render_site_targets.any?
-        return uniq_targets(fragment_targets) if fragment_targets.any?
-
-        if dependencies_intersect_change?(recorder.graph.dependencies_for(Runtime::Recorder::REQUEST_NODE_ID), changes)
-          page_id = recorder.frame_metadata.keys.find { |id| id.start_with?("page:") }
-          return [Target.new("page", page_id, "request-level dependency matched committed change")]
-        end
-
-        []
-      end
-
-      def dependencies_intersect_change?(dependencies, changes)
-        dependencies.any? { |dependency| changes.any? { |change| dependency.matches_change?(change) } }
-      end
-
-      def dependencies_intersect_narrow_change?(dependencies, changes)
-        dependencies.any? do |dependency|
-          dependency.narrow_frame_safe? && changes.any? { |change| dependency.matches_change?(change) }
-        end
+        uniq_targets(remove_contained_frames(graph, frame_nodes).filter_map { |frame| target_for_frame(frame) })
       end
 
       private
+
+      def remove_contained_frames(graph, frames)
+        frames.uniq(&:id).reject do |frame|
+          frames.any? { |candidate| candidate.id != frame.id && graph.contained_by?(frame.id, candidate.id) }
+        end
+      end
+
+      def target_for_frame(frame)
+        case frame.payload.fetch(:kind)
+        when "page"
+          Target.new("page", frame.id, "page frame dependency matched committed change")
+        when "render_site"
+          Target.new("render_site", frame.payload.fetch(:site_id), "render-site dependency matched committed change")
+        when "fragment"
+          Target.new("fragment", frame.id, "record attribute read matched committed attributes")
+        end
+      end
 
       def uniq_targets(targets)
         targets.uniq { |target| [target.kind, target.id] }

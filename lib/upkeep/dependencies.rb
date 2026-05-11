@@ -130,6 +130,61 @@ module Upkeep
       end
     end
 
+    class WardenUser < Identity
+      def initialize(scope:, user:)
+        super(
+          source: :warden_user,
+          key: scope.to_s,
+          value: Dependencies.model_identity(user),
+          metadata: Dependencies.model_metadata(user).merge(scope: scope.to_s)
+        )
+      end
+    end
+
+    class CurrentAttribute < Identity
+      def initialize(owner:, name:, value:)
+        super(
+          source: :current_attribute,
+          key: "#{owner}.#{name}",
+          value: Dependencies.canonical_identity(value),
+          metadata: { owner: owner.to_s, name: name.to_s }
+        )
+      end
+    end
+
+    class SessionValue < Identity
+      def initialize(key:, value:)
+        super(
+          source: :session,
+          key: key.to_s,
+          value: Dependencies.private_fingerprint(value),
+          metadata: { key: key.to_s, value_class: value.class.name }
+        )
+      end
+    end
+
+    class CookieValue < Identity
+      def initialize(key:, value:)
+        super(
+          source: :cookie,
+          key: key.to_s,
+          value: Dependencies.private_fingerprint(value),
+          metadata: { key: key.to_s, value_class: value.class.name }
+        )
+      end
+    end
+
+    class RequestValue < Identity
+      def initialize(key:, value:)
+        super(
+          source: :request,
+          key: key.to_s,
+          value: Dependencies.private_fingerprint(value),
+          metadata: { key: key.to_s, value_class: value.class.name }
+        )
+      end
+    end
+
     class Unknown < Base
       def initialize(source:, metadata: {})
         super(
@@ -142,6 +197,41 @@ module Upkeep
       def visibility
         :private
       end
+    end
+
+    module_function
+
+    def model_identity(value)
+      return nil unless value
+
+      if value.respond_to?(:id) && value.class.respond_to?(:name)
+        { model: value.class.name, id: value.id }
+      end
+    end
+
+    def model_metadata(value)
+      return {} unless value
+
+      {
+        model: value.class.name,
+        table: value.class.respond_to?(:table_name) ? value.class.table_name : nil,
+        id: value.respond_to?(:id) ? value.id : nil
+      }.compact
+    end
+
+    def canonical_identity(value)
+      case value
+      when nil, true, false, Numeric, String, Symbol
+        value
+      else
+        model_identity(value) || private_fingerprint(value)
+      end
+    end
+
+    def private_fingerprint(value)
+      Digest::SHA256.hexdigest(Marshal.dump(value))[0, 16]
+    rescue TypeError
+      Digest::SHA256.hexdigest(value.inspect)[0, 16]
     end
   end
 end

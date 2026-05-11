@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "active_record"
-require "active_support/notifications"
+require "active_support/current_attributes"
 require "digest"
 
 module Upkeep
@@ -16,22 +16,9 @@ module Upkeep
         recorder = Recorder.new
         Thread.current[THREAD_KEY] = recorder
 
-        subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |_name, _start, _finish, _id, payload|
-          next if payload[:name] == "SCHEMA"
-
-          record({
-            type: "sql",
-            name: payload[:name],
-            sql: payload[:sql],
-            table: table_from_sql(payload[:sql]),
-            columns: columns_from_sql(payload[:sql])
-          })
-        end
-
         result = yield(recorder)
         [result, recorder]
       ensure
-        ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
         Thread.current[THREAD_KEY] = previous
       end
 
@@ -42,12 +29,8 @@ module Upkeep
         recorder.with_frame(frame_id, metadata) { yield }
       end
 
-      def record(event)
-        Thread.current[THREAD_KEY]&.record(event)
-      end
-
-      def record_dependency(dependency, event:)
-        Thread.current[THREAD_KEY]&.record_dependency(dependency, event: event)
+      def record_dependency(dependency)
+        Thread.current[THREAD_KEY]&.record_dependency(dependency)
       end
 
       def recorder
@@ -66,19 +49,15 @@ module Upkeep
     class Recorder
       REQUEST_NODE_ID = :request
 
-      attr_reader :events_by_frame, :request_events, :frame_metadata, :graph
+      attr_reader :graph
 
       def initialize
-        @events_by_frame = Hash.new { |hash, key| hash[key] = [] }
-        @request_events = []
-        @frame_metadata = {}
         @frame_stack = []
         @graph = DAG::Graph.new
         @graph.add_node(REQUEST_NODE_ID, kind: :request, payload: {})
       end
 
       def with_frame(frame_id, metadata)
-        @frame_metadata[frame_id] ||= metadata
         @graph.add_node(frame_id, kind: :frame, payload: metadata)
         @graph.add_edge(current_owner, frame_id, reason: :contains)
         @frame_stack.push(frame_id)
@@ -87,16 +66,7 @@ module Upkeep
         @frame_stack.pop
       end
 
-      def record(event)
-        if current_frame
-          @events_by_frame[current_frame] << event
-        else
-          @request_events << event
-        end
-      end
-
-      def record_dependency(dependency, event:)
-        record(event)
+      def record_dependency(dependency)
         @graph.add_dependency(current_owner, dependency)
       end
 
@@ -138,6 +108,259 @@ module Upkeep
       end
     end
 
+    module Ambient
+      module_function
+
+      def record_current_attribute(owner, name, value)
+        dependency = Dependencies::CurrentAttribute.new(owner: owner, name: name, value: value)
+        Observation.record_dependency(dependency)
+      end
+
+      def record_session(key, value)
+        dependency = Dependencies::SessionValue.new(key: key, value: value)
+        Observation.record_dependency(dependency)
+      end
+
+      def record_cookie(key, value)
+        dependency = Dependencies::CookieValue.new(key: key, value: value)
+        Observation.record_dependency(dependency)
+      end
+
+      def record_request(key, value)
+        dependency = Dependencies::RequestValue.new(key: key, value: value)
+        Observation.record_dependency(dependency)
+      end
+
+      def record_warden_user(scope, user)
+        dependency = Dependencies::WardenUser.new(scope: scope, user: user)
+        Observation.record_dependency(dependency)
+      end
+    end
+
+    class ObservedHash
+      def initialize(source:, values:)
+        @source = source
+        @values = values || {}
+      end
+
+      def [](key)
+        value = lookup(key)
+        record(key, value)
+        value
+      end
+
+      def fetch(key, *fallback)
+        if include_key?(key)
+          self[key]
+        elsif block_given?
+          yield key
+        elsif fallback.any?
+          fallback.first
+        else
+          @values.fetch(key)
+        end
+      end
+
+      def dig(first_key, *rest)
+        value = self[first_key]
+        rest.empty? || value.nil? ? value : value.dig(*rest)
+      end
+
+      private
+
+      def lookup(key)
+        return @values[key] if @values.key?(key)
+        return @values[key.to_s] if @values.key?(key.to_s)
+        return @values[key.to_sym] if key.respond_to?(:to_sym) && @values.key?(key.to_sym)
+
+        nil
+      end
+
+      def include_key?(key)
+        @values.key?(key) ||
+          @values.key?(key.to_s) ||
+          (key.respond_to?(:to_sym) && @values.key?(key.to_sym))
+      end
+
+      def record(key, value)
+        case @source
+        when :session
+          Ambient.record_session(key, value)
+        when :cookie
+          Ambient.record_cookie(key, value)
+        end
+      end
+    end
+
+    class ObservedRequest
+      def initialize(values)
+        @values = values || {}
+      end
+
+      def host = read(:host)
+
+      def subdomain = read(:subdomain)
+
+      def path = read(:path)
+
+      def fullpath = read(:fullpath)
+
+      def request_method = read(:request_method)
+
+      def user_agent = read(:user_agent)
+
+      def remote_ip = read(:remote_ip)
+
+      def params = read(:params)
+
+      def [](key)
+        read(key)
+      end
+
+      private
+
+      def read(key)
+        value = lookup(key)
+        Ambient.record_request(key, value)
+        value
+      end
+
+      def lookup(key)
+        return @values[key] if @values.key?(key)
+        return @values[key.to_s] if @values.key?(key.to_s)
+        return @values[key.to_sym] if key.respond_to?(:to_sym) && @values.key?(key.to_sym)
+
+        nil
+      end
+    end
+
+    class ObservedWarden
+      def initialize(users_by_scope)
+        @users_by_scope = users_by_scope || {}
+      end
+
+      def user(scope = :user, **options)
+        scope = options.fetch(:scope, scope)
+        value = @users_by_scope[scope] || @users_by_scope[scope.to_s] || @users_by_scope[scope.to_sym]
+        Ambient.record_warden_user(scope, value)
+        value
+      end
+
+      def authenticate(*args, **options)
+        user(extract_scope(args, options))
+      end
+
+      def authenticated?(*args, **options)
+        !user(extract_scope(args, options)).nil?
+      end
+
+      private
+
+      def extract_scope(args, options)
+        options.fetch(:scope) { args.first || :user }
+      end
+    end
+
+    module CurrentAttributesClassObserver
+      def attribute(*names, **options)
+        result = super
+        Runtime.wrap_current_attribute_readers(self, names)
+        result
+      end
+    end
+
+    module WardenObserver
+      def user(*args, **options, &block)
+        value = super
+        Runtime::Ambient.record_warden_user(warden_scope(args, options), value)
+        value
+      end
+
+      def authenticate(*args, **options, &block)
+        value = super
+        Runtime::Ambient.record_warden_user(warden_scope(args, options), value)
+        value
+      end
+
+      private
+
+      def warden_scope(args, options)
+        options.fetch(:scope) { args.first || :user }
+      end
+    end
+
+    module SessionObserver
+      def [](key)
+        value = super
+        Runtime::Ambient.record_session(key, value)
+        value
+      end
+
+      def fetch(key, *args, &block)
+        value = super
+        Runtime::Ambient.record_session(key, value)
+        value
+      end
+    end
+
+    module CookieObserver
+      def [](key)
+        value = super
+        Runtime::Ambient.record_cookie(key, value)
+        value
+      end
+    end
+
+    module RequestObserver
+      def host
+        value = super
+        Runtime::Ambient.record_request(:host, value)
+        value
+      end
+
+      def subdomain
+        value = super
+        Runtime::Ambient.record_request(:subdomain, value)
+        value
+      end
+
+      def path
+        value = super
+        Runtime::Ambient.record_request(:path, value)
+        value
+      end
+
+      def fullpath
+        value = super
+        Runtime::Ambient.record_request(:fullpath, value)
+        value
+      end
+
+      def request_method
+        value = super
+        Runtime::Ambient.record_request(:request_method, value)
+        value
+      end
+
+      def user_agent
+        value = super
+        Runtime::Ambient.record_request(:user_agent, value)
+        value
+      end
+
+      def remote_ip
+        value = super
+        Runtime::Ambient.record_request(:remote_ip, value)
+        value
+      end
+
+      def params
+        value = super
+        Runtime::Ambient.record_request(:params, value)
+        value
+      end
+    end
+
     class Current
       THREAD_KEY = :upkeep_current_user
 
@@ -162,14 +385,7 @@ module Upkeep
             }
           )
 
-          Observation.record_dependency(dependency, event: {
-            type: "identity_read",
-            source: "Current.user",
-            key: "id",
-            value: user&.id,
-            table: user&.class&.table_name,
-            id: user&.id
-          })
+          Observation.record_dependency(dependency)
           user
         end
       end
@@ -186,13 +402,7 @@ module Upkeep
           attribute: attr_name.to_s
         )
 
-        Observation.record_dependency(dependency, event: {
-          type: "attribute_read",
-          table: self.class.table_name,
-          model: self.class.name,
-          id: primary_key_value(attr_name, value),
-          attribute: attr_name.to_s
-        })
+        Observation.record_dependency(dependency)
 
         value
       end
@@ -207,20 +417,6 @@ module Upkeep
         @attributes.fetch_value(primary_key)
       rescue StandardError
         nil
-      end
-    end
-
-    module AssociationObserver
-      def load_target
-        Observation.record({
-          type: "association_load",
-          owner_table: owner.class.table_name,
-          owner_id: owner.id,
-          association: reflection.name.to_s,
-          target_table: reflection.klass.table_name
-        })
-
-        super
       end
     end
 
@@ -273,10 +469,11 @@ module Upkeep
       def call
         return if @installed
 
+        install_current_attributes_observer
+        install_warden_observer
+        install_action_dispatch_observers
+
         ActiveRecord::AttributeMethods::Read.prepend(AttributeObserver)
-        ActiveRecord::Associations::Association.prepend(AssociationObserver)
-        ActiveRecord::Associations::CollectionAssociation.prepend(AssociationObserver)
-        ActiveRecord::Associations::SingularAssociation.prepend(AssociationObserver)
         ActiveRecord::Relation.prepend(RelationObserver)
 
         ActiveRecord::Base.after_commit do |record|
@@ -291,6 +488,68 @@ module Upkeep
 
         @installed = true
       end
+
+      def install_current_attributes_observer
+        singleton = class << ActiveSupport::CurrentAttributes; self; end
+        singleton.prepend(CurrentAttributesClassObserver) unless singleton < CurrentAttributesClassObserver
+
+        ObjectSpace.each_object(Class) do |klass|
+          next unless klass < ActiveSupport::CurrentAttributes
+
+          Runtime.wrap_current_attribute_readers(klass, current_attribute_names(klass))
+        end
+      end
+
+      def install_warden_observer
+        return unless defined?(::Warden::Proxy)
+        return if ::Warden::Proxy < WardenObserver
+
+        ::Warden::Proxy.prepend(WardenObserver)
+      end
+
+      def install_action_dispatch_observers
+        if defined?(::ActionDispatch::Request::Session) && !(::ActionDispatch::Request::Session < SessionObserver)
+          ::ActionDispatch::Request::Session.prepend(SessionObserver)
+        end
+
+        if defined?(::ActionDispatch::Cookies::CookieJar) && !(::ActionDispatch::Cookies::CookieJar < CookieObserver)
+          ::ActionDispatch::Cookies::CookieJar.prepend(CookieObserver)
+        end
+
+        if defined?(::ActionDispatch::Request) && !(::ActionDispatch::Request < RequestObserver)
+          ::ActionDispatch::Request.prepend(RequestObserver)
+        end
+      end
+
+      def current_attribute_names(klass)
+        if klass.respond_to?(:defaults)
+          klass.defaults.keys
+        else
+          []
+        end
+      end
+    end
+
+    module_function
+
+    def wrap_current_attribute_readers(klass, names)
+      wrapped = klass.instance_variable_get(:@upkeep_wrapped_current_attributes) || {}
+
+      names.each do |name|
+        name = name.to_sym
+        next if wrapped[name]
+        next unless klass.method_defined?(name)
+
+        original_reader = klass.instance_method(name)
+        klass.define_method(name) do
+          value = original_reader.bind_call(self)
+          Runtime::Ambient.record_current_attribute(klass.name || klass.inspect, name, value)
+          value
+        end
+        wrapped[name] = true
+      end
+
+      klass.instance_variable_set(:@upkeep_wrapped_current_attributes, wrapped)
     end
   end
 end

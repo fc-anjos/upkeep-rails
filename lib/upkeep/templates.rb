@@ -60,6 +60,22 @@ module Upkeep
           </ul>
         </main>
       ERB
+      "boards/auth_surfaces" => Template.new("boards/auth_surfaces", <<~ERB, :page),
+        <main>
+          <h1><%= h(board.name) %></h1>
+          <section id="ambient_identity">
+            <span class="current-account"><%= h(current_account_id) %></span>
+            <span class="current-role"><%= h(current_viewer_role) %></span>
+            <span class="session-tenant"><%= h(session_value(:tenant_id)) %></span>
+            <span class="cookie-theme"><%= h(cookie_value(:theme)) %></span>
+            <span class="request-subdomain"><%= h(request_value(:subdomain)) %></span>
+            <span class="warden-user"><%= h(warden_user(:user)&.name) %></span>
+          </section>
+          <ul class="cards">
+            <%= render partial: "cards/secure_card", collection: cards, as: :card %>
+          </ul>
+        </main>
+      ERB
       "cards/_card" => Template.new("cards/_card", <<~ERB, :partial),
         <li class="card" id="card_<%= card.id %>">
           <span class="title"><%= h(CardPresenter.new(card).title) %></span>

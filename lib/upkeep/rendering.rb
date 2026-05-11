@@ -14,20 +14,41 @@ module Upkeep
         @instrumenter = Templates::Instrumenter.new
       end
 
-      def render_request(template_name, request_builder, user: nil)
+      def render_request(template_name, request_builder, user: nil, session: {}, cookies: {}, request: {}, warden: nil, current_attributes: {})
         html = nil
         result, recorder = Runtime::Observation.capture_request do
           Runtime::Current.set(user: user) do
-            assigns = request_builder.call
-            page_frame_id = page_frame_id(template_name)
-            context = TemplateContext.new(self)
+            with_current_attributes(current_attributes) do
+              assigns = request_builder.call
+              page_frame_id = page_frame_id(template_name)
+              recipe = Replay::Recipe.new(
+                kind: :page,
+                frame_id: page_frame_id,
+                target_kind: "page",
+                target_id: page_frame_id,
+                template: template_name,
+                metadata: { user: replay_value_metadata(user) }
+              ) do
+                render_request(
+                  template_name,
+                  request_builder,
+                  user: reload_value(user),
+                  session: session,
+                  cookies: cookies,
+                  request: request,
+                  warden: warden,
+                  current_attributes: current_attributes
+                ).html
+              end
+              context = TemplateContext.new(self, session: session, cookies: cookies, request: request, warden: warden, page_recipe: recipe)
 
-            html = Runtime::Observation.capture_frame(page_frame_id, kind: "page", template: template_name) do
-              context.render_template(template_name, assigns)
+              html = Runtime::Observation.capture_frame(page_frame_id, kind: "page", template: template_name, recipe: recipe) do
+                context.render_template(template_name, assigns)
+              end
+
+              html = tag_root(html, "data-upkeep-page-frame" => page_frame_id)
+              RenderResult.new(html, Runtime::Observation.recorder)
             end
-
-            html = tag_root(html, "data-upkeep-page-frame" => page_frame_id)
-            RenderResult.new(html, Runtime::Observation.recorder)
           end
         end
 
@@ -42,8 +63,23 @@ module Upkeep
 
       def render_partial(template_name, locals, context)
         frame_id = fragment_frame_id(template_name, locals)
+        recipe = Replay::Recipe.new(
+          kind: :fragment,
+          frame_id: frame_id,
+          target_kind: "fragment",
+          target_id: frame_id,
+          template: template_name,
+          metadata: { locals: frame_local_metadata(locals) }
+        ) do
+          if context.page_recipe
+            target = Targeting::Target.new("fragment", frame_id, "fragment replay")
+            Targeting::Extraction.extract_target_html(context.page_recipe.render, target)
+          else
+            render_partial(template_name, replay_locals(locals), context)
+          end
+        end
 
-        html = Runtime::Observation.capture_frame(frame_id, kind: "fragment", template: template_name, locals: frame_local_metadata(locals)) do
+        html = Runtime::Observation.capture_frame(frame_id, kind: "fragment", template: template_name, locals: frame_local_metadata(locals), recipe: recipe) do
           render_template(template_name, locals, context)
         end
 
@@ -94,14 +130,49 @@ module Upkeep
       def template_digest(template_name)
         Digest::SHA256.hexdigest(template_name)[0, 16]
       end
+
+      def with_current_attributes(attributes)
+        if defined?(Domain::CurrentContext)
+          Domain::CurrentContext.set(attributes) { yield }
+        else
+          yield
+        end
+      end
+
+      def replay_locals(locals)
+        locals.transform_values { |value| reload_value(value) }
+      end
+
+      def reload_value(value)
+        if value.is_a?(ActiveRecord::Base)
+          value.class.find(value.id)
+        else
+          value
+        end
+      end
+
+      def replay_value_metadata(value)
+        if value.is_a?(ActiveRecord::Base)
+          { table: value.class.table_name, id: value.id }
+        elsif value
+          { class: value.class.name }
+        end
+      end
     end
 
     class TemplateContext
       CardPresenter = Domain::CardPresenter
       SecureCardPresenter = Domain::SecureCardPresenter
 
-      def initialize(engine)
+      attr_reader :page_recipe
+
+      def initialize(engine, session: {}, cookies: {}, request: {}, warden: nil, page_recipe: nil)
         @engine = engine
+        @session = Runtime::ObservedHash.new(source: :session, values: session)
+        @cookies = Runtime::ObservedHash.new(source: :cookie, values: cookies)
+        @request = request.respond_to?(:env) ? request : Runtime::ObservedRequest.new(request)
+        @warden = warden.respond_to?(:user) ? warden : Runtime::ObservedWarden.new(warden || {})
+        @page_recipe = page_recipe
       end
 
       def render_template(template_name, locals)
@@ -109,7 +180,27 @@ module Upkeep
       end
 
       def render_site(site_id)
-        html = Runtime::Observation.capture_frame("site:#{site_id}", kind: "render_site", site_id: site_id) do
+        frame_id = "site:#{site_id}"
+        recipe = Replay::Recipe.new(
+          kind: :render_site,
+          frame_id: frame_id,
+          target_kind: "render_site",
+          target_id: site_id,
+          metadata: { site_id: site_id }
+        ) do
+          if page_recipe
+            target = Targeting::Target.new("render_site", site_id, "render-site replay")
+            Targeting::Extraction.extract_target_html(page_recipe.render, target)
+          else
+            html = Runtime::Observation.capture_frame(frame_id, kind: "render_site", site_id: site_id) do
+              yield
+            end
+
+            %(<upkeep-render-site data-upkeep-render-site="#{h(site_id)}">#{html}</upkeep-render-site>)
+          end
+        end
+
+        html = Runtime::Observation.capture_frame(frame_id, kind: "render_site", site_id: site_id, recipe: recipe) do
           yield
         end
 
@@ -131,6 +222,30 @@ module Upkeep
 
       def visible_cards(cards)
         cards.select { |card| Runtime::Current.user.can_see_card_value?(card) }
+      end
+
+      def current_account_id
+        Domain::CurrentContext.account_id
+      end
+
+      def current_viewer_role
+        Domain::CurrentContext.viewer_role
+      end
+
+      def session_value(key)
+        @session[key]
+      end
+
+      def cookie_value(key)
+        @cookies[key]
+      end
+
+      def request_value(key)
+        @request.public_send(key)
+      end
+
+      def warden_user(scope = :user)
+        @warden.user(scope)
       end
 
       def card_status_badge(presenter)
@@ -162,12 +277,7 @@ module Upkeep
           columns: columns
         )
 
-        Runtime::Observation.record_dependency(dependency, event: {
-          type: "collection_dependency",
-          table: collection.klass.table_name,
-          sql: sql,
-          columns: columns
-        })
+        Runtime::Observation.record_dependency(dependency)
       end
 
       def partial_name(partial)

@@ -12,6 +12,7 @@ herb_report_path = File.join(project_root, "results", "herb_surface.json")
 active_record_report_path = File.join(project_root, "results", "active_record_surface.json")
 end_to_end_report_path = File.join(project_root, "results", "end_to_end_proof.json")
 identity_report_path = File.join(project_root, "results", "identity_safety_proof.json")
+auth_report_path = File.join(project_root, "results", "auth_surfaces_proof.json")
 
 probe = Upkeep::Probes::HerbSurface.new(project_root: project_root)
 herb_report = probe.run
@@ -25,10 +26,14 @@ end_to_end_report = end_to_end_proof.run
 identity_proof = Upkeep::Proofs::IdentitySafety.new
 identity_report = identity_proof.run
 
+auth_proof = Upkeep::Proofs::AuthSurfaces.new
+auth_report = auth_proof.run
+
 File.write(herb_report_path, JSON.pretty_generate(herb_report) + "\n")
 File.write(active_record_report_path, JSON.pretty_generate(active_record_report) + "\n")
 File.write(end_to_end_report_path, JSON.pretty_generate(end_to_end_report) + "\n")
 File.write(identity_report_path, JSON.pretty_generate(identity_report) + "\n")
+File.write(auth_report_path, JSON.pretty_generate(auth_report) + "\n")
 
 puts "Herb surface probe"
 puts "templates scanned: #{herb_report.fetch(:summary).fetch(:templates_scanned)}"
@@ -69,8 +74,18 @@ puts "distinct identity payload cases: #{identity_report.fetch(:summary).fetch(:
 puts "subscriber-specific cases: #{identity_report.fetch(:summary).fetch(:subscriber_specific_cases)}"
 puts "report: #{identity_report_path}"
 
+puts
+puts "Auth surfaces proof"
+puts "cases: #{auth_report.fetch(:summary).fetch(:cases)}"
+puts "passed: #{auth_report.fetch(:summary).fetch(:passed)}"
+puts "failed: #{auth_report.fetch(:summary).fetch(:failed)}"
+puts "ambient source cases: #{auth_report.fetch(:summary).fetch(:ambient_source_cases)}"
+puts "subscriber-specific cases: #{auth_report.fetch(:summary).fetch(:subscriber_specific_cases)}"
+puts "report: #{auth_report_path}"
+
 if herb_report.fetch(:summary).fetch(:strict_parse_failures).positive? ||
     end_to_end_report.fetch(:summary).fetch(:failed).positive? ||
-    identity_report.fetch(:summary).fetch(:failed).positive?
+    identity_report.fetch(:summary).fetch(:failed).positive? ||
+    auth_report.fetch(:summary).fetch(:failed).positive?
   exit 1
 end
