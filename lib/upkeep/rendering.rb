@@ -36,7 +36,7 @@ module Upkeep
                   session: session,
                   cookies: cookies,
                   request: request,
-                  warden: warden,
+                  warden: replay_warden(warden),
                   current_attributes: current_attributes
                 ).html
               end
@@ -146,6 +146,15 @@ module Upkeep
       def reload_value(value)
         if value.is_a?(ActiveRecord::Base)
           value.class.find(value.id)
+        else
+          value
+        end
+      end
+
+      def replay_warden(value)
+        case value
+        when Hash
+          value.transform_values { |user| reload_value(user) }
         else
           value
         end
