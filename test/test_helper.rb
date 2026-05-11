@@ -2,5 +2,6 @@
 
 require "minitest/autorun"
 require "action_view"
+require "action_controller"
 require "action_view/testing/resolvers"
 require "upkeep"

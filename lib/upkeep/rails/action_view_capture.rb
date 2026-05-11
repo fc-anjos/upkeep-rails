@@ -3,6 +3,7 @@
 require "action_view"
 require "action_view/renderer/collection_renderer"
 require "digest"
+require "stringio"
 
 module Upkeep
   module Rails
@@ -25,17 +26,23 @@ module Upkeep
       def capture_template(template, view, locals, implicit_locals:, add_to_stack:, block:)
         captured_locals = locals.dup
         metadata = template_metadata(template, captured_locals)
+        controller = controller_for_page(metadata, view)
+        metadata = metadata.merge(controller: controller_metadata(controller)) if controller
         frame_id = frame_id_for_template(metadata, captured_locals)
-        recipe = template_recipe(
-          frame_id: frame_id,
-          template: template,
-          view: view,
-          locals: captured_locals,
-          metadata: metadata,
-          implicit_locals: implicit_locals,
-          add_to_stack: add_to_stack,
-          block: block
-        )
+        recipe = if controller
+          controller_page_recipe(frame_id: frame_id, controller: controller, metadata: metadata)
+        else
+          template_recipe(
+            frame_id: frame_id,
+            template: template,
+            view: view,
+            locals: captured_locals,
+            metadata: metadata,
+            implicit_locals: implicit_locals,
+            add_to_stack: add_to_stack,
+            block: block
+          )
+        end
 
         Runtime::Observation.capture_frame(frame_id, metadata.merge(recipe: recipe)) { yield }
       end
@@ -103,6 +110,24 @@ module Upkeep
         end
       end
 
+      def controller_page_recipe(frame_id:, controller:, metadata:)
+        controller_class = controller.class
+        action_name = controller.action_name
+        env = replay_env(controller.request.env, path_parameters: controller.request.path_parameters)
+
+        Replay::Recipe.new(
+          kind: :page,
+          frame_id: frame_id,
+          target_kind: "page",
+          target_id: frame_id,
+          template: metadata.fetch(:template),
+          metadata: metadata
+        ) do
+          _status, _headers, body = controller_class.action(action_name).call(replay_env(env))
+          collect_response_body(body)
+        end
+      end
+
       def collection_recipe(frame_id:, partial:, collection:, context:, options:, metadata:, block:)
         Replay::Recipe.new(
           kind: :render_site,
@@ -116,6 +141,72 @@ module Upkeep
           replay_options[:collection] = replay_value(collection)
           context.render(replay_options, &block)
         end
+      end
+
+      def controller_for_page(metadata, view)
+        return unless metadata.fetch(:kind) == "page"
+        return unless view.respond_to?(:controller)
+
+        controller = view.controller
+        return unless controller&.respond_to?(:request) && controller.respond_to?(:action_name)
+
+        controller
+      end
+
+      def controller_metadata(controller)
+        {
+          class: controller.class.name,
+          action: controller.action_name,
+          request_method: controller.request.request_method,
+          path: controller.request.path,
+          query_string_digest: Digest::SHA256.hexdigest(controller.request.query_string.to_s)[0, 16],
+          path_parameters: controller.request.path_parameters.keys.map(&:to_s).sort
+        }
+      end
+
+      def replay_env(env, path_parameters: nil)
+        copy = env.each_with_object({}) do |(key, value), replay|
+          replay[key] = replay_env_value(value) if replay_env_key?(key)
+        end
+
+        copy["rack.input"] = StringIO.new
+        copy["rack.errors"] ||= StringIO.new
+        copy["action_dispatch.request.path_parameters"] = path_parameters if path_parameters
+        copy
+      end
+
+      def replay_env_key?(key)
+        key.start_with?("HTTP_") ||
+          key.start_with?("rack.") ||
+          key.start_with?("REQUEST_") ||
+          key.start_with?("SERVER_") ||
+          key.start_with?("REMOTE_") ||
+          %w[
+            CONTENT_LENGTH
+            CONTENT_TYPE
+            HTTPS
+            PATH_INFO
+            QUERY_STRING
+            SCRIPT_NAME
+            action_dispatch.request.path_parameters
+          ].include?(key)
+      end
+
+      def replay_env_value(value)
+        case value
+        when Hash
+          value.dup
+        when Array
+          value.dup
+        else
+          value
+        end
+      end
+
+      def collect_response_body(body)
+        body.each.to_a.join
+      ensure
+        body.close if body.respond_to?(:close)
       end
 
       def record_collection_dependency(collection)
