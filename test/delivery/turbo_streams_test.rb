@@ -57,7 +57,7 @@ class TurboStreamsDeliveryTest < Minitest::Test
     assert_equal stream.to_html, batch.envelope_for("subscriber-b").body
   end
 
-  def test_render_site_payload_targets_upkeep_collection_wrapper
+  def test_collection_create_appends_to_upkeep_collection_wrapper
     create_delivery_card!("Plan")
     create_delivery_card!("Build")
 
@@ -71,10 +71,32 @@ class TurboStreamsDeliveryTest < Minitest::Test
     stream = batch.streams.first
     turbo_stream = Nokogiri::HTML5.fragment(stream.to_html).at_css("turbo-stream")
 
-    assert_equal "replace", turbo_stream["action"]
+    assert_equal "append", turbo_stream["action"]
     assert_equal stream.target_selector, turbo_stream["targets"]
     assert_match(/\Aupkeep-render-site\[data-upkeep-render-site="/, stream.target_selector)
     assert_includes stream.html, "Review"
+    refute_includes stream.html, "Plan"
+    refute_includes stream.html, "Build"
+  end
+
+  def test_collection_create_replaces_when_created_record_is_not_appended_by_the_relation
+    create_delivery_card!("Plan")
+    create_delivery_card!("Build")
+
+    store = Upkeep::Subscriptions::Store.new
+    register_controller_subscription(store, subscriber_id: "subscriber-a")
+
+    Upkeep::Runtime::ChangeLog.reset
+    create_delivery_card!("Archived", status: "closed")
+
+    batch = delivery.build(plan_for(store))
+    stream = batch.streams.first
+    turbo_stream = Nokogiri::HTML5.fragment(stream.to_html).at_css("turbo-stream")
+
+    assert_equal "replace", turbo_stream["action"]
+    assert_includes stream.html, "Plan"
+    assert_includes stream.html, "Build"
+    refute_includes stream.html, "Archived"
   end
 
   def test_identity_partitioned_payloads_are_not_cross_delivered

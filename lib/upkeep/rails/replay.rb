@@ -20,6 +20,8 @@ module Upkeep
           render_fragment(replay)
         when "collection"
           render_collection(replay)
+        when "collection_member"
+          render_collection_member(replay)
         else
           raise "unknown Rails replay recipe type: #{replay.fetch(:type).inspect}"
         end
@@ -57,6 +59,18 @@ module Upkeep
             collection: collection
           ))
         end
+      end
+
+      def render_collection_member(replay)
+        options = revive_hash(replay.fetch(:options, {}))
+        record = revive_value(replay.fetch(:record))
+        locals = options.fetch(:locals, {})
+        local_name = (options[:as] || inferred_local_name(replay.fetch(:partial))).to_sym
+
+        renderer_for(replay).render(
+          partial: replay.fetch(:partial),
+          locals: locals.merge(local_name => record)
+        )
       end
 
       def renderer_for(replay)
@@ -112,6 +126,10 @@ module Upkeep
 
       def partial_path(template)
         template.to_s.sub(%r{(^|/)_([^/]+)\z}, "\\1\\2")
+      end
+
+      def inferred_local_name(partial)
+        File.basename(partial.to_s).sub(/\A_/, "").to_sym
       end
 
       def constantize(name)
