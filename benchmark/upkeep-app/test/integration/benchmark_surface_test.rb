@@ -1,11 +1,16 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "action_cable/test_helper"
 
 class BenchmarkSurfaceTest < ActionDispatch::IntegrationTest
+  include ActionCable::TestHelper
+
   PASSWORD = "secret123"
 
   setup do
+    Upkeep::Rails.reset_runtime!
+
     @alice = create_user("Alice", "alice@example.com")
     @bob = create_user("Bob", "bob@example.com")
 
@@ -57,6 +62,30 @@ class BenchmarkSurfaceTest < ActionDispatch::IntegrationTest
     assert_select "#m3-helper-hidden", text: /Captured through a helper render/
   end
 
+  test "delivers a streamed update through the derived subscriber stream" do
+    sign_in(@alice)
+
+    identity = Upkeep::Rails::Cable::SubscriberIdentity.for_identifiers(current_user: @alice)
+    _body, recorder = capture_board_subscription
+    Upkeep::Rails.subscriptions.register(subscriber_id: identity.subscriber_id, recorder: recorder)
+    Upkeep::Rails.transport.connect(
+      subscriber_id: identity.subscriber_id,
+      adapter: Upkeep::Delivery::ActionCableAdapter.new(server: ActionCable.server)
+    )
+
+    Upkeep::Runtime::ChangeLog.reset
+    @card.update!(title: "Streamed graph capture")
+
+    broadcasts = capture_broadcasts(identity.stream_name) do
+      report = Upkeep::Rails.transport.deliver(delivery_batch)
+      assert_equal({ delivered: 1 }, report.summary)
+    end
+
+    assert_equal 1, broadcasts.size
+    assert_includes broadcasts.first, "Streamed graph capture"
+    refute_includes broadcasts.first, "Hidden card value"
+  end
+
   private
 
   def create_user(name, email)
@@ -66,5 +95,23 @@ class BenchmarkSurfaceTest < ActionDispatch::IntegrationTest
   def sign_in(user)
     post "/sessions", params: { email: user.email, password: PASSWORD }, as: :json
     assert_response :success
+  end
+
+  def capture_board_subscription
+    Upkeep::Runtime::ChangeLog.reset
+    result, recorder = Upkeep::Runtime::Observation.capture_request do
+      get board_path(@board)
+      assert_response :success
+      response.body
+    end
+
+    [result, recorder]
+  end
+
+  def delivery_batch
+    plan = Upkeep::Invalidation::Planner.new(store: Upkeep::Rails.subscriptions)
+      .plan(Upkeep::Runtime::ChangeLog.events)
+
+    Upkeep::Delivery::TurboStreams.new.build(plan)
   end
 end
