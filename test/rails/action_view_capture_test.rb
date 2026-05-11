@@ -45,10 +45,27 @@ class ActionViewCaptureTest < Minitest::Test
     assert_includes fragment_ids, "fragment:rails:cards/_card:rails_capture_cards:#{explicit.id}"
     assert_includes fragment_ids, "fragment:rails:cards/_card:rails_capture_cards:#{shorthand.id}"
     assert_includes fragment_ids, "fragment:rails:cards/_card:rails_capture_cards:#{object.id}"
+    assert_equal 4, recorder.graph.summary.fetch(:replay_recipes)
     assert_includes recorder.graph.summary.fetch(:dependency_sources), "active_record_attribute"
   end
 
-  def test_collection_render_records_render_site_and_selects_membership_change
+  def test_page_recipe_rerenders_with_fresh_relation
+    create_card!("Plan")
+    create_card!("Build")
+
+    _html, recorder = capture_render("boards/collection", cards: RailsCaptureCard.order(:id))
+
+    create_card!("Review")
+
+    recipe = recorder.graph.node("page:rails:boards/collection").payload.fetch(:recipe)
+    replayed_html = recipe.render
+
+    assert_includes replayed_html, "Plan"
+    assert_includes replayed_html, "Build"
+    assert_includes replayed_html, "Review"
+  end
+
+  def test_collection_render_records_render_site_and_replays_membership_change
     create_card!("Plan")
     create_card!("Build")
 
@@ -58,12 +75,15 @@ class ActionViewCaptureTest < Minitest::Test
     create_card!("Review")
 
     targets = Upkeep::Targeting::Selector.new.select(recorder, Upkeep::Runtime::ChangeLog.events)
+    recipe = recorder.graph.node(Upkeep::Targeting::Extraction.frame_id_for(targets.first)).payload.fetch(:recipe)
+    replayed_html = recipe.render
 
     assert_equal ["render_site"], targets.map(&:kind).uniq
+    assert_includes replayed_html, "Review"
     assert_includes recorder.graph.summary.fetch(:dependency_sources), "active_record_collection"
   end
 
-  def test_record_attribute_change_walks_dependency_to_fragment
+  def test_record_attribute_change_walks_dependency_to_fragment_and_replays_record
     card = create_card!("Plan")
 
     _html, recorder = capture_render("boards/collection", cards: RailsCaptureCard.order(:id))
@@ -72,10 +92,14 @@ class ActionViewCaptureTest < Minitest::Test
     card.update!(title: "Plan v2")
 
     targets = Upkeep::Targeting::Selector.new.select(recorder, Upkeep::Runtime::ChangeLog.events)
+    recipe = recorder.graph.node(targets.first.id).payload.fetch(:recipe)
+    replayed_html = recipe.render
 
     assert_equal [
       ["fragment", "fragment:rails:cards/_card:rails_capture_cards:#{card.id}"]
     ], targets.map { |target| [target.kind, target.id] }
+    assert_includes replayed_html, "Plan v2"
+    refute_includes replayed_html, ">Plan<"
   end
 
   private
