@@ -2,3 +2,13 @@
 /coverage/
 /log/
 /tmp/
+/benchmark/results/
+/benchmark/**/Gemfile.lock
+/benchmark/**/log/*
+!/benchmark/**/log/.keep
+/benchmark/**/tmp/*
+!/benchmark/**/tmp/.keep
+/benchmark/**/storage/*.sqlite3*
+/benchmark/**/node_modules/
+/benchmark/**/playwright-report/
+/benchmark/**/test-results/

@@ -1,0 +1,9 @@
+<h1><%= @room.name %></h1>
+<%= turbo_stream_from @room, :messages %>
+<div id="messages">
+  <%= render partial: "messages/message", collection: @messages, as: :message %>
+</div>
+<%= form_with url: room_messages_path(@room), method: :post do |f| %>
+  <%= f.text_field :body, name: "message[body]" %>
+  <%= f.submit "Send" %>
+<% end %>

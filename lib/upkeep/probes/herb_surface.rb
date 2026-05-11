@@ -24,8 +24,7 @@ class Upkeep::Probes::HerbSurface
 
   def initialize(project_root:)
     @project_root = Pathname(project_root)
-    @workspace_root = Upkeep::HerbLoader::WORKSPACE_ROOT
-    @upkeep_root = @workspace_root.join("rails/upkeep")
+    @workspace_root = @project_root
   end
 
   def run
@@ -45,12 +44,12 @@ class Upkeep::Probes::HerbSurface
 
   private
 
-  attr_reader :project_root, :workspace_root, :upkeep_root
+  attr_reader :project_root, :workspace_root
 
   def benchmark_apps
     [
-      upkeep_root.join("benchmark/upkeep-app"),
-      upkeep_root.join("benchmark/turbo-app")
+      project_root.join("benchmark/upkeep-app"),
+      project_root.join("benchmark/turbo-app")
     ]
   end
 

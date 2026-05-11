@@ -1,0 +1,13 @@
+<html>
+<head><title><%= @board.name %></title></head>
+<body>
+<h1><%= @board.name %></h1>
+<div id="cards">
+  <%= render partial: "cards/card", collection: @cards, as: :card %>
+</div>
+<%= form_with url: board_cards_path(@board), method: :post do |f| %>
+  <%= f.text_field :title, name: "card[title]" %>
+  <%= f.submit "Add Card" %>
+<% end %>
+</body>
+</html>
