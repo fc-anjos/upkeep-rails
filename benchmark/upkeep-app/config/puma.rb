@@ -36,7 +36,6 @@ plugin :tmp_restart
 
 preload_app!
 
-plugin :upkeep
 
 # Specify the PID file. Defaults to tmp/pids/server.pid in development.
 # In other environments, only set the PID file if requested.

@@ -693,12 +693,15 @@ module BenchMetrics
   # name so referencing the constant is deferred — autoloading is lazy
   # and some of these live in code paths that may not be loaded yet.
   UPKEEP_INSTANCE_CLASS_NAMES = [
-    "Upkeep::SubscribeTime::Subscription",
-    "Upkeep::State::StoredSubscription",
-    "Upkeep::SubscribeTime::Subscription::DeliveryWindow",
-    "Upkeep::Runtime::Observation::Session",
-    "Upkeep::State::Reads::Bag",
-    "Upkeep::State::Reads::Predicate"
+    "Upkeep::DAG::Graph",
+    "Upkeep::Delivery::Transport::Connection",
+    "Upkeep::Replay::Recipe",
+    "Upkeep::Runtime::ObservedHash",
+    "Upkeep::Runtime::ObservedRequest",
+    "Upkeep::Runtime::ObservedWarden",
+    "Upkeep::Runtime::Recorder",
+    "Upkeep::Subscriptions::ReverseIndex",
+    "Upkeep::Subscriptions::Store"
   ].freeze
 
   ACTION_CABLE_INSTANCE_CLASS_NAMES = [
