@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "active_record"
+require "active_support/current_attributes"
 
 module Upkeep
   module Domain
@@ -10,6 +11,10 @@ module Upkeep
       def can_see_card_value?(card)
         card.value <= value_limit
       end
+    end
+
+    class CurrentContext < ActiveSupport::CurrentAttributes
+      attribute :account_id, :viewer_role
     end
 
     class Board < ActiveRecord::Base
@@ -94,4 +99,3 @@ module Upkeep
     end
   end
 end
-

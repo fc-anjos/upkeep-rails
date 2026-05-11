@@ -93,6 +93,7 @@ module Upkeep
         targets = selector.select(initial.recorder, changes)
         patches = Targeting::Extraction.patches_from_full_rerender(full_after.html, targets)
         patched_html = Targeting::Patcher.new(initial.html).apply(patches)
+        target_replay_results = replay_results(initial.recorder, targets, full_after.html)
 
         normalized_patched = Targeting::Extraction.normalize_html(patched_html)
         normalized_full = Targeting::Extraction.normalize_html(full_after.html)
@@ -101,12 +102,13 @@ module Upkeep
         {
           name: test_case.fetch(:name),
           expected_strategy: test_case.fetch(:expected_strategy),
-          passed: normalized_patched == normalized_full && selected_kinds.include?(test_case.fetch(:expected_strategy)),
+          passed: normalized_patched == normalized_full &&
+            selected_kinds.include?(test_case.fetch(:expected_strategy)) &&
+            target_replay_results.all? { |result| result.fetch(:matches_full_target) },
           selected_targets: targets.map { |target| target_payload(target) },
+          replay_results: target_replay_results,
           changes: changes,
-          frames_observed: initial.recorder.events_by_frame.transform_values(&:size),
-          request_events_observed: initial.recorder.request_events.size,
-          graph_summary: initial.recorder.graph.summary,
+          graph_report: initial.recorder.graph.report,
           initial_html_digest: Targeting::Extraction.digest_html(patched_html),
           full_after_html_digest: Targeting::Extraction.digest_html(full_after.html)
         }
@@ -131,6 +133,25 @@ module Upkeep
 
       def target_payload(target)
         { kind: target.kind, id: target.id, reason: target.reason }
+      end
+
+      def replay_results(recorder, targets, full_html)
+        targets.map do |target|
+          frame_id = Targeting::Extraction.frame_id_for(target)
+          recipe = recorder.graph.node(frame_id).payload[:recipe]
+          replay_html = recipe&.render
+          replay_target_html = replay_html && Targeting::Extraction.extract_target_html(replay_html, target)
+          full_target_html = Targeting::Extraction.extract_target_html(full_html, target)
+
+          {
+            target: target_payload(target),
+            recipe: recipe&.to_h,
+            replay_html_digest: replay_target_html ? Targeting::Extraction.digest_html(replay_target_html) : nil,
+            full_target_html_digest: Targeting::Extraction.digest_html(full_target_html),
+            matches_full_target: replay_target_html &&
+              Targeting::Extraction.normalize_html(replay_target_html) == Targeting::Extraction.normalize_html(full_target_html)
+          }
+        end
       end
     end
   end

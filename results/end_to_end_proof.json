@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-11T18:28:22Z",
+  "generated_at": "2026-05-11T18:46:18Z",
   "summary": {
     "cases": 6,
     "passed": 6,
@@ -20,6 +20,33 @@
           "reason": "record attribute read matched committed attributes"
         }
       ],
+      "replay_results": [
+        {
+          "target": {
+            "kind": "fragment",
+            "id": "fragment:cards/_card:cards:1",
+            "reason": "record attribute read matched committed attributes"
+          },
+          "recipe": {
+            "kind": "fragment",
+            "frame_id": "fragment:cards/_card:cards:1",
+            "target_kind": "fragment",
+            "target_id": "fragment:cards/_card:cards:1",
+            "template": "cards/_card",
+            "metadata": {
+              "locals": {
+                "card": {
+                  "table": "cards",
+                  "id": 1
+                }
+              }
+            }
+          },
+          "replay_html_digest": "cec6af63f5f5931d431267be1a5c7f3987a8ac55f5ab1f97fb7165f105685d89",
+          "full_target_html_digest": "cec6af63f5f5931d431267be1a5c7f3987a8ac55f5ab1f97fb7165f105685d89",
+          "matches_full_target": true
+        }
+      ],
       "changes": [
         {
           "type": "update",
@@ -31,22 +58,866 @@
           ]
         }
       ],
-      "frames_observed": {
-        "page:boards/collection": 1,
-        "site:1a8372386e7ae95a": 8,
-        "fragment:cards/_card:cards:1": 3,
-        "fragment:cards/_card:cards:2": 3,
-        "fragment:cards/_card:cards:3": 3
-      },
-      "request_events_observed": 2,
-      "graph_summary": {
-        "nodes": 18,
-        "edges": 20,
-        "frames": 5,
-        "dependencies": 12,
-        "dependency_sources": [
-          "active_record_attribute",
-          "active_record_collection"
+      "graph_report": {
+        "summary": {
+          "nodes": 18,
+          "edges": 20,
+          "frames": 5,
+          "dependencies": 12,
+          "containment_edges": 5,
+          "dependency_edges": 15,
+          "replay_recipes": 5,
+          "replay_recipe_kinds": [
+            "fragment",
+            "page",
+            "render_site"
+          ],
+          "dependency_sources": [
+            "active_record_attribute",
+            "active_record_collection"
+          ]
+        },
+        "frames": [
+          {
+            "id": "page:boards/collection",
+            "kind": "page",
+            "template": "boards/collection",
+            "contains": [
+              "site:1a8372386e7ae95a"
+            ],
+            "dependencies": [
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "boards",
+                  "id": 1,
+                  "attribute": "name"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Board"
+                }
+              }
+            ],
+            "replay_recipe": {
+              "kind": "page",
+              "frame_id": "page:boards/collection",
+              "target_kind": "page",
+              "target_id": "page:boards/collection",
+              "template": "boards/collection",
+              "metadata": {
+                "user": null
+              }
+            }
+          },
+          {
+            "id": "site:1a8372386e7ae95a",
+            "kind": "render_site",
+            "site_id": "1a8372386e7ae95a",
+            "contains": [
+              "fragment:cards/_card:cards:1",
+              "fragment:cards/_card:cards:2",
+              "fragment:cards/_card:cards:3"
+            ],
+            "dependencies": [
+              {
+                "source": "active_record_collection",
+                "key": {
+                  "table": "cards",
+                  "predicate_digest": "c9472e0f607e2bca"
+                },
+                "visibility": "public",
+                "precision": "collection_predicate",
+                "metadata": {
+                  "columns": [
+                    "board_id",
+                    "id",
+                    "position"
+                  ],
+                  "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 1,
+                  "attribute": "id"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 2,
+                  "attribute": "id"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 3,
+                  "attribute": "id"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              }
+            ],
+            "replay_recipe": {
+              "kind": "render_site",
+              "frame_id": "site:1a8372386e7ae95a",
+              "target_kind": "render_site",
+              "target_id": "1a8372386e7ae95a",
+              "metadata": {
+                "site_id": "1a8372386e7ae95a"
+              }
+            }
+          },
+          {
+            "id": "fragment:cards/_card:cards:1",
+            "kind": "fragment",
+            "template": "cards/_card",
+            "locals": {
+              "card": {
+                "table": "cards",
+                "id": 1
+              }
+            },
+            "contains": [],
+            "dependencies": [
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 1,
+                  "attribute": "id"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 1,
+                  "attribute": "title"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 1,
+                  "attribute": "status"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              }
+            ],
+            "replay_recipe": {
+              "kind": "fragment",
+              "frame_id": "fragment:cards/_card:cards:1",
+              "target_kind": "fragment",
+              "target_id": "fragment:cards/_card:cards:1",
+              "template": "cards/_card",
+              "metadata": {
+                "locals": {
+                  "card": {
+                    "table": "cards",
+                    "id": 1
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "fragment:cards/_card:cards:2",
+            "kind": "fragment",
+            "template": "cards/_card",
+            "locals": {
+              "card": {
+                "table": "cards",
+                "id": 2
+              }
+            },
+            "contains": [],
+            "dependencies": [
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 2,
+                  "attribute": "id"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 2,
+                  "attribute": "title"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 2,
+                  "attribute": "status"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              }
+            ],
+            "replay_recipe": {
+              "kind": "fragment",
+              "frame_id": "fragment:cards/_card:cards:2",
+              "target_kind": "fragment",
+              "target_id": "fragment:cards/_card:cards:2",
+              "template": "cards/_card",
+              "metadata": {
+                "locals": {
+                  "card": {
+                    "table": "cards",
+                    "id": 2
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "fragment:cards/_card:cards:3",
+            "kind": "fragment",
+            "template": "cards/_card",
+            "locals": {
+              "card": {
+                "table": "cards",
+                "id": 3
+              }
+            },
+            "contains": [],
+            "dependencies": [
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 3,
+                  "attribute": "id"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 3,
+                  "attribute": "title"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 3,
+                  "attribute": "status"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              }
+            ],
+            "replay_recipe": {
+              "kind": "fragment",
+              "frame_id": "fragment:cards/_card:cards:3",
+              "target_kind": "fragment",
+              "target_id": "fragment:cards/_card:cards:3",
+              "template": "cards/_card",
+              "metadata": {
+                "locals": {
+                  "card": {
+                    "table": "cards",
+                    "id": 3
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "dependencies": [
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "boards",
+                "id": 1,
+                "attribute": "id"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "boards",
+                "id": 1,
+                "attribute": "id"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Board"
+              }
+            },
+            "owners": [
+              "request"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "boards",
+                "id": 1,
+                "attribute": "name"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "boards",
+                "id": 1,
+                "attribute": "name"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Board"
+              }
+            },
+            "owners": [
+              "page:boards/collection"
+            ]
+          },
+          {
+            "id": [
+              "active_record_collection",
+              {
+                "table": "cards",
+                "predicate_digest": "c9472e0f607e2bca"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_collection",
+              "key": {
+                "table": "cards",
+                "predicate_digest": "c9472e0f607e2bca"
+              },
+              "visibility": "public",
+              "precision": "collection_predicate",
+              "metadata": {
+                "columns": [
+                  "board_id",
+                  "id",
+                  "position"
+                ],
+                "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC"
+              }
+            },
+            "owners": [
+              "site:1a8372386e7ae95a"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "id"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 1,
+                "attribute": "id"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "site:1a8372386e7ae95a",
+              "fragment:cards/_card:cards:1"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "title"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 1,
+                "attribute": "title"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "fragment:cards/_card:cards:1"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "status"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 1,
+                "attribute": "status"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "fragment:cards/_card:cards:1"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "id"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 2,
+                "attribute": "id"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "site:1a8372386e7ae95a",
+              "fragment:cards/_card:cards:2"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "title"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 2,
+                "attribute": "title"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "fragment:cards/_card:cards:2"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "status"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 2,
+                "attribute": "status"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "fragment:cards/_card:cards:2"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "id"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 3,
+                "attribute": "id"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "site:1a8372386e7ae95a",
+              "fragment:cards/_card:cards:3"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "title"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 3,
+                "attribute": "title"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "fragment:cards/_card:cards:3"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "status"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 3,
+                "attribute": "status"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "fragment:cards/_card:cards:3"
+            ]
+          }
+        ],
+        "edges": [
+          {
+            "from": "request",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "boards",
+                "id": 1,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "request",
+            "to": "page:boards/collection",
+            "reason": "contains"
+          },
+          {
+            "from": "page:boards/collection",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "boards",
+                "id": 1,
+                "attribute": "name"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "page:boards/collection",
+            "to": "site:1a8372386e7ae95a",
+            "reason": "contains"
+          },
+          {
+            "from": "site:1a8372386e7ae95a",
+            "to": [
+              "active_record_collection",
+              {
+                "table": "cards",
+                "predicate_digest": "c9472e0f607e2bca"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "site:1a8372386e7ae95a",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "site:1a8372386e7ae95a",
+            "to": "fragment:cards/_card:cards:1",
+            "reason": "contains"
+          },
+          {
+            "from": "fragment:cards/_card:cards:1",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "fragment:cards/_card:cards:1",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "title"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "fragment:cards/_card:cards:1",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "status"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "site:1a8372386e7ae95a",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "site:1a8372386e7ae95a",
+            "to": "fragment:cards/_card:cards:2",
+            "reason": "contains"
+          },
+          {
+            "from": "fragment:cards/_card:cards:2",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "fragment:cards/_card:cards:2",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "title"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "fragment:cards/_card:cards:2",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "status"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "site:1a8372386e7ae95a",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "site:1a8372386e7ae95a",
+            "to": "fragment:cards/_card:cards:3",
+            "reason": "contains"
+          },
+          {
+            "from": "fragment:cards/_card:cards:3",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "fragment:cards/_card:cards:3",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "title"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "fragment:cards/_card:cards:3",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "status"
+              }
+            ],
+            "reason": "depends_on"
+          }
         ]
       },
       "initial_html_digest": "5bb96f5231595a74f59992d18ac832659e35602b2b41ad51304736c11fd1d816",
@@ -63,6 +934,33 @@
           "reason": "record attribute read matched committed attributes"
         }
       ],
+      "replay_results": [
+        {
+          "target": {
+            "kind": "fragment",
+            "id": "fragment:cards/_card:cards:1",
+            "reason": "record attribute read matched committed attributes"
+          },
+          "recipe": {
+            "kind": "fragment",
+            "frame_id": "fragment:cards/_card:cards:1",
+            "target_kind": "fragment",
+            "target_id": "fragment:cards/_card:cards:1",
+            "template": "cards/_card",
+            "metadata": {
+              "locals": {
+                "card": {
+                  "table": "cards",
+                  "id": 1
+                }
+              }
+            }
+          },
+          "replay_html_digest": "c1dd3d909f2d6c5d0f05bc48051a532b45b237b96558c1275d223bdc491dfa2c",
+          "full_target_html_digest": "c1dd3d909f2d6c5d0f05bc48051a532b45b237b96558c1275d223bdc491dfa2c",
+          "matches_full_target": true
+        }
+      ],
       "changes": [
         {
           "type": "update",
@@ -74,22 +972,866 @@
           ]
         }
       ],
-      "frames_observed": {
-        "page:boards/collection": 1,
-        "site:1a8372386e7ae95a": 8,
-        "fragment:cards/_card:cards:1": 3,
-        "fragment:cards/_card:cards:2": 3,
-        "fragment:cards/_card:cards:3": 3
-      },
-      "request_events_observed": 2,
-      "graph_summary": {
-        "nodes": 18,
-        "edges": 20,
-        "frames": 5,
-        "dependencies": 12,
-        "dependency_sources": [
-          "active_record_attribute",
-          "active_record_collection"
+      "graph_report": {
+        "summary": {
+          "nodes": 18,
+          "edges": 20,
+          "frames": 5,
+          "dependencies": 12,
+          "containment_edges": 5,
+          "dependency_edges": 15,
+          "replay_recipes": 5,
+          "replay_recipe_kinds": [
+            "fragment",
+            "page",
+            "render_site"
+          ],
+          "dependency_sources": [
+            "active_record_attribute",
+            "active_record_collection"
+          ]
+        },
+        "frames": [
+          {
+            "id": "page:boards/collection",
+            "kind": "page",
+            "template": "boards/collection",
+            "contains": [
+              "site:1a8372386e7ae95a"
+            ],
+            "dependencies": [
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "boards",
+                  "id": 1,
+                  "attribute": "name"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Board"
+                }
+              }
+            ],
+            "replay_recipe": {
+              "kind": "page",
+              "frame_id": "page:boards/collection",
+              "target_kind": "page",
+              "target_id": "page:boards/collection",
+              "template": "boards/collection",
+              "metadata": {
+                "user": null
+              }
+            }
+          },
+          {
+            "id": "site:1a8372386e7ae95a",
+            "kind": "render_site",
+            "site_id": "1a8372386e7ae95a",
+            "contains": [
+              "fragment:cards/_card:cards:1",
+              "fragment:cards/_card:cards:2",
+              "fragment:cards/_card:cards:3"
+            ],
+            "dependencies": [
+              {
+                "source": "active_record_collection",
+                "key": {
+                  "table": "cards",
+                  "predicate_digest": "c9472e0f607e2bca"
+                },
+                "visibility": "public",
+                "precision": "collection_predicate",
+                "metadata": {
+                  "columns": [
+                    "board_id",
+                    "id",
+                    "position"
+                  ],
+                  "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 1,
+                  "attribute": "id"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 2,
+                  "attribute": "id"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 3,
+                  "attribute": "id"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              }
+            ],
+            "replay_recipe": {
+              "kind": "render_site",
+              "frame_id": "site:1a8372386e7ae95a",
+              "target_kind": "render_site",
+              "target_id": "1a8372386e7ae95a",
+              "metadata": {
+                "site_id": "1a8372386e7ae95a"
+              }
+            }
+          },
+          {
+            "id": "fragment:cards/_card:cards:1",
+            "kind": "fragment",
+            "template": "cards/_card",
+            "locals": {
+              "card": {
+                "table": "cards",
+                "id": 1
+              }
+            },
+            "contains": [],
+            "dependencies": [
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 1,
+                  "attribute": "id"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 1,
+                  "attribute": "title"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 1,
+                  "attribute": "status"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              }
+            ],
+            "replay_recipe": {
+              "kind": "fragment",
+              "frame_id": "fragment:cards/_card:cards:1",
+              "target_kind": "fragment",
+              "target_id": "fragment:cards/_card:cards:1",
+              "template": "cards/_card",
+              "metadata": {
+                "locals": {
+                  "card": {
+                    "table": "cards",
+                    "id": 1
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "fragment:cards/_card:cards:2",
+            "kind": "fragment",
+            "template": "cards/_card",
+            "locals": {
+              "card": {
+                "table": "cards",
+                "id": 2
+              }
+            },
+            "contains": [],
+            "dependencies": [
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 2,
+                  "attribute": "id"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 2,
+                  "attribute": "title"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 2,
+                  "attribute": "status"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              }
+            ],
+            "replay_recipe": {
+              "kind": "fragment",
+              "frame_id": "fragment:cards/_card:cards:2",
+              "target_kind": "fragment",
+              "target_id": "fragment:cards/_card:cards:2",
+              "template": "cards/_card",
+              "metadata": {
+                "locals": {
+                  "card": {
+                    "table": "cards",
+                    "id": 2
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "fragment:cards/_card:cards:3",
+            "kind": "fragment",
+            "template": "cards/_card",
+            "locals": {
+              "card": {
+                "table": "cards",
+                "id": 3
+              }
+            },
+            "contains": [],
+            "dependencies": [
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 3,
+                  "attribute": "id"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 3,
+                  "attribute": "title"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 3,
+                  "attribute": "status"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              }
+            ],
+            "replay_recipe": {
+              "kind": "fragment",
+              "frame_id": "fragment:cards/_card:cards:3",
+              "target_kind": "fragment",
+              "target_id": "fragment:cards/_card:cards:3",
+              "template": "cards/_card",
+              "metadata": {
+                "locals": {
+                  "card": {
+                    "table": "cards",
+                    "id": 3
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "dependencies": [
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "boards",
+                "id": 1,
+                "attribute": "id"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "boards",
+                "id": 1,
+                "attribute": "id"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Board"
+              }
+            },
+            "owners": [
+              "request"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "boards",
+                "id": 1,
+                "attribute": "name"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "boards",
+                "id": 1,
+                "attribute": "name"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Board"
+              }
+            },
+            "owners": [
+              "page:boards/collection"
+            ]
+          },
+          {
+            "id": [
+              "active_record_collection",
+              {
+                "table": "cards",
+                "predicate_digest": "c9472e0f607e2bca"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_collection",
+              "key": {
+                "table": "cards",
+                "predicate_digest": "c9472e0f607e2bca"
+              },
+              "visibility": "public",
+              "precision": "collection_predicate",
+              "metadata": {
+                "columns": [
+                  "board_id",
+                  "id",
+                  "position"
+                ],
+                "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC"
+              }
+            },
+            "owners": [
+              "site:1a8372386e7ae95a"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "id"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 1,
+                "attribute": "id"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "site:1a8372386e7ae95a",
+              "fragment:cards/_card:cards:1"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "title"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 1,
+                "attribute": "title"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "fragment:cards/_card:cards:1"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "status"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 1,
+                "attribute": "status"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "fragment:cards/_card:cards:1"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "id"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 2,
+                "attribute": "id"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "site:1a8372386e7ae95a",
+              "fragment:cards/_card:cards:2"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "title"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 2,
+                "attribute": "title"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "fragment:cards/_card:cards:2"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "status"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 2,
+                "attribute": "status"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "fragment:cards/_card:cards:2"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "id"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 3,
+                "attribute": "id"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "site:1a8372386e7ae95a",
+              "fragment:cards/_card:cards:3"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "title"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 3,
+                "attribute": "title"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "fragment:cards/_card:cards:3"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "status"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 3,
+                "attribute": "status"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "fragment:cards/_card:cards:3"
+            ]
+          }
+        ],
+        "edges": [
+          {
+            "from": "request",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "boards",
+                "id": 1,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "request",
+            "to": "page:boards/collection",
+            "reason": "contains"
+          },
+          {
+            "from": "page:boards/collection",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "boards",
+                "id": 1,
+                "attribute": "name"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "page:boards/collection",
+            "to": "site:1a8372386e7ae95a",
+            "reason": "contains"
+          },
+          {
+            "from": "site:1a8372386e7ae95a",
+            "to": [
+              "active_record_collection",
+              {
+                "table": "cards",
+                "predicate_digest": "c9472e0f607e2bca"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "site:1a8372386e7ae95a",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "site:1a8372386e7ae95a",
+            "to": "fragment:cards/_card:cards:1",
+            "reason": "contains"
+          },
+          {
+            "from": "fragment:cards/_card:cards:1",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "fragment:cards/_card:cards:1",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "title"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "fragment:cards/_card:cards:1",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "status"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "site:1a8372386e7ae95a",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "site:1a8372386e7ae95a",
+            "to": "fragment:cards/_card:cards:2",
+            "reason": "contains"
+          },
+          {
+            "from": "fragment:cards/_card:cards:2",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "fragment:cards/_card:cards:2",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "title"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "fragment:cards/_card:cards:2",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "status"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "site:1a8372386e7ae95a",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "site:1a8372386e7ae95a",
+            "to": "fragment:cards/_card:cards:3",
+            "reason": "contains"
+          },
+          {
+            "from": "fragment:cards/_card:cards:3",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "fragment:cards/_card:cards:3",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "title"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "fragment:cards/_card:cards:3",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "status"
+              }
+            ],
+            "reason": "depends_on"
+          }
         ]
       },
       "initial_html_digest": "e690a3872aff5ea785945b6d7d62c29e1840fe7b56a24287ba29a4a319e772d4",
@@ -106,6 +1848,27 @@
           "reason": "render-site dependency matched committed change"
         }
       ],
+      "replay_results": [
+        {
+          "target": {
+            "kind": "render_site",
+            "id": "1a8372386e7ae95a",
+            "reason": "render-site dependency matched committed change"
+          },
+          "recipe": {
+            "kind": "render_site",
+            "frame_id": "site:1a8372386e7ae95a",
+            "target_kind": "render_site",
+            "target_id": "1a8372386e7ae95a",
+            "metadata": {
+              "site_id": "1a8372386e7ae95a"
+            }
+          },
+          "replay_html_digest": "7148b295bafa238035ea039e3ec68f3c23e0e1409f8f9c4c3004030149e411f3",
+          "full_target_html_digest": "7148b295bafa238035ea039e3ec68f3c23e0e1409f8f9c4c3004030149e411f3",
+          "matches_full_target": true
+        }
+      ],
       "changes": [
         {
           "type": "create_or_update",
@@ -122,22 +1885,866 @@
           ]
         }
       ],
-      "frames_observed": {
-        "page:boards/collection": 1,
-        "site:1a8372386e7ae95a": 8,
-        "fragment:cards/_card:cards:1": 3,
-        "fragment:cards/_card:cards:2": 3,
-        "fragment:cards/_card:cards:3": 3
-      },
-      "request_events_observed": 2,
-      "graph_summary": {
-        "nodes": 18,
-        "edges": 20,
-        "frames": 5,
-        "dependencies": 12,
-        "dependency_sources": [
-          "active_record_attribute",
-          "active_record_collection"
+      "graph_report": {
+        "summary": {
+          "nodes": 18,
+          "edges": 20,
+          "frames": 5,
+          "dependencies": 12,
+          "containment_edges": 5,
+          "dependency_edges": 15,
+          "replay_recipes": 5,
+          "replay_recipe_kinds": [
+            "fragment",
+            "page",
+            "render_site"
+          ],
+          "dependency_sources": [
+            "active_record_attribute",
+            "active_record_collection"
+          ]
+        },
+        "frames": [
+          {
+            "id": "page:boards/collection",
+            "kind": "page",
+            "template": "boards/collection",
+            "contains": [
+              "site:1a8372386e7ae95a"
+            ],
+            "dependencies": [
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "boards",
+                  "id": 1,
+                  "attribute": "name"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Board"
+                }
+              }
+            ],
+            "replay_recipe": {
+              "kind": "page",
+              "frame_id": "page:boards/collection",
+              "target_kind": "page",
+              "target_id": "page:boards/collection",
+              "template": "boards/collection",
+              "metadata": {
+                "user": null
+              }
+            }
+          },
+          {
+            "id": "site:1a8372386e7ae95a",
+            "kind": "render_site",
+            "site_id": "1a8372386e7ae95a",
+            "contains": [
+              "fragment:cards/_card:cards:1",
+              "fragment:cards/_card:cards:2",
+              "fragment:cards/_card:cards:3"
+            ],
+            "dependencies": [
+              {
+                "source": "active_record_collection",
+                "key": {
+                  "table": "cards",
+                  "predicate_digest": "c9472e0f607e2bca"
+                },
+                "visibility": "public",
+                "precision": "collection_predicate",
+                "metadata": {
+                  "columns": [
+                    "board_id",
+                    "id",
+                    "position"
+                  ],
+                  "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 1,
+                  "attribute": "id"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 2,
+                  "attribute": "id"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 3,
+                  "attribute": "id"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              }
+            ],
+            "replay_recipe": {
+              "kind": "render_site",
+              "frame_id": "site:1a8372386e7ae95a",
+              "target_kind": "render_site",
+              "target_id": "1a8372386e7ae95a",
+              "metadata": {
+                "site_id": "1a8372386e7ae95a"
+              }
+            }
+          },
+          {
+            "id": "fragment:cards/_card:cards:1",
+            "kind": "fragment",
+            "template": "cards/_card",
+            "locals": {
+              "card": {
+                "table": "cards",
+                "id": 1
+              }
+            },
+            "contains": [],
+            "dependencies": [
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 1,
+                  "attribute": "id"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 1,
+                  "attribute": "title"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 1,
+                  "attribute": "status"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              }
+            ],
+            "replay_recipe": {
+              "kind": "fragment",
+              "frame_id": "fragment:cards/_card:cards:1",
+              "target_kind": "fragment",
+              "target_id": "fragment:cards/_card:cards:1",
+              "template": "cards/_card",
+              "metadata": {
+                "locals": {
+                  "card": {
+                    "table": "cards",
+                    "id": 1
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "fragment:cards/_card:cards:2",
+            "kind": "fragment",
+            "template": "cards/_card",
+            "locals": {
+              "card": {
+                "table": "cards",
+                "id": 2
+              }
+            },
+            "contains": [],
+            "dependencies": [
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 2,
+                  "attribute": "id"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 2,
+                  "attribute": "title"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 2,
+                  "attribute": "status"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              }
+            ],
+            "replay_recipe": {
+              "kind": "fragment",
+              "frame_id": "fragment:cards/_card:cards:2",
+              "target_kind": "fragment",
+              "target_id": "fragment:cards/_card:cards:2",
+              "template": "cards/_card",
+              "metadata": {
+                "locals": {
+                  "card": {
+                    "table": "cards",
+                    "id": 2
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "fragment:cards/_card:cards:3",
+            "kind": "fragment",
+            "template": "cards/_card",
+            "locals": {
+              "card": {
+                "table": "cards",
+                "id": 3
+              }
+            },
+            "contains": [],
+            "dependencies": [
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 3,
+                  "attribute": "id"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 3,
+                  "attribute": "title"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 3,
+                  "attribute": "status"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              }
+            ],
+            "replay_recipe": {
+              "kind": "fragment",
+              "frame_id": "fragment:cards/_card:cards:3",
+              "target_kind": "fragment",
+              "target_id": "fragment:cards/_card:cards:3",
+              "template": "cards/_card",
+              "metadata": {
+                "locals": {
+                  "card": {
+                    "table": "cards",
+                    "id": 3
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "dependencies": [
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "boards",
+                "id": 1,
+                "attribute": "id"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "boards",
+                "id": 1,
+                "attribute": "id"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Board"
+              }
+            },
+            "owners": [
+              "request"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "boards",
+                "id": 1,
+                "attribute": "name"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "boards",
+                "id": 1,
+                "attribute": "name"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Board"
+              }
+            },
+            "owners": [
+              "page:boards/collection"
+            ]
+          },
+          {
+            "id": [
+              "active_record_collection",
+              {
+                "table": "cards",
+                "predicate_digest": "c9472e0f607e2bca"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_collection",
+              "key": {
+                "table": "cards",
+                "predicate_digest": "c9472e0f607e2bca"
+              },
+              "visibility": "public",
+              "precision": "collection_predicate",
+              "metadata": {
+                "columns": [
+                  "board_id",
+                  "id",
+                  "position"
+                ],
+                "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC"
+              }
+            },
+            "owners": [
+              "site:1a8372386e7ae95a"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "id"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 1,
+                "attribute": "id"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "site:1a8372386e7ae95a",
+              "fragment:cards/_card:cards:1"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "title"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 1,
+                "attribute": "title"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "fragment:cards/_card:cards:1"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "status"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 1,
+                "attribute": "status"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "fragment:cards/_card:cards:1"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "id"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 2,
+                "attribute": "id"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "site:1a8372386e7ae95a",
+              "fragment:cards/_card:cards:2"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "title"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 2,
+                "attribute": "title"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "fragment:cards/_card:cards:2"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "status"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 2,
+                "attribute": "status"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "fragment:cards/_card:cards:2"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "id"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 3,
+                "attribute": "id"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "site:1a8372386e7ae95a",
+              "fragment:cards/_card:cards:3"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "title"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 3,
+                "attribute": "title"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "fragment:cards/_card:cards:3"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "status"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 3,
+                "attribute": "status"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "fragment:cards/_card:cards:3"
+            ]
+          }
+        ],
+        "edges": [
+          {
+            "from": "request",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "boards",
+                "id": 1,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "request",
+            "to": "page:boards/collection",
+            "reason": "contains"
+          },
+          {
+            "from": "page:boards/collection",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "boards",
+                "id": 1,
+                "attribute": "name"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "page:boards/collection",
+            "to": "site:1a8372386e7ae95a",
+            "reason": "contains"
+          },
+          {
+            "from": "site:1a8372386e7ae95a",
+            "to": [
+              "active_record_collection",
+              {
+                "table": "cards",
+                "predicate_digest": "c9472e0f607e2bca"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "site:1a8372386e7ae95a",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "site:1a8372386e7ae95a",
+            "to": "fragment:cards/_card:cards:1",
+            "reason": "contains"
+          },
+          {
+            "from": "fragment:cards/_card:cards:1",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "fragment:cards/_card:cards:1",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "title"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "fragment:cards/_card:cards:1",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "status"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "site:1a8372386e7ae95a",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "site:1a8372386e7ae95a",
+            "to": "fragment:cards/_card:cards:2",
+            "reason": "contains"
+          },
+          {
+            "from": "fragment:cards/_card:cards:2",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "fragment:cards/_card:cards:2",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "title"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "fragment:cards/_card:cards:2",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "status"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "site:1a8372386e7ae95a",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "site:1a8372386e7ae95a",
+            "to": "fragment:cards/_card:cards:3",
+            "reason": "contains"
+          },
+          {
+            "from": "fragment:cards/_card:cards:3",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "fragment:cards/_card:cards:3",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "title"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "fragment:cards/_card:cards:3",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "status"
+              }
+            ],
+            "reason": "depends_on"
+          }
         ]
       },
       "initial_html_digest": "95788085da070f066b31cae355638a38399f4f1fb659c9d59d1a0f5ccd5c719f",
@@ -154,6 +2761,28 @@
           "reason": "page frame dependency matched committed change"
         }
       ],
+      "replay_results": [
+        {
+          "target": {
+            "kind": "page",
+            "id": "page:boards/inline",
+            "reason": "page frame dependency matched committed change"
+          },
+          "recipe": {
+            "kind": "page",
+            "frame_id": "page:boards/inline",
+            "target_kind": "page",
+            "target_id": "page:boards/inline",
+            "template": "boards/inline",
+            "metadata": {
+              "user": null
+            }
+          },
+          "replay_html_digest": "ff895bd5a440dc848c08b6f9d623269d33a41e3128fef10e89629ea777facdd1",
+          "full_target_html_digest": "ff895bd5a440dc848c08b6f9d623269d33a41e3128fef10e89629ea777facdd1",
+          "matches_full_target": true
+        }
+      ],
       "changes": [
         {
           "type": "update",
@@ -165,17 +2794,598 @@
           ]
         }
       ],
-      "frames_observed": {
-        "page:boards/inline": 11
-      },
-      "request_events_observed": 2,
-      "graph_summary": {
-        "nodes": 13,
-        "edges": 12,
-        "frames": 1,
-        "dependencies": 11,
-        "dependency_sources": [
-          "active_record_attribute"
+      "graph_report": {
+        "summary": {
+          "nodes": 13,
+          "edges": 12,
+          "frames": 1,
+          "dependencies": 11,
+          "containment_edges": 1,
+          "dependency_edges": 11,
+          "replay_recipes": 1,
+          "replay_recipe_kinds": [
+            "page"
+          ],
+          "dependency_sources": [
+            "active_record_attribute"
+          ]
+        },
+        "frames": [
+          {
+            "id": "page:boards/inline",
+            "kind": "page",
+            "template": "boards/inline",
+            "contains": [],
+            "dependencies": [
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "boards",
+                  "id": 1,
+                  "attribute": "name"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Board"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 1,
+                  "attribute": "id"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 1,
+                  "attribute": "title"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 1,
+                  "attribute": "status"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 2,
+                  "attribute": "id"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 2,
+                  "attribute": "title"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 2,
+                  "attribute": "status"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 3,
+                  "attribute": "id"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 3,
+                  "attribute": "title"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 3,
+                  "attribute": "status"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              }
+            ],
+            "replay_recipe": {
+              "kind": "page",
+              "frame_id": "page:boards/inline",
+              "target_kind": "page",
+              "target_id": "page:boards/inline",
+              "template": "boards/inline",
+              "metadata": {
+                "user": null
+              }
+            }
+          }
+        ],
+        "dependencies": [
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "boards",
+                "id": 1,
+                "attribute": "id"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "boards",
+                "id": 1,
+                "attribute": "id"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Board"
+              }
+            },
+            "owners": [
+              "request"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "boards",
+                "id": 1,
+                "attribute": "name"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "boards",
+                "id": 1,
+                "attribute": "name"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Board"
+              }
+            },
+            "owners": [
+              "page:boards/inline"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "id"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 1,
+                "attribute": "id"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "page:boards/inline"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "title"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 1,
+                "attribute": "title"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "page:boards/inline"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "status"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 1,
+                "attribute": "status"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "page:boards/inline"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "id"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 2,
+                "attribute": "id"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "page:boards/inline"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "title"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 2,
+                "attribute": "title"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "page:boards/inline"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "status"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 2,
+                "attribute": "status"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "page:boards/inline"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "id"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 3,
+                "attribute": "id"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "page:boards/inline"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "title"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 3,
+                "attribute": "title"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "page:boards/inline"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "status"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 3,
+                "attribute": "status"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "page:boards/inline"
+            ]
+          }
+        ],
+        "edges": [
+          {
+            "from": "request",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "boards",
+                "id": 1,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "request",
+            "to": "page:boards/inline",
+            "reason": "contains"
+          },
+          {
+            "from": "page:boards/inline",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "boards",
+                "id": 1,
+                "attribute": "name"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "page:boards/inline",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "page:boards/inline",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "title"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "page:boards/inline",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "status"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "page:boards/inline",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "page:boards/inline",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "title"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "page:boards/inline",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "status"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "page:boards/inline",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "page:boards/inline",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "title"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "page:boards/inline",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "status"
+              }
+            ],
+            "reason": "depends_on"
+          }
         ]
       },
       "initial_html_digest": "ec8541f7c5a41f4101aed6ad3696182785c55cd5019cc5a84096337e7a1f7b31",
@@ -190,6 +3400,28 @@
           "kind": "page",
           "id": "page:boards/helper_hidden",
           "reason": "page frame dependency matched committed change"
+        }
+      ],
+      "replay_results": [
+        {
+          "target": {
+            "kind": "page",
+            "id": "page:boards/helper_hidden",
+            "reason": "page frame dependency matched committed change"
+          },
+          "recipe": {
+            "kind": "page",
+            "frame_id": "page:boards/helper_hidden",
+            "target_kind": "page",
+            "target_id": "page:boards/helper_hidden",
+            "template": "boards/helper_hidden",
+            "metadata": {
+              "user": null
+            }
+          },
+          "replay_html_digest": "b7c957ec3a1a52332ae8177b6d0691b19416373b4ee4369e90e2bb954cd7f11d",
+          "full_target_html_digest": "b7c957ec3a1a52332ae8177b6d0691b19416373b4ee4369e90e2bb954cd7f11d",
+          "matches_full_target": true
         }
       ],
       "changes": [
@@ -208,21 +3440,841 @@
           ]
         }
       ],
-      "frames_observed": {
-        "page:boards/helper_hidden": 9,
-        "fragment:cards/_card:cards:1": 3,
-        "fragment:cards/_card:cards:2": 3,
-        "fragment:cards/_card:cards:3": 3
-      },
-      "request_events_observed": 2,
-      "graph_summary": {
-        "nodes": 17,
-        "edges": 19,
-        "frames": 4,
-        "dependencies": 12,
-        "dependency_sources": [
-          "active_record_attribute",
-          "active_record_collection"
+      "graph_report": {
+        "summary": {
+          "nodes": 17,
+          "edges": 19,
+          "frames": 4,
+          "dependencies": 12,
+          "containment_edges": 4,
+          "dependency_edges": 15,
+          "replay_recipes": 4,
+          "replay_recipe_kinds": [
+            "fragment",
+            "page"
+          ],
+          "dependency_sources": [
+            "active_record_attribute",
+            "active_record_collection"
+          ]
+        },
+        "frames": [
+          {
+            "id": "page:boards/helper_hidden",
+            "kind": "page",
+            "template": "boards/helper_hidden",
+            "contains": [
+              "fragment:cards/_card:cards:1",
+              "fragment:cards/_card:cards:2",
+              "fragment:cards/_card:cards:3"
+            ],
+            "dependencies": [
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "boards",
+                  "id": 1,
+                  "attribute": "name"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Board"
+                }
+              },
+              {
+                "source": "active_record_collection",
+                "key": {
+                  "table": "cards",
+                  "predicate_digest": "c9472e0f607e2bca"
+                },
+                "visibility": "public",
+                "precision": "collection_predicate",
+                "metadata": {
+                  "columns": [
+                    "board_id",
+                    "id",
+                    "position"
+                  ],
+                  "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 1,
+                  "attribute": "id"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 2,
+                  "attribute": "id"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 3,
+                  "attribute": "id"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              }
+            ],
+            "replay_recipe": {
+              "kind": "page",
+              "frame_id": "page:boards/helper_hidden",
+              "target_kind": "page",
+              "target_id": "page:boards/helper_hidden",
+              "template": "boards/helper_hidden",
+              "metadata": {
+                "user": null
+              }
+            }
+          },
+          {
+            "id": "fragment:cards/_card:cards:1",
+            "kind": "fragment",
+            "template": "cards/_card",
+            "locals": {
+              "card": {
+                "table": "cards",
+                "id": 1
+              }
+            },
+            "contains": [],
+            "dependencies": [
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 1,
+                  "attribute": "id"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 1,
+                  "attribute": "title"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 1,
+                  "attribute": "status"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              }
+            ],
+            "replay_recipe": {
+              "kind": "fragment",
+              "frame_id": "fragment:cards/_card:cards:1",
+              "target_kind": "fragment",
+              "target_id": "fragment:cards/_card:cards:1",
+              "template": "cards/_card",
+              "metadata": {
+                "locals": {
+                  "card": {
+                    "table": "cards",
+                    "id": 1
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "fragment:cards/_card:cards:2",
+            "kind": "fragment",
+            "template": "cards/_card",
+            "locals": {
+              "card": {
+                "table": "cards",
+                "id": 2
+              }
+            },
+            "contains": [],
+            "dependencies": [
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 2,
+                  "attribute": "id"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 2,
+                  "attribute": "title"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 2,
+                  "attribute": "status"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              }
+            ],
+            "replay_recipe": {
+              "kind": "fragment",
+              "frame_id": "fragment:cards/_card:cards:2",
+              "target_kind": "fragment",
+              "target_id": "fragment:cards/_card:cards:2",
+              "template": "cards/_card",
+              "metadata": {
+                "locals": {
+                  "card": {
+                    "table": "cards",
+                    "id": 2
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "fragment:cards/_card:cards:3",
+            "kind": "fragment",
+            "template": "cards/_card",
+            "locals": {
+              "card": {
+                "table": "cards",
+                "id": 3
+              }
+            },
+            "contains": [],
+            "dependencies": [
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 3,
+                  "attribute": "id"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 3,
+                  "attribute": "title"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              },
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "cards",
+                  "id": 3,
+                  "attribute": "status"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Card"
+                }
+              }
+            ],
+            "replay_recipe": {
+              "kind": "fragment",
+              "frame_id": "fragment:cards/_card:cards:3",
+              "target_kind": "fragment",
+              "target_id": "fragment:cards/_card:cards:3",
+              "template": "cards/_card",
+              "metadata": {
+                "locals": {
+                  "card": {
+                    "table": "cards",
+                    "id": 3
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "dependencies": [
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "boards",
+                "id": 1,
+                "attribute": "id"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "boards",
+                "id": 1,
+                "attribute": "id"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Board"
+              }
+            },
+            "owners": [
+              "request"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "boards",
+                "id": 1,
+                "attribute": "name"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "boards",
+                "id": 1,
+                "attribute": "name"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Board"
+              }
+            },
+            "owners": [
+              "page:boards/helper_hidden"
+            ]
+          },
+          {
+            "id": [
+              "active_record_collection",
+              {
+                "table": "cards",
+                "predicate_digest": "c9472e0f607e2bca"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_collection",
+              "key": {
+                "table": "cards",
+                "predicate_digest": "c9472e0f607e2bca"
+              },
+              "visibility": "public",
+              "precision": "collection_predicate",
+              "metadata": {
+                "columns": [
+                  "board_id",
+                  "id",
+                  "position"
+                ],
+                "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC"
+              }
+            },
+            "owners": [
+              "page:boards/helper_hidden"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "id"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 1,
+                "attribute": "id"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "page:boards/helper_hidden",
+              "fragment:cards/_card:cards:1"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "title"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 1,
+                "attribute": "title"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "fragment:cards/_card:cards:1"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "status"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 1,
+                "attribute": "status"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "fragment:cards/_card:cards:1"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "id"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 2,
+                "attribute": "id"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "page:boards/helper_hidden",
+              "fragment:cards/_card:cards:2"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "title"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 2,
+                "attribute": "title"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "fragment:cards/_card:cards:2"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "status"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 2,
+                "attribute": "status"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "fragment:cards/_card:cards:2"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "id"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 3,
+                "attribute": "id"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "page:boards/helper_hidden",
+              "fragment:cards/_card:cards:3"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "title"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 3,
+                "attribute": "title"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "fragment:cards/_card:cards:3"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "status"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 3,
+                "attribute": "status"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "fragment:cards/_card:cards:3"
+            ]
+          }
+        ],
+        "edges": [
+          {
+            "from": "request",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "boards",
+                "id": 1,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "request",
+            "to": "page:boards/helper_hidden",
+            "reason": "contains"
+          },
+          {
+            "from": "page:boards/helper_hidden",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "boards",
+                "id": 1,
+                "attribute": "name"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "page:boards/helper_hidden",
+            "to": [
+              "active_record_collection",
+              {
+                "table": "cards",
+                "predicate_digest": "c9472e0f607e2bca"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "page:boards/helper_hidden",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "page:boards/helper_hidden",
+            "to": "fragment:cards/_card:cards:1",
+            "reason": "contains"
+          },
+          {
+            "from": "fragment:cards/_card:cards:1",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "fragment:cards/_card:cards:1",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "title"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "fragment:cards/_card:cards:1",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "status"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "page:boards/helper_hidden",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "page:boards/helper_hidden",
+            "to": "fragment:cards/_card:cards:2",
+            "reason": "contains"
+          },
+          {
+            "from": "fragment:cards/_card:cards:2",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "fragment:cards/_card:cards:2",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "title"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "fragment:cards/_card:cards:2",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "status"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "page:boards/helper_hidden",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "page:boards/helper_hidden",
+            "to": "fragment:cards/_card:cards:3",
+            "reason": "contains"
+          },
+          {
+            "from": "fragment:cards/_card:cards:3",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "fragment:cards/_card:cards:3",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "title"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "fragment:cards/_card:cards:3",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "status"
+              }
+            ],
+            "reason": "depends_on"
+          }
         ]
       },
       "initial_html_digest": "dcd180b1328e4bfa69fe60e0f7cd73345fc43107ceaf5fdb0954daa6a2e3a7a3",
@@ -236,7 +4288,29 @@
         {
           "kind": "page",
           "id": "page:boards/preloaded_plain",
-          "reason": "request-level dependency matched committed change"
+          "reason": "page frame dependency matched committed change"
+        }
+      ],
+      "replay_results": [
+        {
+          "target": {
+            "kind": "page",
+            "id": "page:boards/preloaded_plain",
+            "reason": "page frame dependency matched committed change"
+          },
+          "recipe": {
+            "kind": "page",
+            "frame_id": "page:boards/preloaded_plain",
+            "target_kind": "page",
+            "target_id": "page:boards/preloaded_plain",
+            "template": "boards/preloaded_plain",
+            "metadata": {
+              "user": null
+            }
+          },
+          "replay_html_digest": "3fa295b121935f9102e2a0268d7e5be1b8a905c1d41c8dfd8dec8906df8f3835",
+          "full_target_html_digest": "3fa295b121935f9102e2a0268d7e5be1b8a905c1d41c8dfd8dec8906df8f3835",
+          "matches_full_target": true
         }
       ],
       "changes": [
@@ -250,17 +4324,367 @@
           ]
         }
       ],
-      "frames_observed": {
-        "page:boards/preloaded_plain": 1
-      },
-      "request_events_observed": 9,
-      "graph_summary": {
-        "nodes": 10,
-        "edges": 9,
-        "frames": 1,
-        "dependencies": 8,
-        "dependency_sources": [
-          "active_record_attribute"
+      "graph_report": {
+        "summary": {
+          "nodes": 10,
+          "edges": 9,
+          "frames": 1,
+          "dependencies": 8,
+          "containment_edges": 1,
+          "dependency_edges": 8,
+          "replay_recipes": 1,
+          "replay_recipe_kinds": [
+            "page"
+          ],
+          "dependency_sources": [
+            "active_record_attribute"
+          ]
+        },
+        "frames": [
+          {
+            "id": "page:boards/preloaded_plain",
+            "kind": "page",
+            "template": "boards/preloaded_plain",
+            "contains": [],
+            "dependencies": [
+              {
+                "source": "active_record_attribute",
+                "key": {
+                  "table": "boards",
+                  "id": 1,
+                  "attribute": "name"
+                },
+                "visibility": "public",
+                "precision": "record_attribute",
+                "metadata": {
+                  "model": "Upkeep::Domain::Board"
+                }
+              }
+            ],
+            "replay_recipe": {
+              "kind": "page",
+              "frame_id": "page:boards/preloaded_plain",
+              "target_kind": "page",
+              "target_id": "page:boards/preloaded_plain",
+              "template": "boards/preloaded_plain",
+              "metadata": {
+                "user": null
+              }
+            }
+          }
+        ],
+        "dependencies": [
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "boards",
+                "id": 1,
+                "attribute": "id"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "boards",
+                "id": 1,
+                "attribute": "id"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Board"
+              }
+            },
+            "owners": [
+              "request"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "id"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 1,
+                "attribute": "id"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "request"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "title"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 1,
+                "attribute": "title"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "request"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "id"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 2,
+                "attribute": "id"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "request"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "title"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 2,
+                "attribute": "title"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "request"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "id"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 3,
+                "attribute": "id"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "request"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "title"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "cards",
+                "id": 3,
+                "attribute": "title"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Card"
+              }
+            },
+            "owners": [
+              "request"
+            ]
+          },
+          {
+            "id": [
+              "active_record_attribute",
+              {
+                "table": "boards",
+                "id": 1,
+                "attribute": "name"
+              }
+            ],
+            "dependency": {
+              "source": "active_record_attribute",
+              "key": {
+                "table": "boards",
+                "id": 1,
+                "attribute": "name"
+              },
+              "visibility": "public",
+              "precision": "record_attribute",
+              "metadata": {
+                "model": "Upkeep::Domain::Board"
+              }
+            },
+            "owners": [
+              "page:boards/preloaded_plain"
+            ]
+          }
+        ],
+        "edges": [
+          {
+            "from": "request",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "boards",
+                "id": 1,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "request",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "request",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 1,
+                "attribute": "title"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "request",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "request",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 2,
+                "attribute": "title"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "request",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "id"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "request",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "cards",
+                "id": 3,
+                "attribute": "title"
+              }
+            ],
+            "reason": "depends_on"
+          },
+          {
+            "from": "request",
+            "to": "page:boards/preloaded_plain",
+            "reason": "contains"
+          },
+          {
+            "from": "page:boards/preloaded_plain",
+            "to": [
+              "active_record_attribute",
+              {
+                "table": "boards",
+                "id": 1,
+                "attribute": "name"
+              }
+            ],
+            "reason": "depends_on"
+          }
         ]
       },
       "initial_html_digest": "55f83c7573565006ddc1092b37d4f8267bd72228e274710421626d0a988c439a",

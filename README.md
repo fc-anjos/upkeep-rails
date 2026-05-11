@@ -5,7 +5,8 @@ calibrates the Rails architecture around three structural inputs:
 
 - Herb as the template-structure compiler.
 - Active Record runtime observation as the data-dependency proof surface.
-- Request identity observation as part of subscriber-specific delivery.
+- Request, auth, and current-context reads as subscriber-specific delivery
+  inputs.
 
 The runner measures Herb against the maintained benchmark app templates in
 `rails/upkeep/benchmark/upkeep-app/` and `rails/upkeep/benchmark/turbo-app/`,
@@ -22,6 +23,8 @@ The runtime code lives under `lib/upkeep/`:
   observation hooks.
 - `dependencies.rb` defines open dependency objects produced by observers.
 - `dag.rb` stores generic nodes, edges, and dependency attachments.
+- `replay.rb` stores per-target render recipes for page, render-site, and
+  fragment replay.
 - `runtime.rb` captures frame-scoped reads, request identity reads, and committed
   write facts.
 - `domain.rb` defines the in-memory Rails domain used by the proofs.
@@ -34,6 +37,8 @@ The runtime code lives under `lib/upkeep/`:
   preloaded data.
 - `proofs/identity_safety.rb` covers subscriber-specific delivery where users
   have different visibility over the same card.
+- `proofs/auth_surfaces.rb` covers Warden-style user reads, CurrentAttributes,
+  session, cookie, and request dependencies.
 
 ## Run
 
@@ -47,6 +52,7 @@ The runner writes JSON reports to:
 - `results/active_record_surface.json`
 - `results/end_to_end_proof.json`
 - `results/identity_safety_proof.json`
+- `results/auth_surfaces_proof.json`
 
 ## Current Question
 
@@ -63,10 +69,13 @@ The runner checks:
 - frontend tag plans for partial roots and render sites;
 - Active Record relation execution, attribute reads, association loads,
   callback writes, and bulk writes;
-- end-to-end DOM patch correctness through dependency-driven narrow fragment, render-site, and
-  page-fallback strategies;
+- end-to-end DOM patch correctness through graph-driven narrow fragment,
+  render-site, and page strategies;
+- isolated target replay for page, render-site, and fragment frames;
 - subscriber-specific patch extraction where two users share the same DOM target
-  but require different payloads.
+  but require different payloads;
+- ambient identity extraction from Warden-style user lookup, CurrentAttributes,
+  session, cookies, and request reads.
 
 Non-HTML ERB templates are outside this runner because Herb is being measured as
 the HTML-aware template planner.

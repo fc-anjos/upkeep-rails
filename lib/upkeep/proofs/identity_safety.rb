@@ -83,7 +83,7 @@ module Upkeep
             selected_targets: targets.map { |target| target_payload(target, initial_render.recorder) },
             patch_payloads: patches.map { |patch| patch_payload(patch, initial_render.recorder) },
             patched_equals_full: Targeting::Extraction.normalize_html(patched_html) == Targeting::Extraction.normalize_html(full_render.html),
-            graph_summary: initial_render.recorder.graph.summary,
+            graph_report: initial_render.recorder.graph.report,
             patched_html: Targeting::Extraction.normalize_html(patched_html)
           }
         end
