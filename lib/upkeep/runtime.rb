@@ -461,7 +461,7 @@ module Upkeep
 
     module RelationObserver
       def update_all(updates)
-        analysis = ActiveRecordQuery.analyze(self)
+        analysis = ActiveRecordQuery.analyze(self, opaque_table_policy: :allow_table)
         ChangeLog.record({
           type: "bulk_update",
           table: klass.table_name,
@@ -475,7 +475,7 @@ module Upkeep
       end
 
       def delete_all
-        analysis = ActiveRecordQuery.analyze(self)
+        analysis = ActiveRecordQuery.analyze(self, opaque_table_policy: :allow_table)
         ChangeLog.record({
           type: "bulk_delete",
           table: klass.table_name,

@@ -57,7 +57,7 @@ module Upkeep
         Runtime::Observation.capture_frame(frame_id, metadata.merge(recipe: recipe)) { yield }
       end
 
-      def capture_collection(partial, collection, rendered_collection, context, options, block)
+      def capture_collection(partial, collection, rendered_collection, context, options, block, collection_analysis: nil)
         captured_options = render_options_for_replay(options)
         metadata = collection_metadata(partial, collection)
         frame_id = "site:#{metadata.fetch(:site_id)}"
@@ -70,13 +70,20 @@ module Upkeep
           controller: controller_for_view(context),
           options: captured_options,
           metadata: metadata,
-          block: block
+          block: block,
+          collection_analysis: collection_analysis
         )
 
         Runtime::Observation.capture_frame(frame_id, metadata.merge(recipe: recipe)) do
-          record_collection_dependency(collection)
+          record_collection_dependency(collection, collection_analysis: collection_analysis)
           yield
         end
+      end
+
+      def collection_analysis(collection)
+        return unless active_record_relation?(collection)
+
+        ActiveRecordQuery.analyze(collection)
       end
 
       def collection_capture_pair(collection)
@@ -162,7 +169,7 @@ module Upkeep
         end
       end
 
-      def collection_recipe(frame_id:, partial:, collection:, rendered_collection:, context:, controller:, options:, metadata:, block:)
+      def collection_recipe(frame_id:, partial:, collection:, rendered_collection:, context:, controller:, options:, metadata:, block:, collection_analysis: nil)
         ::Upkeep::Replay::Recipe.new(
           kind: :render_site,
           frame_id: frame_id,
@@ -174,7 +181,7 @@ module Upkeep
             type: "collection",
             controller_class: controller&.class&.name,
             partial: partial == :derived ? "derived" : partial.to_s,
-            collection: snapshot_value(collection, rendered_collection: rendered_collection),
+            collection: snapshot_value(collection, rendered_collection: rendered_collection, relation_analysis: collection_analysis),
             options: snapshot_render_options(options)
           }.compact
         ) do
@@ -258,10 +265,10 @@ module Upkeep
         body.close if body.respond_to?(:close)
       end
 
-      def record_collection_dependency(collection)
+      def record_collection_dependency(collection, collection_analysis: nil)
         return unless active_record_relation?(collection)
 
-        analysis = ActiveRecordQuery.analyze(collection)
+        analysis = collection_analysis || ActiveRecordQuery.analyze(collection)
         dependency = Dependencies::ActiveRecordCollection.new(
           primary_table: analysis.primary_table,
           table_columns: analysis.table_columns,
@@ -331,11 +338,11 @@ module Upkeep
         end
       end
 
-      def snapshot_value(value, rendered_collection: nil)
+      def snapshot_value(value, rendered_collection: nil, relation_analysis: nil)
         if value.is_a?(ActiveRecord::Base)
           { type: "active_record", model: value.class.name, id: value.id }
         elsif active_record_relation?(value)
-          analysis = ActiveRecordQuery.analyze(value)
+          analysis = relation_analysis || ActiveRecordQuery.analyze(value)
           snapshot = {
             type: "active_record_relation",
             model: value.klass.name,
@@ -419,15 +426,17 @@ module Upkeep
 
       module CollectionRendererHook
         def render_collection_with_partial(collection, partial, context, block)
+          collection_analysis = Upkeep::Rails::ActionViewCapture.collection_analysis(collection)
           source_collection, rendered_collection = Upkeep::Rails::ActionViewCapture.collection_capture_pair(collection)
-          Upkeep::Rails::ActionViewCapture.capture_collection(partial, source_collection, rendered_collection, context, @options, block) do
+          Upkeep::Rails::ActionViewCapture.capture_collection(partial, source_collection, rendered_collection, context, @options, block, collection_analysis: collection_analysis) do
             super(rendered_collection, partial, context, block)
           end
         end
 
         def render_collection_derive_partial(collection, context, block)
+          collection_analysis = Upkeep::Rails::ActionViewCapture.collection_analysis(collection)
           source_collection, rendered_collection = Upkeep::Rails::ActionViewCapture.collection_capture_pair(collection)
-          Upkeep::Rails::ActionViewCapture.capture_collection(:derived, source_collection, rendered_collection, context, @options, block) do
+          Upkeep::Rails::ActionViewCapture.capture_collection(:derived, source_collection, rendered_collection, context, @options, block, collection_analysis: collection_analysis) do
             super(rendered_collection, context, block)
           end
         end

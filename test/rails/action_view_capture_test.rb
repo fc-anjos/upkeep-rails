@@ -162,6 +162,28 @@ class ActionViewCaptureTest < Minitest::Test
     ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
   end
 
+  def test_opaque_collection_relation_raises_before_materialization
+    select_sql = []
+    subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |_name, _started, _finished, _id, payload|
+      sql = payload[:sql].to_s
+      select_sql << sql if sql.start_with?("SELECT") && sql.include?('"rails_capture_cards"')
+    end
+
+    relation = RailsCaptureCard
+      .joins("INNER JOIN hidden_cards ON hidden_cards.card_id = rails_capture_cards.id")
+      .where(status: "open")
+
+    error = assert_raises(Upkeep::ActiveRecordQuery::OpaqueRelationError) do
+      capture_render("boards/collection", cards: relation)
+    end
+
+    assert_includes error.message, "cannot make this Active Record relation reactive"
+    assert_includes error.message, "raw SQL join"
+    assert_empty select_sql
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
+  end
+
   def test_record_attribute_change_walks_dependency_to_fragment_and_replays_record
     card = create_card!("Plan")
 

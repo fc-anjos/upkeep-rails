@@ -4,6 +4,42 @@ require "active_record"
 
 module Upkeep
   module ActiveRecordQuery
+    class OpaqueRelationError < StandardError
+      attr_reader :model_name, :table_name, :sql, :reasons
+
+      def initialize(relation, reasons:)
+        @model_name = relation.klass.name
+        @table_name = relation.klass.table_name
+        @sql = relation.to_sql
+        @reasons = reasons
+
+        super(build_message)
+      rescue StandardError => error
+        super("Upkeep cannot prove this Active Record relation's table dependencies: #{error.message}")
+      end
+
+      private
+
+      def build_message
+        <<~MESSAGE
+          Upkeep cannot make this Active Record relation reactive because its table sources are opaque.
+
+          Relation:
+            #{model_name} (#{table_name})
+
+          SQL:
+            #{sql}
+
+          Why:
+          #{reasons.map { |reason| "            - #{reason}" }.join("\n")}
+
+          What to do:
+            - Rewrite raw SQL joins or FROM sources with structural Active Record/Arel joins.
+            - Render this boundary outside Upkeep reactivity when the query cannot expose its sources.
+        MESSAGE
+      end
+    end
+
     Result = Data.define(
       :primary_table,
       :table_columns,
@@ -12,11 +48,7 @@ module Upkeep
       :primary_key,
       :appendable
     ) do
-      def tables
-        return [] if coverage == :database
-
-        table_columns.keys.sort
-      end
+      def tables = table_columns.keys.sort
 
       def appendable?
         appendable
@@ -25,25 +57,28 @@ module Upkeep
 
     module_function
 
-    def analyze(relation)
-      collector = Collector.new(relation)
+    def analyze(relation, opaque_table_policy: :raise)
+      collector = Collector.new(relation, opaque_table_policy: opaque_table_policy)
       collector.analyze
     end
 
     class Collector
-      def initialize(relation)
+      def initialize(relation, opaque_table_policy:)
         @relation = relation
+        @opaque_table_policy = opaque_table_policy
         @primary_table = relation.klass.table_name
         @primary_key = relation.klass.primary_key
         @table_columns = Hash.new { |hash, table| hash[table] = [] }
         @table_aliases = {}
         @opaque_columns = false
         @opaque_tables = false
+        @opaque_table_reasons = []
       end
 
       def analyze
         table(@primary_table)
         collect_relation_shape
+        raise_opaque_relation! if @opaque_tables && @opaque_table_policy == :raise
 
         Result.new(
           primary_table: @primary_table,
@@ -69,13 +104,12 @@ module Upkeep
 
         walk(ast.orders)
         walk(ast.with) if ast.respond_to?(:with)
-      rescue StandardError
-        @opaque_tables = true
+      rescue StandardError => error
+        opaque_table!("relation AST could not be inspected (#{error.class}: #{error.message})")
       end
 
       def coverage
-        return :database if @opaque_tables
-        return :tables if @opaque_columns
+        return :tables if @opaque_tables || @opaque_columns
 
         :columns
       end
@@ -113,11 +147,11 @@ module Upkeep
         when Arel::Nodes::TableAlias
           table_alias(value)
         when Arel::Nodes::StringJoin
-          @opaque_tables = true
+          opaque_table!("raw SQL join")
         when Arel::Nodes::BoundSqlLiteral, Arel::Nodes::SqlLiteral
-          source ? @opaque_tables = true : @opaque_columns = true
+          source ? opaque_table!("raw SQL source") : @opaque_columns = true
         when String
-          source ? @opaque_tables = true : @opaque_columns = true
+          source ? opaque_table!("string SQL source") : @opaque_columns = true
         else
           walk_arel_node(value, source: source)
         end
@@ -133,7 +167,7 @@ module Upkeep
 
       def attribute(value)
         table_name = table_name_for(value.relation)
-        return @opaque_tables = true unless table_name
+        return opaque_table!("attribute references an unknown table source") unless table_name
         return if value.name.to_s == "*"
 
         column(table_name, value.name)
@@ -152,10 +186,19 @@ module Upkeep
 
       def table_alias(value)
         table_name = table_name_for(value.left)
-        return @opaque_tables = true unless table_name
+        return opaque_table!("table alias references an unknown table source") unless table_name
 
         @table_aliases[value.right.to_s] = table_name
         table(table_name)
+      end
+
+      def opaque_table!(reason)
+        @opaque_tables = true
+        @opaque_table_reasons << reason
+      end
+
+      def raise_opaque_relation!
+        raise OpaqueRelationError.new(@relation, reasons: @opaque_table_reasons.uniq)
       end
 
       def table(name)
