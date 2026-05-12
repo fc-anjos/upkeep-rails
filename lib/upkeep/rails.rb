@@ -119,7 +119,11 @@ module Upkeep
       end
 
       def subscription_store_stale?(store)
-        store.is_a?(Subscriptions::ActiveRecordStore) && !Subscriptions::ActiveRecordStore.available?
+        if store.is_a?(Subscriptions::ActiveRecordStore)
+          !Subscriptions::ActiveRecordStore.available?
+        else
+          store.subscriptions.empty? && Subscriptions::ActiveRecordStore.available?
+        end
       end
     end
   end

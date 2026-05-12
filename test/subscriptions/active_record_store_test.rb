@@ -89,7 +89,7 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     refute_includes plan.targets.first.render, "Archived"
   end
 
-  def test_register_persists_subscription_snapshot_before_reverse_index_drain
+  def test_register_serves_active_subscription_before_persistence_drain
     create_subscription_card!("Plan")
 
     _html, recorder = capture_controller_request("/cards?status=open")
@@ -97,8 +97,17 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     subscription = store.register(subscriber_id: "subscriber-a", recorder: recorder, metadata: { stream_name: "stream-a" })
     reloaded_store = active_record_store
 
-    assert_equal "stream-a", reloaded_store.fetch(subscription.id).metadata.fetch(:stream_name)
+    assert_equal "stream-a", store.fetch(subscription.id).metadata.fetch(:stream_name)
+    assert_equal 0, Upkeep::Subscriptions::ActiveRecordStore::SubscriptionRecord.count
     assert_equal 0, Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.count
+    assert_equal 1, store.summary.fetch(:pending_persistence)
+    assert_raises(ActiveRecord::RecordNotFound) { reloaded_store.fetch(subscription.id) }
+
+    store.drain_persistence!
+
+    assert_equal "stream-a", reloaded_store.fetch(subscription.id).metadata.fetch(:stream_name)
+    assert_operator Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.count, :>, 0
+    assert_equal 0, store.summary.fetch(:pending_persistence)
   end
 
   def test_active_registry_covers_planning_when_it_matches_persistent_subscription_count
@@ -120,6 +129,24 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     assert_equal ["subscriber-a"], plan.targets.map(&:subscriber_id)
     assert_equal ["fragment"], plan.targets.map { |target| target.target.kind }
     assert_includes plan.targets.first.render, "Plan v2"
+  end
+
+  def test_runtime_promotes_empty_memory_store_when_active_record_tables_are_available
+    Upkeep::Rails.instance_variable_set(:@subscriptions, Upkeep::Subscriptions::Store.new)
+
+    assert_instance_of Upkeep::Subscriptions::ActiveRecordStore, Upkeep::Rails.subscriptions
+  ensure
+    Upkeep::Rails.reset_runtime!
+  end
+
+  def test_runtime_keeps_active_memory_store_when_active_record_tables_are_available
+    store = Upkeep::Subscriptions::Store.new
+    store.register(subscriber_id: "subscriber-a", recorder: Upkeep::Runtime::Recorder.new)
+    Upkeep::Rails.instance_variable_set(:@subscriptions, store)
+
+    assert_same store, Upkeep::Rails.subscriptions
+  ensure
+    Upkeep::Rails.reset_runtime!
   end
 
   private

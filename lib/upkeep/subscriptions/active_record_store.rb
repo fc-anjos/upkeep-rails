@@ -113,6 +113,10 @@ module Upkeep
           drain
         end
 
+        def size
+          @mutex.synchronize { @subscriptions.size }
+        end
+
         private
 
         attr_reader :persist
@@ -215,7 +219,7 @@ module Upkeep
         @index_record = index_record
         @index_builder = ReverseIndex.new
         @active_registry = ActiveRegistry.new
-        @persistence_queue = PersistenceQueue.new { |subscription| persist_subscription_index(subscription) }
+        @persistence_queue = PersistenceQueue.new { |subscription| persist_subscription(subscription) }
         @reverse_index = PersistentReverseIndex.new(
           reverse_index: @index_builder,
           index_record: index_record,
@@ -243,7 +247,6 @@ module Upkeep
           metadata
         )
 
-        persist_subscription_record(subscription)
         active_registry.register(subscription)
         persistence_queue.enqueue(subscription)
         subscription
@@ -285,6 +288,7 @@ module Upkeep
         {
           subscriptions: subscription_record.count,
           active_subscriptions: active_registry.count,
+          pending_persistence: persistence_queue.size,
           reverse_index: reverse_index.summary
         }
       end
@@ -293,21 +297,22 @@ module Upkeep
 
       attr_reader :subscription_record, :index_record, :index_builder, :active_registry, :persistence_queue
 
-      def persist_subscription_record(subscription)
+      def persist_subscription(subscription)
         ActiveRecord::Base.connection_pool.with_connection do
-          subscription_record.create!(
-            id: subscription.id,
-            subscriber_id: subscription.subscriber_id,
-            metadata: subscription.metadata,
-            recorder_snapshot: dump(subscription.to_h)
-          )
+          ActiveRecord::Base.transaction do
+            persist_subscription_record(subscription)
+            index_subscription(subscription)
+          end
         end
       end
 
-      def persist_subscription_index(subscription)
-        ActiveRecord::Base.connection_pool.with_connection do
-          index_subscription(subscription)
-        end
+      def persist_subscription_record(subscription)
+        subscription_record.create!(
+          id: subscription.id,
+          subscriber_id: subscription.subscriber_id,
+          metadata: subscription.metadata,
+          recorder_snapshot: dump(subscription.to_h)
+        )
       end
 
       def index_subscription(subscription)
