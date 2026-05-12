@@ -97,13 +97,30 @@ module Upkeep
       end
 
       def build(plan)
-        streams = plan.targets.map { |planned_target| stream_for(planned_target) }
+        build_many([plan])
+      end
+
+      def build_many(plans)
+        streams = plans.flat_map { |plan| stream_targets(plan.targets) }
         Batch.new(merge_streams(streams))
       end
 
       private
 
-      def stream_for(planned_target)
+      def stream_targets(planned_targets)
+        shared_targets, direct_targets = planned_targets.partition(&:sharing_signature)
+
+        direct_targets.map { |planned_target| stream_for(planned_target) } +
+          shared_targets.group_by { |planned_target| shared_render_key(planned_target) }.map do |_key, targets|
+            stream_for(
+              targets.first,
+              subscriber_ids: targets.map(&:subscriber_id),
+              matched_dependency_keys: targets.flat_map(&:matched_dependency_keys)
+            )
+          end
+      end
+
+      def stream_for(planned_target, subscriber_ids: [planned_target.subscriber_id], matched_dependency_keys: planned_target.matched_dependency_keys)
         html = planned_target.render
 
         Stream.new(
@@ -114,9 +131,19 @@ module Upkeep
           Targeting::Extraction.digest_html(html),
           planned_target.identity_signature,
           shared_stream_name_for(planned_target),
-          [planned_target.subscriber_id],
-          planned_target.matched_dependency_keys
+          subscriber_ids.uniq.sort_by(&:to_s),
+          matched_dependency_keys.uniq
         )
+      end
+
+      def shared_render_key(planned_target)
+        [
+          planned_target.action,
+          planned_target.target.kind,
+          planned_target.target.id,
+          planned_target.identity_signature,
+          planned_target.sharing_signature
+        ]
       end
 
       def merge_streams(streams)

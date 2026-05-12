@@ -3,13 +3,16 @@
 module Upkeep
   module Delivery
     class AsyncDispatcher
-      def initialize(&deliver)
+      def initialize(batch_window: 0.01, &deliver)
         @deliver = deliver
-        @queue = Queue.new
+        @batch_window = batch_window
+        @jobs = []
         @mutex = Mutex.new
+        @available = ConditionVariable.new
         @idle = ConditionVariable.new
         @pending_jobs = 0
         @last_error = nil
+        @stopping = false
         @worker = Thread.new { work_loop }
       end
 
@@ -17,8 +20,13 @@ module Upkeep
         changes = Array(changes)
         return Transport::DispatchReport.new([]) if changes.empty?
 
-        @mutex.synchronize { @pending_jobs += 1 }
-        @queue << changes
+        @mutex.synchronize do
+          raise @last_error if @last_error
+
+          @pending_jobs += 1
+          @jobs << changes
+          @available.signal
+        end
 
         Transport::DispatchReport.new([])
       end
@@ -31,33 +39,61 @@ module Upkeep
       end
 
       def shutdown
-        drain
-        @queue << :stop
-        @worker.join
+        error = nil
+        begin
+          drain
+        rescue StandardError => shutdown_error
+          error = shutdown_error
+        ensure
+          @mutex.synchronize do
+            @stopping = true
+            @available.signal
+          end
+          @worker.join
+        end
+
+        raise error if error
       end
 
       private
 
-      attr_reader :deliver, :queue
+      attr_reader :deliver, :batch_window
 
       def work_loop
         loop do
-          item = queue.pop
-          break if item == :stop
+          batch = next_batch
+          break unless batch
 
           begin
-            deliver.call(item)
+            deliver.call(batch)
           rescue StandardError => error
             @mutex.synchronize { @last_error = error }
           ensure
-            complete_job
+            complete_jobs(batch.size)
           end
         end
       end
 
-      def complete_job
+      def next_batch
         @mutex.synchronize do
-          @pending_jobs -= 1
+          @available.wait(@mutex) while @jobs.empty? && !@stopping
+          return nil if @jobs.empty? && @stopping
+
+          deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + batch_window
+          while !@stopping
+            remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+            break unless remaining.positive?
+
+            @available.wait(@mutex, remaining)
+          end
+
+          @jobs.shift(@jobs.length)
+        end
+      end
+
+      def complete_jobs(count)
+        @mutex.synchronize do
+          @pending_jobs -= count
           @idle.broadcast if @pending_jobs.zero?
         end
       end

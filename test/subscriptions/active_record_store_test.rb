@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "fileutils"
+require "tmpdir"
 
 class PersistentSubscriptionCard < ActiveRecord::Base
   self.table_name = "persistent_subscription_cards"
@@ -20,7 +22,10 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     Upkeep::Rails::Install.call
     PersistentSubscriptionCardsController.view_paths = [resolver]
 
-    ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: ":memory:")
+    @database_dir = Dir.mktmpdir("upkeep-active-record-store")
+    @stores = []
+
+    ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: File.join(@database_dir, "test.sqlite3"))
     ActiveRecord::Base.logger = nil
     ActiveRecord::Schema.verbose = false
 
@@ -54,15 +59,21 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     Upkeep::Runtime::ChangeLog.reset
   end
 
+  def teardown
+    @stores&.each(&:shutdown)
+    FileUtils.rm_rf(@database_dir) if @database_dir
+  end
+
   def test_fetches_rehydrated_subscription_and_plans_through_persisted_reverse_index
     card = PersistentSubscriptionCard.create!(title: "Plan", status: "open")
     PersistentSubscriptionCard.create!(title: "Archived", status: "closed")
 
     _html, recorder = capture_controller_request("/cards?status=open")
-    store = Upkeep::Subscriptions::ActiveRecordStore.new
+    store = active_record_store
     subscription = store.register(subscriber_id: "subscriber-a", recorder: recorder, metadata: { stream_name: "stream-a" })
+    store.drain_persistence!
 
-    reloaded_store = Upkeep::Subscriptions::ActiveRecordStore.new
+    reloaded_store = active_record_store
 
     assert_equal 1, reloaded_store.summary.fetch(:subscriptions)
     assert_equal "stream-a", reloaded_store.fetch(subscription.id).metadata.fetch(:stream_name)
@@ -78,12 +89,25 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     refute_includes plan.targets.first.render, "Archived"
   end
 
+  def test_register_persists_subscription_snapshot_before_reverse_index_drain
+    create_subscription_card!("Plan")
+
+    _html, recorder = capture_controller_request("/cards?status=open")
+    store = active_record_store
+    subscription = store.register(subscriber_id: "subscriber-a", recorder: recorder, metadata: { stream_name: "stream-a" })
+    reloaded_store = active_record_store
+
+    assert_equal "stream-a", reloaded_store.fetch(subscription.id).metadata.fetch(:stream_name)
+    assert_equal 0, Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.count
+  end
+
   def test_active_registry_covers_planning_when_it_matches_persistent_subscription_count
     card = PersistentSubscriptionCard.create!(title: "Plan", status: "open")
 
     _html, recorder = capture_controller_request("/cards?status=open")
-    store = Upkeep::Subscriptions::ActiveRecordStore.new
+    store = active_record_store
     store.register(subscriber_id: "subscriber-a", recorder: recorder, metadata: { stream_name: "stream-a" })
+    store.drain_persistence!
 
     Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.delete_all
 
@@ -99,6 +123,16 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
   end
 
   private
+
+  def active_record_store
+    store = Upkeep::Subscriptions::ActiveRecordStore.new
+    @stores << store
+    store
+  end
+
+  def create_subscription_card!(title, status: "open")
+    PersistentSubscriptionCard.create!(title: title, status: status)
+  end
 
   def capture_controller_request(path)
     result, recorder = Upkeep::Runtime::Observation.capture_request do
