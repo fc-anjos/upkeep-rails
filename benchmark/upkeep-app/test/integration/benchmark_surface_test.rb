@@ -5,6 +5,7 @@ require "action_cable/test_helper"
 
 class BenchmarkSurfaceTest < ActionDispatch::IntegrationTest
   include ActionCable::TestHelper
+  include Upkeep::Rails::Testing
 
   PASSWORD = "secret123"
 
@@ -73,12 +74,9 @@ class BenchmarkSurfaceTest < ActionDispatch::IntegrationTest
     get board_path(@board)
     assert_response :success
     assert_instance_of Upkeep::Subscriptions::ActiveRecordStore, Upkeep::Rails.subscriptions
-    subscription = Upkeep::Rails.subscriptions.subscriptions.first
-    assert subscription
-    assert_select "script[data-upkeep-subscription]"
+    assert_upkeep_subscription_registered
 
-    stream_names = ([subscription.metadata.fetch(:stream_name)] + subscription.metadata.fetch(:shared_stream_names, [])).uniq
-    broadcasts = capture_broadcasts_for(stream_names) do
+    broadcasts = capture_upkeep_broadcasts do
       patch board_card_path(@board, @card), params: { card: { title: "Streamed graph capture" } }
       assert_response :ok
       Upkeep::Rails.drain_delivery!
@@ -100,13 +98,4 @@ class BenchmarkSurfaceTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
-  def capture_broadcasts_for(stream_names, &mutation)
-    captures = {}
-    nested = stream_names.reverse_each.reduce(mutation) do |inner, stream_name|
-      proc { captures[stream_name] = capture_broadcasts(stream_name, &inner) }
-    end
-
-    nested.call
-    captures.values.flatten
-  end
 end

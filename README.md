@@ -1,81 +1,124 @@
 # Upkeep Rails
 
-Rails runtime for Upkeep. The repo currently contains the proof runner that
-calibrates the Rails architecture around three structural inputs:
+Rails-native runtime for implicit reactive rendering.
 
-- Herb as the template-structure compiler.
-- Active Record runtime observation as the data-dependency proof surface.
-- Request, auth, and current-context reads as subscriber-specific delivery
-  inputs.
+Upkeep Rails observes ordinary Rails requests, Action View renders, Active
+Record reads and writes, and request identity surfaces. A successful HTML GET
+records a render graph and registers a subscription. Later Active Record commits
+select affected graph frames and deliver Turbo Stream payloads through
+ActionCable.
 
-The runner measures Herb against the maintained benchmark app templates in
-`rails/upkeep/benchmark/upkeep-app/` and `rails/upkeep/benchmark/turbo-app/`,
-then runs Active Record hook probes and in-memory end-to-end proofs.
+The design goal is Rails-shaped DX: render normal Rails views, mutate normal
+Active Record models, and let the runtime derive dependency and identity inputs
+from the framework surfaces it observes. There is no query catalog, no
+`watch`/`track` DSL, and no host-maintained list of identity dimensions.
 
-## Layout
+## Current Integration Contract
 
-The runtime code lives under `lib/upkeep/`:
+The Rails package is being driven by the in-repo benchmark apps toward a
+versioned release. The app-facing contract is intentionally small:
 
-- `herb_loader.rb` loads the adjacent Herb checkout from `rails/view-stack/herb/`.
-- `probes/herb_surface.rb` measures Herb parse, render-node, helper-lowering,
-  fragment-root, and render-site coverage against benchmark templates.
-- `probes/active_record_surface.rb` checks Rails 8.1 Active Record read and write
-  observation hooks.
-- `dependencies.rb` defines open dependency objects produced by observers.
-- `dag.rb` stores generic nodes, edges, and dependency attachments.
-- `replay.rb` stores per-target render recipes for page, render-site, and
-  fragment replay.
-- `runtime.rb` captures frame-scoped reads, request identity reads, and committed
-  write facts.
-- `domain.rb` defines the in-memory Rails domain used by the proofs.
-- `templates.rb` defines page, partial, render-site, helper-hidden, and identity
-  templates.
-- `rendering.rb` renders tagged frames through ERB while recording runtime reads.
-- `targeting.rb` selects update targets and applies extracted DOM patches.
-- `proofs/end_to_end.rb` covers easy fragment updates, presenter/helper reads,
-  collection membership, inline pages, helper-hidden collections, and plain
-  preloaded data.
-- `proofs/identity_safety.rb` covers subscriber-specific delivery where users
-  have different visibility over the same card.
-- `proofs/auth_surfaces.rb` covers Warden-style user reads, CurrentAttributes,
-  session, cookie, and request dependencies.
+- `gem "upkeep-rails", path: "...", require: "upkeep"`
+- `bin/rails generate upkeep:install`
+- `config.upkeep.enabled`
+- the `Upkeep::Rails::Cable::Channel` ActionCable channel
+- the `upkeep_subscriptions` and `upkeep_subscription_index_entries` tables
+- the generated browser subscription bootstrap
+- `Upkeep::Rails::Testing` for integration tests
+- ordinary Rails render, request, identity, and Active Record behavior
+
+Everything under `Upkeep::Runtime`, `Upkeep::Dependencies`,
+`Upkeep::Invalidation`, `Upkeep::Subscriptions`, `Upkeep::Delivery`,
+`Upkeep::DAG`, probes, proofs, and benchmark harness code is internal.
+
+## Start Here
+
+
+## How It Feels
+
+Controllers keep loading state the Rails way:
+
+```ruby
+class BoardsController < ApplicationController
+  def show
+    @board = Board.find(params[:id])
+    @cards = @board.cards.order(:position)
+  end
+
+  def update_card
+    @board.cards.find(params[:card_id]).update!(card_params)
+    head :ok
+  end
+end
+```
+
+Views keep rendering normal templates and partials:
+
+```erb
+<section id="cards">
+  <%= render partial: "cards/card", collection: @cards, as: :card %>
+</section>
+```
+
+When the page renders, Upkeep attaches frame and dependency nodes to the current
+request graph. When a card update commits, Upkeep walks from changed Active
+Record dependencies to affected frames and renders the narrowest eligible
+target for each subscriber.
+
+## What Upkeep Observes
+
+Render structure:
+
+- Rails-resolved page templates.
+- Partial and object partial renders.
+- Collection render sites and their child fragments.
+- Single-root fragment and render-site DOM targets.
+
+Data dependencies:
+
+- Active Record attribute reads.
+- Active Record relation collection renders.
+- Active Record callback writes and bulk `update_all` / `delete_all` writes.
+- Relation table/column coverage derived from Arel where Rails exposes a
+  structural query shape.
+
+Identity dependencies:
+
+- `ActiveSupport::CurrentAttributes` reads.
+- Warden and Devise user reads through Warden.
+- Session and cookie reads.
+- Request values such as host, path, params, user agent, and remote IP.
+- ActionCable connection identifiers.
+
+## Install
+
+Run the installer in a Rails app:
+
+```sh
+bin/rails generate upkeep:install
+bin/rails db:migrate
+```
+
+The generator creates subscription tables, writes `config/initializers/upkeep.rb`,
+mounts ActionCable when needed, pins Turbo and ActionCable for importmap apps,
+and imports the browser bootstrap from `app/javascript/application.js`.
+
+## Delivery Boundary
+
+The runtime injects a `<script data-upkeep-subscription>` marker into successful
+HTML GET responses and registers an `Upkeep::Rails::Cable::Channel`
+subscription record. The generated browser bootstrap reads those markers,
+subscribes over ActionCable, and appends received Turbo Stream payloads to the
+document.
 
 ## Run
 
+Use the project Ruby:
+
 ```sh
-MISE_TRUSTED_CONFIG_PATHS=/Volumes/FelipeSSD/professional/upkeep mise x ruby@3.4.7 -- ruby bin/run
+mise exec -- ruby -S rake test
+mise exec -- ruby bin/test
 ```
 
-The runner writes JSON reports to:
-
-- `results/herb_surface.json`
-- `results/active_record_surface.json`
-- `results/end_to_end_proof.json`
-- `results/identity_safety_proof.json`
-- `results/auth_surfaces_proof.json`
-
-## Current Question
-
-Can Herb provide reliable compile-time frame plans for Rails templates while
-Active Record and request identity observation remain authoritative for delivery
-correctness?
-
-The runner checks:
-
-- strict Herb parse success for benchmark HTML ERB templates;
-- render call extraction through `render_nodes: true`;
-- helper-lowered elements through `action_view_helpers: true`;
-- single-root partial eligibility for fragment boundary insertion;
-- frontend tag plans for partial roots and render sites;
-- Active Record relation execution, attribute reads, association loads,
-  callback writes, and bulk writes;
-- end-to-end DOM patch correctness through graph-driven narrow fragment,
-  render-site, and page strategies;
-- isolated target replay for page, render-site, and fragment frames;
-- subscriber-specific patch extraction where two users share the same DOM target
-  but require different payloads;
-- ambient identity extraction from Warden-style user lookup, CurrentAttributes,
-  session, cookies, and request reads.
-
-Non-HTML ERB templates are outside this runner because Herb is being measured as
-the HTML-aware template planner.
+`bin/test` runs the gem tests, both maintained benchmark app test suites, and
+the proof runner. The proof runner writes JSON reports to `results/`.

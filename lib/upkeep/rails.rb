@@ -7,6 +7,7 @@ require_relative "rails/cable"
 require_relative "rails/client_subscription"
 require_relative "rails/controller_runtime"
 require_relative "rails/install"
+require_relative "rails/testing"
 require_relative "rails/railtie" if defined?(::Rails::Railtie)
 
 module Upkeep
