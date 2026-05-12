@@ -52,6 +52,19 @@ class BenchmarkLayoutTest < Minitest::Test
     assert_equal "/bench/metrics", collector.send(:metrics_path_for, "upkeep", "final")
   end
 
+  def test_gemspec_packages_public_runtime_and_installer
+    files = Gem::Specification.load(project_root.join("upkeep-rails.gemspec").to_s).files
+
+    assert_includes files, "lib/upkeep.rb"
+    assert_includes files, "lib/upkeep/rails/testing.rb"
+    assert_includes files, "lib/generators/upkeep/install/install_generator.rb"
+    assert_includes files, "lib/generators/upkeep/install/templates/subscription.js"
+    refute_includes files, "lib/upkeep/proof_support.rb"
+    refute_includes files, "lib/upkeep/proofs/end_to_end.rb"
+    refute_includes files, "lib/upkeep/probes/herb_surface.rb"
+    refute_includes files, "lib/upkeep/domain.rb"
+  end
+
   def test_memory_ceiling_metrics_poll_can_request_memory_snapshots
     collector = Upkeep::Benchmark::Runner::MetricsCollector.new(memory_ceiling_config)
 
