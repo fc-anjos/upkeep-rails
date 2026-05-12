@@ -4,6 +4,7 @@ require "cgi"
 require "digest"
 require "erb"
 require "nokogiri"
+require_relative "active_record_query"
 
 module Upkeep
   module Rendering
@@ -278,12 +279,12 @@ module Upkeep
       def record_collection_dependency(collection)
         return unless collection.respond_to?(:klass) && collection.respond_to?(:to_sql)
 
-        sql = collection.to_sql
-        columns = (Runtime::Observation.columns_from_sql(sql) + [collection.klass.primary_key]).compact.uniq.sort
+        analysis = ActiveRecordQuery.analyze(collection)
         dependency = Dependencies::ActiveRecordCollection.new(
-          table: collection.klass.table_name,
-          sql: sql,
-          columns: columns
+          primary_table: analysis.primary_table,
+          table_columns: analysis.table_columns,
+          coverage: analysis.coverage,
+          sql: analysis.sql
         )
 
         Runtime::Observation.record_dependency(dependency)

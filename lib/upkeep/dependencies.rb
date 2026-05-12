@@ -77,30 +77,65 @@ module Upkeep
     end
 
     class ActiveRecordCollection < Base
-      def initialize(table:, columns:, sql:)
+      def initialize(primary_table:, table_columns:, coverage:, sql:)
+        table_columns = normalize_table_columns(table_columns)
+        coverage = coverage.to_sym
+
         super(
           source: :active_record_collection,
           key: {
-            table: table,
+            table: primary_table,
             predicate_digest: Digest::SHA256.hexdigest(sql)[0, 16]
           },
           metadata: {
-            columns: columns.sort,
+            primary_table: primary_table,
+            table_columns: table_columns,
+            coverage: coverage.to_s,
             sql: sql
           }
         )
       end
 
       def matches_change?(change)
-        return false unless key.fetch(:table) == change.fetch(:table)
+        return true if coverage == :database
+        return false unless table_columns.key?(change.fetch(:table))
 
-        metadata.fetch(:columns).intersect?(change.fetch(:changed_attributes, [])) ||
-          change.fetch(:type).to_s.include?("create") ||
-          change.fetch(:type).to_s.include?("delete")
+        return true if change.fetch(:type).to_s.include?("create")
+        return true if change.fetch(:type).to_s.include?("delete")
+        return true if coverage == :tables
+
+        table_columns.fetch(change.fetch(:table)).intersect?(change.fetch(:changed_attributes, []))
       end
 
       def precision
-        :collection_predicate
+        case coverage
+        when :database
+          :collection_database
+        when :tables
+          :collection_table
+        else
+          :collection_predicate
+        end
+      end
+
+      def collection_lookup_tables
+        coverage == :database ? nil : table_columns.keys.sort
+      end
+
+      private
+
+      def coverage
+        metadata.fetch(:coverage).to_sym
+      end
+
+      def table_columns
+        metadata.fetch(:table_columns)
+      end
+
+      def normalize_table_columns(value)
+        Dependencies.symbolize_keys(value).to_h do |table, columns|
+          [table.to_s, Array(columns).map(&:to_s).uniq.sort]
+        end
       end
     end
 
@@ -237,8 +272,9 @@ module Upkeep
         )
       when :active_record_collection
         ActiveRecordCollection.new(
-          table: key.fetch(:table),
-          columns: metadata.fetch(:columns),
+          primary_table: metadata.fetch(:primary_table, key.fetch(:table)),
+          table_columns: metadata.fetch(:table_columns),
+          coverage: metadata.fetch(:coverage),
           sql: metadata.fetch(:sql)
         )
       else
