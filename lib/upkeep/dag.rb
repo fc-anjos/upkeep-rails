@@ -11,7 +11,9 @@ module Upkeep
       def initialize
         @nodes = {}
         @edges = []
+        @edge_keys = {}
         @dependencies_by_node = Hash.new { |hash, key| hash[key] = [] }
+        @dependency_cache_keys_by_node = Hash.new { |hash, key| hash[key] = {} }
       end
 
       def add_node(id, kind:, payload: {})
@@ -19,16 +21,23 @@ module Upkeep
       end
 
       def add_edge(from, to, reason:)
-        edge = Edge.new(from, to, reason)
-        edges << edge unless edges.include?(edge)
+        key = edge_key(from, to, reason)
+        return if @edge_keys[key]
+
+        @edge_keys[key] = true
+        edges << Edge.new(from, to, reason)
       end
 
       def add_dependency(owner_id, dependency)
+        dependency_cache_key = dependency.cache_key
         add_node(owner_id, kind: :unknown) unless nodes.key?(owner_id)
-        add_node(dependency.cache_key, kind: :dependency, payload: dependency)
-        add_edge(owner_id, dependency.cache_key, reason: :depends_on)
-        dependencies = @dependencies_by_node[owner_id]
-        dependencies << dependency unless dependencies.any? { |existing| existing.cache_key == dependency.cache_key }
+        add_node(dependency_cache_key, kind: :dependency, payload: dependency)
+        add_edge(owner_id, dependency_cache_key, reason: :depends_on)
+        dependency_cache_keys = @dependency_cache_keys_by_node[owner_id]
+        return if dependency_cache_keys.key?(dependency_cache_key)
+
+        dependency_cache_keys[dependency_cache_key] = true
+        @dependencies_by_node[owner_id] << dependency
       end
 
       def dependencies_for(node_id)
@@ -157,10 +166,10 @@ module Upkeep
 
         snapshot.fetch(:edges).each do |edge_snapshot|
           edge_snapshot = symbolize_keys(edge_snapshot)
-          graph.edges << Edge.new(
+          graph.add_edge(
             edge_snapshot.fetch(:from),
             edge_snapshot.fetch(:to),
-            edge_snapshot.fetch(:reason).to_sym
+            reason: edge_snapshot.fetch(:reason).to_sym
           )
         end
 
@@ -197,13 +206,22 @@ module Upkeep
 
       def rebuild_dependency_index
         @dependencies_by_node = Hash.new { |hash, key| hash[key] = [] }
+        @dependency_cache_keys_by_node = Hash.new { |hash, key| hash[key] = {} }
 
         edges.each do |edge|
           next unless edge.reason == :depends_on
 
           dependency = nodes.fetch(edge.to).payload
+          dependency_cache_keys = @dependency_cache_keys_by_node[edge.from]
+          next if dependency_cache_keys.key?(dependency.cache_key)
+
+          dependency_cache_keys[dependency.cache_key] = true
           @dependencies_by_node[edge.from] << dependency
         end
+      end
+
+      def edge_key(from, to, reason)
+        [from, to, reason]
       end
 
       class << self
