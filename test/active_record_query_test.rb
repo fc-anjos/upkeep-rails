@@ -99,21 +99,26 @@ class ActiveRecordQueryTest < Minitest::Test
     assert dependency.matches_change?(change(table: "query_analysis_people", attributes: ["manager_id"]))
   end
 
-  def test_raw_join_uses_database_coverage
-    analysis = analyze(
-      QueryAnalysisCard
-        .joins("INNER JOIN query_analysis_authors ON query_analysis_authors.id = query_analysis_cards.author_id")
-        .where("query_analysis_authors.name = ?", "Ada")
-    )
-    dependency = dependency_for(analysis)
-    recorder = Upkeep::Runtime::Recorder.new
-    recorder.with_frame("frame:raw-join", kind: "render_site") { recorder.record_dependency(dependency) }
-    store = Upkeep::Subscriptions::Store.new
-    store.register(subscriber_id: "subscriber", recorder: recorder)
+  def test_raw_join_raises_opaque_relation_error
+    relation = QueryAnalysisCard
+      .joins("INNER JOIN query_analysis_authors ON query_analysis_authors.id = query_analysis_cards.author_id")
+      .where("query_analysis_authors.name = ?", "Ada")
 
-    assert_equal :database, analysis.coverage
-    assert_nil dependency.collection_lookup_tables
-    assert_equal 1, store.reverse_index.entries_for([change(table: "query_analysis_comments", attributes: ["body"])]).size
+    error = assert_raises(Upkeep::ActiveRecordQuery::OpaqueRelationError) { analyze(relation) }
+
+    assert_includes error.message, "cannot make this Active Record relation reactive"
+    assert_includes error.message, "raw SQL join"
+    assert_includes error.message, "Rewrite raw SQL joins"
+  end
+
+  def test_write_observation_can_describe_opaque_relation_against_the_model_table
+    analysis = analyze(
+      QueryAnalysisCard.joins("INNER JOIN query_analysis_authors ON query_analysis_authors.id = query_analysis_cards.author_id"),
+      opaque_table_policy: :allow_table
+    )
+
+    assert_equal :tables, analysis.coverage
+    assert_equal ["query_analysis_cards"], analysis.tables
   end
 
   def test_appendability_comes_from_relation_shape
@@ -170,8 +175,8 @@ class ActiveRecordQueryTest < Minitest::Test
 
   private
 
-  def analyze(relation)
-    Upkeep::ActiveRecordQuery.analyze(relation)
+  def analyze(relation, **options)
+    Upkeep::ActiveRecordQuery.analyze(relation, **options)
   end
 
   def dependency_for(analysis)

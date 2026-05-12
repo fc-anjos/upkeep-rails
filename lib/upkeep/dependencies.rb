@@ -97,7 +97,6 @@ module Upkeep
       end
 
       def matches_change?(change)
-        return true if coverage == :database
         return false unless table_columns.key?(change.fetch(:table))
 
         return true if change.fetch(:type).to_s.include?("create")
@@ -109,8 +108,6 @@ module Upkeep
 
       def precision
         case coverage
-        when :database
-          :collection_database
         when :tables
           :collection_table
         else
@@ -119,13 +116,15 @@ module Upkeep
       end
 
       def collection_lookup_tables
-        coverage == :database ? nil : table_columns.keys.sort
+        table_columns.keys.sort
       end
 
       private
 
       def coverage
-        metadata.fetch(:coverage).to_sym
+        metadata.fetch(:coverage).to_sym.tap do |value|
+          raise ArgumentError, "unsupported Active Record collection coverage: #{value}" unless %i[columns tables].include?(value)
+        end
       end
 
       def table_columns
