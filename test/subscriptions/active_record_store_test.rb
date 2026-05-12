@@ -71,7 +71,6 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     _html, recorder = capture_controller_request("/cards?status=open")
     store = active_record_store
     subscription = store.register(subscriber_id: "subscriber-a", recorder: recorder, metadata: { stream_name: "stream-a" })
-    store.drain_persistence!
 
     reloaded_store = active_record_store
 
@@ -89,7 +88,7 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     refute_includes plan.targets.first.render, "Archived"
   end
 
-  def test_register_serves_active_subscription_before_persistence_drain
+  def test_register_persists_subscription_before_returning
     create_subscription_card!("Plan")
 
     _html, recorder = capture_controller_request("/cards?status=open")
@@ -98,16 +97,9 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     reloaded_store = active_record_store
 
     assert_equal "stream-a", store.fetch(subscription.id).metadata.fetch(:stream_name)
-    assert_equal 0, Upkeep::Subscriptions::ActiveRecordStore::SubscriptionRecord.count
-    assert_equal 0, Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.count
-    assert_equal 1, store.summary.fetch(:pending_persistence)
-    assert_raises(ActiveRecord::RecordNotFound) { reloaded_store.fetch(subscription.id) }
-
-    store.drain_persistence!
-
     assert_equal "stream-a", reloaded_store.fetch(subscription.id).metadata.fetch(:stream_name)
     assert_operator Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.count, :>, 0
-    assert_equal 0, store.summary.fetch(:pending_persistence)
+    assert_equal 1, Upkeep::Subscriptions::ActiveRecordStore::SubscriptionRecord.count
   end
 
   def test_active_registry_covers_planning_when_it_matches_persistent_subscription_count
@@ -116,7 +108,6 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     _html, recorder = capture_controller_request("/cards?status=open")
     store = active_record_store
     store.register(subscriber_id: "subscriber-a", recorder: recorder, metadata: { stream_name: "stream-a" })
-    store.drain_persistence!
 
     Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.delete_all
 
