@@ -145,6 +145,23 @@ class ActionViewCaptureTest < Minitest::Test
     assert_includes recorder.graph.summary.fetch(:dependency_sources), "active_record_collection"
   end
 
+  def test_collection_snapshot_uses_the_rendered_relation_records
+    create_card!("Plan")
+    create_card!("Build")
+
+    select_sql = []
+    subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |_name, _started, _finished, _id, payload|
+      sql = payload[:sql].to_s
+      select_sql << sql if sql.start_with?("SELECT") && sql.include?('"rails_capture_cards"')
+    end
+
+    capture_render("boards/collection", cards: RailsCaptureCard.order(:id))
+
+    assert_equal 1, select_sql.size
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
+  end
+
   def test_record_attribute_change_walks_dependency_to_fragment_and_replays_record
     card = create_card!("Plan")
 

@@ -56,7 +56,7 @@ module Upkeep
         Runtime::Observation.capture_frame(frame_id, metadata.merge(recipe: recipe)) { yield }
       end
 
-      def capture_collection(partial, collection, context, options, block)
+      def capture_collection(partial, collection, rendered_collection, context, options, block)
         captured_options = render_options_for_replay(options)
         metadata = collection_metadata(partial, collection)
         frame_id = "site:#{metadata.fetch(:site_id)}"
@@ -64,6 +64,7 @@ module Upkeep
           frame_id: frame_id,
           partial: partial,
           collection: collection,
+          rendered_collection: rendered_collection,
           context: context,
           controller: controller_for_view(context),
           options: captured_options,
@@ -74,6 +75,14 @@ module Upkeep
         Runtime::Observation.capture_frame(frame_id, metadata.merge(recipe: recipe)) do
           record_collection_dependency(collection)
           yield
+        end
+      end
+
+      def collection_capture_pair(collection)
+        if active_record_relation?(collection)
+          [collection, collection.to_a]
+        else
+          [collection, collection]
         end
       end
 
@@ -152,7 +161,7 @@ module Upkeep
         end
       end
 
-      def collection_recipe(frame_id:, partial:, collection:, context:, controller:, options:, metadata:, block:)
+      def collection_recipe(frame_id:, partial:, collection:, rendered_collection:, context:, controller:, options:, metadata:, block:)
         ::Upkeep::Replay::Recipe.new(
           kind: :render_site,
           frame_id: frame_id,
@@ -164,7 +173,7 @@ module Upkeep
             type: "collection",
             controller_class: controller&.class&.name,
             partial: partial == :derived ? "derived" : partial.to_s,
-            collection: snapshot_value(collection),
+            collection: snapshot_value(collection, rendered_collection: rendered_collection),
             options: snapshot_render_options(options)
           }.compact
         ) do
@@ -249,7 +258,7 @@ module Upkeep
       end
 
       def record_collection_dependency(collection)
-        return unless collection.respond_to?(:klass) && collection.respond_to?(:to_sql)
+        return unless active_record_relation?(collection)
 
         sql = collection.to_sql
         columns = (Runtime::Observation.columns_from_sql(sql) + [collection.klass.primary_key]).compact.uniq.sort
@@ -321,17 +330,18 @@ module Upkeep
         end
       end
 
-      def snapshot_value(value)
+      def snapshot_value(value, rendered_collection: nil)
         if value.is_a?(ActiveRecord::Base)
           { type: "active_record", model: value.class.name, id: value.id }
-        elsif value.respond_to?(:klass) && value.respond_to?(:to_sql)
-          {
+        elsif active_record_relation?(value)
+          snapshot = {
             type: "active_record_relation",
             model: value.klass.name,
             sql: value.to_sql,
-            primary_key: value.klass.primary_key,
-            member_ids: relation_member_ids(value)
+            primary_key: value.klass.primary_key
           }
+          snapshot[:member_ids] = relation_member_ids(value, rendered_collection) if rendered_collection
+          snapshot
         elsif value.is_a?(Array)
           { type: "array", items: value.map { |item| snapshot_value(item) } }
         elsif value.is_a?(Hash)
@@ -343,11 +353,21 @@ module Upkeep
         end
       end
 
-      def relation_member_ids(relation)
+      def relation_member_ids(relation, rendered_collection)
         primary_key = relation.klass.primary_key
         return [] unless primary_key
 
+        if rendered_collection.respond_to?(:to_ary)
+          return rendered_collection.to_ary.filter_map do |record|
+            record.public_send(primary_key).to_s if record.respond_to?(primary_key)
+          end
+        end
+
         relation.pluck(primary_key).map(&:to_s)
+      end
+
+      def active_record_relation?(value)
+        value.respond_to?(:klass) && value.respond_to?(:to_sql)
       end
 
       def replay_value(value)
@@ -396,14 +416,16 @@ module Upkeep
 
       module CollectionRendererHook
         def render_collection_with_partial(collection, partial, context, block)
-          Upkeep::Rails::ActionViewCapture.capture_collection(partial, collection, context, @options, block) do
-            super
+          source_collection, rendered_collection = Upkeep::Rails::ActionViewCapture.collection_capture_pair(collection)
+          Upkeep::Rails::ActionViewCapture.capture_collection(partial, source_collection, rendered_collection, context, @options, block) do
+            super(rendered_collection, partial, context, block)
           end
         end
 
         def render_collection_derive_partial(collection, context, block)
-          Upkeep::Rails::ActionViewCapture.capture_collection(:derived, collection, context, @options, block) do
-            super
+          source_collection, rendered_collection = Upkeep::Rails::ActionViewCapture.collection_capture_pair(collection)
+          Upkeep::Rails::ActionViewCapture.capture_collection(:derived, source_collection, rendered_collection, context, @options, block) do
+            super(rendered_collection, context, block)
           end
         end
       end
