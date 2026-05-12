@@ -98,6 +98,29 @@ class TurboStreamsDeliveryTest < Minitest::Test
     assert_includes batch.envelopes.first.body, "Review"
   end
 
+  def test_public_collection_create_renders_once_for_shared_delivery_stream
+    create_delivery_card!("Plan")
+    create_delivery_card!("Build")
+
+    store = Upkeep::Subscriptions::Store.new
+    register_controller_subscription(store, subscriber_id: "subscriber-a")
+    register_controller_subscription(store, subscriber_id: "subscriber-b")
+
+    Upkeep::Runtime::ChangeLog.reset
+    create_delivery_card!("Review")
+
+    render_events = []
+    subscriber = ActiveSupport::Notifications.subscribe("render_partial.action_view") do |event|
+      render_events << event if event.payload[:identifier].to_s.end_with?("delivery_cards/_card.html.erb")
+    end
+
+    delivery.build(plan_for(store))
+
+    assert_equal 1, render_events.size
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
+  end
+
   def test_queued_collection_create_appends_when_later_rows_already_exist
     create_delivery_card!("Plan")
     create_delivery_card!("Build")

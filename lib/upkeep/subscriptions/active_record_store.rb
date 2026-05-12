@@ -73,6 +73,55 @@ module Upkeep
         end
       end
 
+      class PersistenceQueue
+        def initialize(&persist)
+          @persist = persist
+          @mutex = Mutex.new
+          @subscriptions = []
+          @last_error = nil
+        end
+
+        def enqueue(subscription)
+          @mutex.synchronize do
+            raise @last_error if @last_error
+
+            @subscriptions << subscription
+          end
+        end
+
+        def drain
+          subscriptions = @mutex.synchronize do
+            raise @last_error if @last_error
+
+            queued = @subscriptions
+            @subscriptions = []
+            queued
+          end
+
+          subscriptions.each_with_index do |subscription, index|
+            persist_subscription(subscription)
+          rescue StandardError => error
+            @mutex.synchronize do
+              @last_error = error
+              @subscriptions = subscriptions[index..] + @subscriptions
+            end
+            raise
+          end
+        end
+
+        def shutdown
+          drain
+        end
+
+        private
+
+        attr_reader :persist
+
+        def persist_subscription(subscription)
+          persist.call(subscription)
+        end
+      end
+
       class PersistentReverseIndex
         def initialize(reverse_index:, index_record:, active_registry: nil, subscription_count: nil)
           @reverse_index = reverse_index
@@ -166,6 +215,7 @@ module Upkeep
         @index_record = index_record
         @index_builder = ReverseIndex.new
         @active_registry = ActiveRegistry.new
+        @persistence_queue = PersistenceQueue.new { |subscription| persist_subscription_index(subscription) }
         @reverse_index = PersistentReverseIndex.new(
           reverse_index: @index_builder,
           index_record: index_record,
@@ -193,19 +243,18 @@ module Upkeep
           metadata
         )
 
-        subscription_record.transaction do
-          subscription_record.create!(
-            id: subscription.id,
-            subscriber_id: subscription.subscriber_id,
-            metadata: subscription.metadata,
-            recorder_snapshot: dump(subscription.to_h)
-          )
-
-          index_subscription(subscription)
-        end
-
+        persist_subscription_record(subscription)
         active_registry.register(subscription)
+        persistence_queue.enqueue(subscription)
         subscription
+      end
+
+      def drain_persistence!
+        persistence_queue.drain
+      end
+
+      def shutdown
+        persistence_queue.shutdown
       end
 
       def fetch(id)
@@ -226,6 +275,7 @@ module Upkeep
       end
 
       def reset
+        drain_persistence!
         active_registry.reset
         index_record.delete_all
         subscription_record.delete_all
@@ -241,7 +291,24 @@ module Upkeep
 
       private
 
-      attr_reader :subscription_record, :index_record, :index_builder, :active_registry
+      attr_reader :subscription_record, :index_record, :index_builder, :active_registry, :persistence_queue
+
+      def persist_subscription_record(subscription)
+        ActiveRecord::Base.connection_pool.with_connection do
+          subscription_record.create!(
+            id: subscription.id,
+            subscriber_id: subscription.subscriber_id,
+            metadata: subscription.metadata,
+            recorder_snapshot: dump(subscription.to_h)
+          )
+        end
+      end
+
+      def persist_subscription_index(subscription)
+        ActiveRecord::Base.connection_pool.with_connection do
+          index_subscription(subscription)
+        end
+      end
 
       def index_subscription(subscription)
         rows = index_builder.entries_for_subscription(subscription).flat_map do |entry|

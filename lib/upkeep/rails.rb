@@ -21,7 +21,7 @@ module Upkeep
       end
 
       def subscriptions
-        @subscriptions = nil if @subscriptions && subscription_store_stale?(@subscriptions)
+        discard_subscription_store! if @subscriptions && subscription_store_stale?(@subscriptions)
         @subscriptions ||= build_subscription_store
       end
 
@@ -32,6 +32,7 @@ module Upkeep
       def reset_runtime!
         @delivery_dispatcher&.shutdown
         @delivery_dispatcher = nil
+        discard_subscription_store! if @subscriptions
         @subscriptions = build_subscription_store
         @subscriptions.reset
         @transport = Delivery::BroadcastTransport.new
@@ -73,8 +74,7 @@ module Upkeep
         changes = Array(changes)
         return Delivery::Transport::DispatchReport.new([]) if changes.empty?
 
-        plan = Invalidation::Planner.new(store: subscriptions).plan(changes)
-        batch = Delivery::TurboStreams.new.build(plan)
+        batch = delivery_batch_for([changes])
         transport.deliver(batch)
       end
 
@@ -85,9 +85,21 @@ module Upkeep
       private
 
       def delivery_dispatcher
-        @delivery_dispatcher ||= Delivery::AsyncDispatcher.new do |changes|
-          deliver_changes_now!(changes)
+        @delivery_dispatcher ||= Delivery::AsyncDispatcher.new do |change_sets|
+          batch = delivery_batch_for(change_sets)
+          transport.deliver(batch)
         end
+      end
+
+      def delivery_batch_for(change_sets)
+        planner = Invalidation::Planner.new(store: subscriptions)
+        plans = change_sets.map { |changes| planner.plan(changes) }
+        Delivery::TurboStreams.new.build_many(plans)
+      end
+
+      def discard_subscription_store!
+        @subscriptions.shutdown if @subscriptions.respond_to?(:shutdown)
+        @subscriptions = nil
       end
 
       def subscription_response?(controller, recorder)

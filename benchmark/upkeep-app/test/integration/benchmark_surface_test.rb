@@ -31,6 +31,10 @@ class BenchmarkSurfaceTest < ActionDispatch::IntegrationTest
     Upkeep::Runtime::ChangeLog.reset
   end
 
+  teardown do
+    Upkeep::Rails.reset_runtime!
+  end
+
   test "renders authenticated board and room surfaces" do
     sign_in(@alice)
 
