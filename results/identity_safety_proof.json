@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-11T20:44:17Z",
+  "generated_at": "2026-05-12T09:40:16Z",
   "summary": {
     "cases": 3,
     "passed": 3,
@@ -144,11 +144,15 @@
                     "visibility": "public",
                     "precision": "collection_predicate",
                     "metadata": {
-                      "columns": [
-                        "board_id",
-                        "id",
-                        "position"
-                      ],
+                      "primary_table": "cards",
+                      "table_columns": {
+                        "cards": [
+                          "board_id",
+                          "id",
+                          "position"
+                        ]
+                      },
+                      "coverage": "columns",
                       "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC"
                     }
                   },
@@ -626,11 +630,15 @@
                   "visibility": "public",
                   "precision": "collection_predicate",
                   "metadata": {
-                    "columns": [
-                      "board_id",
-                      "id",
-                      "position"
-                    ],
+                    "primary_table": "cards",
+                    "table_columns": {
+                      "cards": [
+                        "board_id",
+                        "id",
+                        "position"
+                      ]
+                    },
+                    "coverage": "columns",
                     "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC"
                   }
                 },
@@ -1371,11 +1379,15 @@
                     "visibility": "public",
                     "precision": "collection_predicate",
                     "metadata": {
-                      "columns": [
-                        "board_id",
-                        "id",
-                        "position"
-                      ],
+                      "primary_table": "cards",
+                      "table_columns": {
+                        "cards": [
+                          "board_id",
+                          "id",
+                          "position"
+                        ]
+                      },
+                      "coverage": "columns",
                       "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC"
                     }
                   },
@@ -1853,11 +1865,15 @@
                   "visibility": "public",
                   "precision": "collection_predicate",
                   "metadata": {
-                    "columns": [
-                      "board_id",
-                      "id",
-                      "position"
-                    ],
+                    "primary_table": "cards",
+                    "table_columns": {
+                      "cards": [
+                        "board_id",
+                        "id",
+                        "position"
+                      ]
+                    },
+                    "coverage": "columns",
                     "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC"
                   }
                 },
@@ -2591,11 +2607,15 @@
                     "visibility": "public",
                     "precision": "collection_predicate",
                     "metadata": {
-                      "columns": [
-                        "board_id",
-                        "id",
-                        "position"
-                      ],
+                      "primary_table": "cards",
+                      "table_columns": {
+                        "cards": [
+                          "board_id",
+                          "id",
+                          "position"
+                        ]
+                      },
+                      "coverage": "columns",
                       "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC"
                     }
                   },
@@ -3073,11 +3093,15 @@
                   "visibility": "public",
                   "precision": "collection_predicate",
                   "metadata": {
-                    "columns": [
-                      "board_id",
-                      "id",
-                      "position"
-                    ],
+                    "primary_table": "cards",
+                    "table_columns": {
+                      "cards": [
+                        "board_id",
+                        "id",
+                        "position"
+                      ]
+                    },
+                    "coverage": "columns",
                     "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC"
                   }
                 },
@@ -3876,11 +3900,15 @@
                     "visibility": "public",
                     "precision": "collection_predicate",
                     "metadata": {
-                      "columns": [
-                        "board_id",
-                        "id",
-                        "position"
-                      ],
+                      "primary_table": "cards",
+                      "table_columns": {
+                        "cards": [
+                          "board_id",
+                          "id",
+                          "position"
+                        ]
+                      },
+                      "coverage": "columns",
                       "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC"
                     }
                   },
@@ -4358,11 +4386,15 @@
                   "visibility": "public",
                   "precision": "collection_predicate",
                   "metadata": {
-                    "columns": [
-                      "board_id",
-                      "id",
-                      "position"
-                    ],
+                    "primary_table": "cards",
+                    "table_columns": {
+                      "cards": [
+                        "board_id",
+                        "id",
+                        "position"
+                      ]
+                    },
+                    "coverage": "columns",
                     "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC"
                   }
                 },

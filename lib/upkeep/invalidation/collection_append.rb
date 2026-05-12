@@ -21,9 +21,11 @@ module Upkeep
         collection = symbolize_keys(replay.fetch(:collection))
         return unless collection[:type] == "active_record_relation"
         return unless collection[:primary_key]
-        return unless appendable_sql?(collection.fetch(:sql))
+        return unless collection.fetch(:appendable, false)
 
         model = constantize(collection.fetch(:model))
+        return unless change.fetch(:table) == model.table_name
+
         record = model.find_by(id: change.fetch(:id))
         return unless record && relation_appends_record?(model, collection, record)
 
@@ -64,11 +66,6 @@ module Upkeep
 
         ordered_ids.last == record.public_send(primary_key).to_s &&
           (snapshot_ids - ordered_ids).empty?
-      end
-
-      def appendable_sql?(sql)
-        normalized = sql.to_s.upcase
-        !normalized.match?(/\b(LIMIT|OFFSET|GROUP BY|HAVING|DISTINCT)\b/)
       end
 
       def snapshot_record(record)

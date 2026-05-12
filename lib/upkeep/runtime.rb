@@ -3,6 +3,7 @@
 require "active_record"
 require "active_support/current_attributes"
 require "digest"
+require_relative "active_record_query"
 
 module Upkeep
   module Runtime
@@ -37,13 +38,6 @@ module Upkeep
         Thread.current[THREAD_KEY]
       end
 
-      def table_from_sql(sql)
-        sql[/FROM\s+"([^"]+)"/i, 1] || sql[/UPDATE\s+"([^"]+)"/i, 1] || sql[/INSERT\s+INTO\s+"([^"]+)"/i, 1]
-      end
-
-      def columns_from_sql(sql)
-        sql.scan(/"[^"]+"\."([^"]+)"/).flatten.uniq.sort
-      end
     end
 
     class Recorder
@@ -467,24 +461,28 @@ module Upkeep
 
     module RelationObserver
       def update_all(updates)
+        analysis = ActiveRecordQuery.analyze(self)
         ChangeLog.record({
           type: "bulk_update",
           table: klass.table_name,
           changed_attributes: update_columns(updates),
-          predicate_sql: safe_sql,
-          predicate_columns: Observation.columns_from_sql(safe_sql)
+          predicate_sql: analysis.sql,
+          predicate_coverage: analysis.coverage.to_s,
+          predicate_table_columns: analysis.table_columns
         })
 
         super
       end
 
       def delete_all
+        analysis = ActiveRecordQuery.analyze(self)
         ChangeLog.record({
           type: "bulk_delete",
           table: klass.table_name,
           changed_attributes: [klass.primary_key].compact,
-          predicate_sql: safe_sql,
-          predicate_columns: Observation.columns_from_sql(safe_sql)
+          predicate_sql: analysis.sql,
+          predicate_coverage: analysis.coverage.to_s,
+          predicate_table_columns: analysis.table_columns
         })
 
         super
@@ -492,18 +490,12 @@ module Upkeep
 
       private
 
-      def safe_sql
-        to_sql
-      rescue StandardError => error
-        "#{error.class}: #{error.message}"
-      end
-
       def update_columns(updates)
         case updates
         when Hash
           updates.keys.map(&:to_s)
         else
-          updates.to_s.scan(/\b([a-z_][a-zA-Z0-9_]*)\s*=/).flatten.uniq
+          klass.column_names
         end
       end
     end

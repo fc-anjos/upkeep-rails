@@ -4,6 +4,7 @@ require "action_view"
 require "action_view/renderer/collection_renderer"
 require "digest"
 require "stringio"
+require_relative "../active_record_query"
 
 module Upkeep
   module Rails
@@ -260,12 +261,12 @@ module Upkeep
       def record_collection_dependency(collection)
         return unless active_record_relation?(collection)
 
-        sql = collection.to_sql
-        columns = (Runtime::Observation.columns_from_sql(sql) + [collection.klass.primary_key]).compact.uniq.sort
+        analysis = ActiveRecordQuery.analyze(collection)
         dependency = Dependencies::ActiveRecordCollection.new(
-          table: collection.klass.table_name,
-          sql: sql,
-          columns: columns
+          primary_table: analysis.primary_table,
+          table_columns: analysis.table_columns,
+          coverage: analysis.coverage,
+          sql: analysis.sql
         )
 
         Runtime::Observation.record_dependency(dependency)
@@ -334,11 +335,13 @@ module Upkeep
         if value.is_a?(ActiveRecord::Base)
           { type: "active_record", model: value.class.name, id: value.id }
         elsif active_record_relation?(value)
+          analysis = ActiveRecordQuery.analyze(value)
           snapshot = {
             type: "active_record_relation",
             model: value.klass.name,
-            sql: value.to_sql,
-            primary_key: value.klass.primary_key
+            sql: analysis.sql,
+            primary_key: analysis.primary_key,
+            appendable: analysis.appendable?
           }
           snapshot[:member_ids] = relation_member_ids(value, rendered_collection) if rendered_collection
           snapshot

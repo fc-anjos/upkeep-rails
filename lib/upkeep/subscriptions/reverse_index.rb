@@ -50,7 +50,7 @@ module Upkeep
         when :active_record_attribute
           active_record_attribute_lookup_keys(dependency.key)
         when :active_record_collection
-          [[:active_record_collection_table, dependency.key.fetch(:table)]]
+          active_record_collection_lookup_keys(dependency)
         else
           [[:dependency_cache_key, dependency.cache_key]]
         end
@@ -69,9 +69,17 @@ module Upkeep
         end
 
         keys << [:active_record_collection_table, table]
+        keys << [:active_record_any_table]
       end
 
       private
+
+      def active_record_collection_lookup_keys(dependency)
+        tables = dependency.collection_lookup_tables
+        return [[:active_record_any_table]] unless tables
+
+        tables.map { |table| [:active_record_collection_table, table] }
+      end
 
       def active_record_attribute_lookup_keys(key)
         [
