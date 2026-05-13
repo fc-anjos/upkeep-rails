@@ -15,7 +15,8 @@ module Upkeep
         :identity_signature,
         :shared_stream_name,
         :subscriber_ids,
-        :matched_dependency_keys
+        :matched_dependency_keys,
+        :operation_reason
       ) do
         def to_html
           attributes = %(action="#{CGI.escapeHTML(action)}" targets="#{CGI.escapeHTML(target_selector)}")
@@ -37,7 +38,8 @@ module Upkeep
             shared_stream_name: shared_stream_name,
             html_digest: html_digest,
             subscriber_ids: subscriber_ids,
-            matched_dependency_keys: matched_dependency_keys
+            matched_dependency_keys: matched_dependency_keys,
+            operation_reason: operation_reason
           }
         end
       end
@@ -125,6 +127,7 @@ module Upkeep
           streams: batch.streams.size,
           envelopes: envelopes.size,
           actions: batch.streams.map(&:action).tally,
+          operation_reasons: batch.streams.map(&:operation_reason).tally,
           payload_bytes: envelopes.sum { |envelope| envelope.body.bytesize }
         }
       end
@@ -154,7 +157,8 @@ module Upkeep
           planned_target.identity_signature,
           shared_stream_name_for(planned_target),
           subscriber_ids.uniq.sort_by(&:to_s),
-          matched_dependency_keys.uniq
+          matched_dependency_keys.uniq,
+          planned_target.operation_reason
         )
       end
 
@@ -164,13 +168,22 @@ module Upkeep
           planned_target.target.kind,
           planned_target.target.id,
           planned_target.identity_signature,
-          planned_target.sharing_signature
+          planned_target.sharing_signature,
+          planned_target.operation_reason
         ]
       end
 
       def merge_streams(streams)
         streams.each_with_object({}) do |stream, indexed_streams|
-          key = [stream.action, stream.target.kind, stream.target.id, stream.identity_signature, stream.shared_stream_name, stream.html_digest]
+          key = [
+            stream.action,
+            stream.target.kind,
+            stream.target.id,
+            stream.identity_signature,
+            stream.shared_stream_name,
+            stream.html_digest,
+            stream.operation_reason
+          ]
           indexed_streams[key] = merge_stream(indexed_streams[key], stream)
         end.values
       end
@@ -187,7 +200,8 @@ module Upkeep
           existing.identity_signature,
           existing.shared_stream_name,
           (existing.subscriber_ids + stream.subscriber_ids).uniq.sort_by(&:to_s),
-          (existing.matched_dependency_keys + stream.matched_dependency_keys).uniq
+          (existing.matched_dependency_keys + stream.matched_dependency_keys).uniq,
+          existing.operation_reason
         )
       end
 

@@ -85,6 +85,7 @@ class InvalidationPlannerTest < Minitest::Test
     assert_equal plan.targets.size, event.payload.fetch(:targets)
     assert_equal ["render_site"], event.payload.fetch(:target_kinds)
     assert_equal({ "append" => 1 }, event.payload.fetch(:actions))
+    assert_equal({ "collection_append_proven" => 1 }, event.payload.fetch(:operation_reasons))
   end
 
   def test_same_subscriber_same_identity_target_is_deduplicated
