@@ -19,6 +19,7 @@ end
 
 class ActiveRecordSubscriptionStoreTest < Minitest::Test
   def setup
+    @previous_subscription_store = Upkeep::Rails.configuration.subscription_store
     Upkeep::Rails::Install.call
     PersistentSubscriptionCardsController.view_paths = [resolver]
 
@@ -56,11 +57,18 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
       add_index :upkeep_subscription_index_entries, :subscription_id
     end
 
+    Upkeep::Rails.configure do |config|
+      config.subscription_store = :active_record
+    end
     Upkeep::Runtime::ChangeLog.reset
   end
 
   def teardown
     @stores&.each(&:shutdown)
+    Upkeep::Rails.configure do |config|
+      config.subscription_store = @previous_subscription_store
+    end
+    Upkeep::Rails.reset_runtime!
     FileUtils.rm_rf(@database_dir) if @database_dir
   end
 
@@ -170,22 +178,38 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     assert_includes plan.targets.first.render, "Plan v2"
   end
 
-  def test_runtime_promotes_empty_memory_store_when_active_record_tables_are_available
-    Upkeep::Rails.instance_variable_set(:@subscriptions, Upkeep::Subscriptions::Store.new)
-
+  def test_runtime_uses_configured_active_record_subscription_store
     assert_instance_of Upkeep::Subscriptions::ActiveRecordStore, Upkeep::Rails.subscriptions
-  ensure
-    Upkeep::Rails.reset_runtime!
   end
 
-  def test_runtime_keeps_active_memory_store_when_active_record_tables_are_available
-    store = Upkeep::Subscriptions::Store.new
-    store.register(subscriber_id: "subscriber-a", recorder: Upkeep::Runtime::Recorder.new)
-    Upkeep::Rails.instance_variable_set(:@subscriptions, store)
+  def test_runtime_uses_explicit_memory_subscription_store
+    Upkeep::Rails.configure do |config|
+      config.subscription_store = :memory
+    end
 
-    assert_same store, Upkeep::Rails.subscriptions
-  ensure
-    Upkeep::Rails.reset_runtime!
+    assert_instance_of Upkeep::Subscriptions::Store, Upkeep::Rails.subscriptions
+  end
+
+  def test_active_record_subscription_store_raises_without_tables
+    ActiveRecord::Base.connection.drop_table(:upkeep_subscription_index_entries)
+
+    error = assert_raises(Upkeep::Rails::ConfigurationError) do
+      Upkeep::Rails.reset_runtime!
+    end
+
+    assert_match(/upkeep_subscriptions/, error.message)
+  end
+
+  def test_production_rejects_memory_subscription_store
+    Upkeep::Rails.configure do |config|
+      config.subscription_store = :memory
+    end
+
+    error = assert_raises(Upkeep::Rails::ConfigurationError) do
+      Upkeep::Rails.validate_configuration!(environment: "production")
+    end
+
+    assert_match(/production requires :active_record/, error.message)
   end
 
   private

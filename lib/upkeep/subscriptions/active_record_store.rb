@@ -204,13 +204,13 @@ module Upkeep
         )
       end
 
-      def self.available?
-        return false unless ActiveRecord::Base.connected?
+      def self.available?(connect: false)
+        return false unless ActiveRecord::Base.connected? || connect
 
         connection = ActiveRecord::Base.connection
         connection.data_source_exists?("upkeep_subscriptions") &&
           connection.data_source_exists?("upkeep_subscription_index_entries")
-      rescue ActiveRecord::ConnectionNotEstablished, ActiveRecord::StatementInvalid
+      rescue ActiveRecord::ConnectionNotEstablished, ActiveRecord::NoDatabaseError, ActiveRecord::StatementInvalid
         false
       end
 

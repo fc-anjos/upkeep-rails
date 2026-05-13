@@ -22,7 +22,7 @@ module Upkeep
       end
 
       def subscriptions
-        discard_subscription_store! if @subscriptions && subscription_store_stale?(@subscriptions)
+        discard_subscription_store! if @subscriptions && subscription_store_config_changed?
         @subscriptions ||= build_subscription_store
       end
 
@@ -83,6 +83,13 @@ module Upkeep
         @delivery_dispatcher&.drain
       end
 
+      def validate_configuration!(environment: rails_environment)
+        return true unless configuration.enabled
+
+        validate_subscription_store!(environment: environment)
+        true
+      end
+
       private
 
       def delivery_dispatcher
@@ -112,19 +119,48 @@ module Upkeep
       end
 
       def build_subscription_store
-        if Subscriptions::ActiveRecordStore.available?
+        case configuration.subscription_store
+        when :active_record
+          unless Subscriptions::ActiveRecordStore.available?(connect: true)
+            raise ConfigurationError,
+              "Upkeep subscription_store=:active_record requires the upkeep_subscriptions and " \
+              "upkeep_subscription_index_entries tables. Run bin/rails generate upkeep:install " \
+              "and bin/rails db:migrate, or set config.upkeep.subscription_store = :memory in development/test."
+          end
+
           Subscriptions::ActiveRecordStore.new
-        else
+        when :memory
           Subscriptions::Store.new
+        end.tap do
+          @subscription_store_name = configuration.subscription_store
         end
       end
 
-      def subscription_store_stale?(store)
-        if store.is_a?(Subscriptions::ActiveRecordStore)
-          !Subscriptions::ActiveRecordStore.available?
-        else
-          store.subscriptions.empty? && Subscriptions::ActiveRecordStore.available?
+      def validate_subscription_store!(environment:)
+        if production_environment?(environment) && configuration.subscription_store == :memory
+          raise ConfigurationError,
+            "Upkeep subscription_store=:memory is only for development/test; production requires :active_record."
         end
+
+        return true unless production_environment?(environment)
+        return true unless configuration.subscription_store == :active_record
+        return true if Subscriptions::ActiveRecordStore.available?(connect: true)
+
+        raise ConfigurationError,
+          "Upkeep production boot requires the upkeep_subscriptions and " \
+          "upkeep_subscription_index_entries tables for subscription_store=:active_record."
+      end
+
+      def production_environment?(environment)
+        environment.to_s == "production"
+      end
+
+      def rails_environment
+        ::Rails.env if defined?(::Rails) && ::Rails.respond_to?(:env)
+      end
+
+      def subscription_store_config_changed?
+        @subscription_store_name != configuration.subscription_store
       end
     end
   end
