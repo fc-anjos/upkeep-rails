@@ -115,6 +115,20 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     assert_equal seen_at.to_i, Upkeep::Subscriptions::ActiveRecordStore::SubscriptionRecord.find(subscription.id).updated_at.to_i
   end
 
+  def test_touch_updates_active_and_persisted_subscription_metadata
+    create_subscription_card!("Plan")
+
+    _html, recorder = capture_controller_request("/cards?status=open")
+    store = active_record_store
+    subscription = store.register(subscriber_id: "subscriber-a", recorder: recorder, metadata: { stream_name: "stream-a" })
+    seen_at = Time.utc(2026, 1, 1, 12, 0, 0)
+
+    store.touch(subscription.id, now: seen_at)
+
+    assert_equal seen_at.iso8601, store.fetch(subscription.id).metadata.fetch("last_seen_at")
+    assert_equal seen_at.iso8601, active_record_store.fetch(subscription.id).metadata.fetch("last_seen_at")
+  end
+
   def test_prune_stale_removes_subscription_and_reverse_index_rows
     create_subscription_card!("Plan")
 
