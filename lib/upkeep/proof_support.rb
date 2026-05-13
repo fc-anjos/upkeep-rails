@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require_relative "../upkeep"
-require_relative "herb_loader"
 require_relative "herb/template_manifest"
 require_relative "herb/runtime_alignment"
 require_relative "herb/fallback_analyzer"

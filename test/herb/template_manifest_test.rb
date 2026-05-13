@@ -34,10 +34,10 @@ class HerbTemplateManifestTest < Minitest::Test
 
     assert manifest.parse.fetch(:ok)
     assert_equal 1, manifest.render_nodes.size
-    assert_equal 1, manifest.frontend_tag_plan.size
+    assert_equal 2, manifest.frontend_tag_plan.size
 
     render_node = manifest.render_nodes.first
-    tag = manifest.frontend_tag_plan.first
+    tag = manifest.frontend_tag_plan.find { |entry| entry.fetch(:kind) == "render_site" }
 
     assert_equal "partial", render_node.fetch(:kind)
     assert_equal "cards/card", render_node.fetch(:partial)
@@ -60,7 +60,8 @@ class HerbTemplateManifestTest < Minitest::Test
     assert_equal 2, summary.fetch(:templates_scanned)
     assert_equal 0, summary.fetch(:strict_parse_failures)
     assert_equal 1, summary.fetch(:render_nodes)
-    assert_equal 2, summary.fetch(:frontend_tag_targets)
+    assert_equal 3, summary.fetch(:frontend_tag_targets)
+    assert_equal 1, summary.fetch(:page_root_tags)
     assert_equal 1, summary.fetch(:fragment_root_tags)
     assert_equal 1, summary.fetch(:render_site_tags)
     assert_equal 1, summary.fetch(:single_root_partials)

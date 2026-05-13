@@ -4,7 +4,6 @@ require "action_view"
 require "action_view/renderer/collection_renderer"
 require "cgi"
 require "digest"
-require "nokogiri"
 require "stringio"
 require_relative "../active_record_query"
 require_relative "../herb/manifest_cache"
@@ -68,11 +67,9 @@ module Upkeep
           )
         end
 
-        html = Runtime::Observation.capture_frame(frame_id, metadata.merge(recipe: recipe)) do
+        Runtime::Observation.capture_frame(frame_id, metadata.merge(recipe: recipe)) do
           with_frame_id(frame_id) { yield }
         end
-
-        html && metadata.fetch(:kind) == "page" ? tag_root(html, "data-upkeep-page-frame" => frame_id) : html
       end
 
       def capture_collection(partial, collection, rendered_collection, context, options, block, collection_analysis: nil)
@@ -340,15 +337,6 @@ module Upkeep
         }
       end
 
-      def tag_root(html, attributes)
-        fragment = Nokogiri::HTML5.fragment(html)
-        root = fragment.children.find { |child| child.element? }
-        return html unless root
-
-        attributes.each { |name, value| root[name] = value }
-        fragment.to_html
-      end
-
       def with_frame_id(frame_id)
         frame_stack.push(frame_id)
         yield
@@ -534,6 +522,11 @@ module Upkeep
       end
 
       module ViewHelpers
+        def upkeep_page_frame_id
+          Upkeep::Rails::ActionViewCapture.current_frame_id ||
+            raise("upkeep_page_frame_id is only available while rendering an Upkeep page frame")
+        end
+
         def upkeep_frame_id
           Upkeep::Rails::ActionViewCapture.current_frame_id ||
             raise("upkeep_frame_id is only available while rendering an Upkeep frame")

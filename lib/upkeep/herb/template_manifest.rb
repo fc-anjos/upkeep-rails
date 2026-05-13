@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "digest"
-require_relative "../herb_loader"
+require "herb"
 
 module Upkeep
   module HerbSupport
@@ -61,6 +61,7 @@ module Upkeep
           render_nodes: manifests.sum { |manifest| manifest.render_nodes.size },
           helper_lowered_elements: manifests.sum { |manifest| manifest.helper_lowered_elements.size },
           frontend_tag_targets: manifests.sum { |manifest| manifest.frontend_tag_plan.size },
+          page_root_tags: manifests.sum { |manifest| manifest.frontend_tag_plan.count { |tag| tag.fetch(:kind) == "page_root" } },
           fragment_root_tags: manifests.sum { |manifest| manifest.frontend_tag_plan.count { |tag| tag.fetch(:kind) == "fragment_root" } },
           render_site_tags: manifests.sum { |manifest| manifest.frontend_tag_plan.count { |tag| tag.fetch(:kind) == "render_site" } },
           partials: partials.size,
@@ -163,7 +164,9 @@ module Upkeep
             multi_root: root_elements.size > 1
           }
 
-          plan_fragment_root_tag(root_elements.first) if partial_template? && root_shape.fetch(:single_root)
+          if root_shape.fetch(:single_root)
+            partial_template? ? plan_fragment_root_tag(root_elements.first) : plan_page_root_tag(root_elements.first)
+          end
 
           super
         end
@@ -242,6 +245,22 @@ module Upkeep
               }
             ],
             update_role: "morph or replace this rendered fragment when runtime observations match a committed change"
+          }
+        end
+
+        def plan_page_root_tag(root_element)
+          @frontend_tag_plan << {
+            kind: "page_root",
+            target: "root_element",
+            location: location_payload(root_element.location),
+            tag_name: token_value(root_element.tag_name),
+            attributes: [
+              {
+                name: "data-upkeep-page-frame",
+                value: "<%= upkeep_page_frame_id %>"
+              }
+            ],
+            update_role: "replace this rendered page when no narrower frame can safely cover a change"
           }
         end
 

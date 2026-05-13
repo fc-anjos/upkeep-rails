@@ -3,7 +3,6 @@
 require "cgi"
 require "digest"
 require "erb"
-require "nokogiri"
 require_relative "active_record_query"
 
 module Upkeep
@@ -47,10 +46,11 @@ module Upkeep
                 page_frame_id,
                 manifest_metadata(template_name).merge(kind: "page", template: template_name, recipe: recipe)
               ) do
-                context.render_template(template_name, assigns)
+                context.with_upkeep_page_frame(page_frame_id) do
+                  context.render_template(template_name, assigns)
+                end
               end
 
-              html = tag_root(html, "data-upkeep-page-frame" => page_frame_id)
               RenderResult.new(html, Runtime::Observation.recorder)
             end
           end
@@ -101,15 +101,6 @@ module Upkeep
         context_binding = context.template_binding
         locals.each { |name, value| context_binding.local_variable_set(name.to_sym, value) }
         ERB.new(source, trim_mode: "-").result(context_binding)
-      end
-
-      def tag_root(html, attributes)
-        fragment = Nokogiri::HTML5.fragment(html)
-        root = fragment.children.find { |child| child.element? }
-        raise "rendered template has no root element" unless root
-
-        attributes.each { |name, value| root[name] = value }
-        fragment.to_html
       end
 
       def manifest_metadata(template_name)
@@ -212,6 +203,18 @@ module Upkeep
 
       def render_template(template_name, locals)
         @engine.render_template(template_name, locals, self)
+      end
+
+      def with_upkeep_page_frame(frame_id)
+        previous_frame_id = @upkeep_page_frame_id
+        @upkeep_page_frame_id = frame_id
+        yield
+      ensure
+        @upkeep_page_frame_id = previous_frame_id
+      end
+
+      def upkeep_page_frame_id
+        @upkeep_page_frame_id || raise("upkeep_page_frame_id is only available while rendering a page")
       end
 
       def with_upkeep_frame(frame_id)
