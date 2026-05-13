@@ -27,6 +27,7 @@ class InstallGeneratorTest < Rails::Generators::TestCase
     assert_file migration, /create_table :upkeep_subscriptions, id: :string/
     assert_file migration, /create_table :upkeep_subscription_index_entries/
     assert_file "config/initializers/upkeep.rb", /config\.upkeep\.enabled = true/
+    assert_file "config/initializers/upkeep.rb", /config\.upkeep\.subscription_store = :active_record/
     assert_file "app/javascript/upkeep/subscription.js", /data-upkeep-subscription/
     assert_file "app/javascript/application.js", /import "@hotwired\/turbo-rails"/
     assert_file "app/javascript/application.js", %r{import "\./upkeep/subscription"}
