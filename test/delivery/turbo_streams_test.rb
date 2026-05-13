@@ -130,6 +130,8 @@ class TurboStreamsDeliveryTest < Minitest::Test
     assert_equal batch.envelopes.size, event.payload.fetch(:envelopes)
     assert_equal({ "append" => 1 }, event.payload.fetch(:actions))
     assert_equal({ "collection_append_proven" => 1 }, event.payload.fetch(:operation_reasons))
+    assert_equal 1, event.payload.fetch(:renders)
+    assert_operator event.payload.fetch(:render_duration_ms), :>=, 0.0
     assert_operator event.payload.fetch(:payload_bytes), :>, 0
   end
 
@@ -344,6 +346,7 @@ class TurboStreamsDeliveryTest < Minitest::Test
     assert_equal "fragment", stream_report.fetch(:target).fetch(:kind)
     assert_equal "public", stream_report.fetch(:identity_signature)
     assert_equal 64, stream_report.fetch(:html_digest).length
+    assert_operator stream_report.fetch(:render_duration_ms), :>=, 0.0
     assert_equal ["subscriber-a"], stream_report.fetch(:subscriber_ids)
     assert_nil stream_report[:shared_stream_name]
     assert_operator stream_report.fetch(:matched_dependency_keys).size, :>, 0

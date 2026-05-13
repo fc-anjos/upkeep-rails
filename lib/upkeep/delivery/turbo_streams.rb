@@ -16,13 +16,18 @@ module Upkeep
         :shared_stream_name,
         :subscriber_ids,
         :matched_dependency_keys,
-        :operation_reason
+        :operation_reason,
+        :render_duration_ms
       ) do
         def to_html
           attributes = %(action="#{CGI.escapeHTML(action)}" targets="#{CGI.escapeHTML(target_selector)}")
           return %(<turbo-stream #{attributes}></turbo-stream>) if action == "remove"
 
           %(<turbo-stream #{attributes}><template>#{html}</template></turbo-stream>)
+        end
+
+        def rendered?
+          action != "remove"
         end
 
         def for_subscriber?(subscriber_id)
@@ -39,7 +44,8 @@ module Upkeep
             html_digest: html_digest,
             subscriber_ids: subscriber_ids,
             matched_dependency_keys: matched_dependency_keys,
-            operation_reason: operation_reason
+            operation_reason: operation_reason,
+            render_duration_ms: render_duration_ms
           }
         end
       end
@@ -113,14 +119,14 @@ module Upkeep
         ActiveSupport::Notifications.instrument("build_turbo_streams.upkeep", payload) do
           streams = plans.flat_map { |plan| stream_targets(plan.targets) }
           batch = Batch.new(merge_streams(streams))
-          payload.merge!(payload_for(batch))
+          payload.merge!(payload_for(batch, rendered_streams: streams))
           batch
         end
       end
 
       private
 
-      def payload_for(batch)
+      def payload_for(batch, rendered_streams:)
         envelopes = batch.envelopes
 
         {
@@ -128,6 +134,8 @@ module Upkeep
           envelopes: envelopes.size,
           actions: batch.streams.map(&:action).tally,
           operation_reasons: batch.streams.map(&:operation_reason).tally,
+          renders: rendered_streams.count(&:rendered?),
+          render_duration_ms: sum_render_duration(rendered_streams),
           payload_bytes: envelopes.sum { |envelope| envelope.body.bytesize }
         }
       end
@@ -146,7 +154,7 @@ module Upkeep
       end
 
       def stream_for(planned_target, subscriber_ids: [planned_target.subscriber_id], matched_dependency_keys: planned_target.matched_dependency_keys)
-        html = planned_target.action == "remove" ? "" : planned_target.render
+        html, render_duration_ms = render_target(planned_target)
 
         Stream.new(
           planned_target.action,
@@ -158,8 +166,18 @@ module Upkeep
           shared_stream_name_for(planned_target),
           subscriber_ids.uniq.sort_by(&:to_s),
           matched_dependency_keys.uniq,
-          planned_target.operation_reason
+          planned_target.operation_reason,
+          render_duration_ms
         )
+      end
+
+      def render_target(planned_target)
+        return ["", 0.0] if planned_target.action == "remove"
+
+        started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        html = planned_target.render
+        finished_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        [html, ((finished_at - started_at) * 1000.0).round(3)]
       end
 
       def shared_render_key(planned_target)
@@ -201,8 +219,13 @@ module Upkeep
           existing.shared_stream_name,
           (existing.subscriber_ids + stream.subscriber_ids).uniq.sort_by(&:to_s),
           (existing.matched_dependency_keys + stream.matched_dependency_keys).uniq,
-          existing.operation_reason
+          existing.operation_reason,
+          (existing.render_duration_ms + stream.render_duration_ms).round(3)
         )
+      end
+
+      def sum_render_duration(streams)
+        streams.sum(&:render_duration_ms).round(3)
       end
 
       def shared_stream_name_for(planned_target)
