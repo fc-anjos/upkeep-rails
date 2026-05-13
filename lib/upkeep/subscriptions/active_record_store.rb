@@ -146,12 +146,22 @@ module Upkeep
 
         def persistent_entries_for(changes)
           lookup_keys = Array(changes).flat_map { |change| reverse_index.lookup_keys_for_change(change) }.uniq
-          lookup_key_digests = lookup_keys.map { |lookup_key| self.class.digest(lookup_key) }
-          lookup_keys_by_digest = lookup_keys.group_by { |lookup_key| self.class.digest(lookup_key) }
+          lookup_keys_by_digest = Hash.new { |hash, digest| hash[digest] = [] }
+          lookup_keys.each do |lookup_key|
+            lookup_keys_by_digest[self.class.digest(lookup_key)] << lookup_key
+          end
+          lookup_key_digests = lookup_keys_by_digest.keys
 
           index_record
             .where(lookup_key_digest: lookup_key_digests)
-            .filter_map { |record| entry_for_record(record, lookup_keys_by_digest) }
+            .pluck(
+              :subscription_id,
+              :lookup_key_digest,
+              :owner_id_snapshot,
+              :dependency_cache_key_snapshot,
+              :dependency_snapshot
+            )
+            .filter_map { |row| entry_for_row(row, lookup_keys_by_digest) }
             .uniq { |entry| [entry.subscription_id, entry.owner_id, entry.dependency_cache_key] }
         end
 
@@ -172,15 +182,15 @@ module Upkeep
           end
         end
 
-        def entry_for_record(record, lookup_keys_by_digest)
-          lookup_key = load(record.lookup_key_snapshot)
-          return unless lookup_keys_by_digest.fetch(record.lookup_key_digest, []).include?(lookup_key)
+        def entry_for_row(row, lookup_keys_by_digest)
+          subscription_id, lookup_key_digest, owner_id_snapshot, dependency_cache_key_snapshot, dependency_snapshot = row
+          return unless lookup_keys_by_digest.key?(lookup_key_digest)
 
           ReverseIndex::Entry.new(
-            record.subscription_id,
-            load(record.owner_id_snapshot),
-            load(record.dependency_cache_key_snapshot),
-            load(record.dependency_snapshot)
+            subscription_id,
+            load(owner_id_snapshot),
+            load(dependency_cache_key_snapshot),
+            load(dependency_snapshot)
           )
         end
 
