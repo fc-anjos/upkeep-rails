@@ -15,10 +15,10 @@ from the framework surfaces it observes. There is no query catalog, no
 
 ## Current Integration Contract
 
-The Rails package is being driven by the in-repo benchmark apps toward a
-versioned release. The app-facing contract is intentionally small:
+The published Rails package is the app-facing runtime for Upkeep. It is tested
+against the in-repo benchmark apps and exposes a small integration contract:
 
-- `gem "upkeep-rails", path: "...", require: "upkeep"`
+- `gem "upkeep-rails", require: "upkeep"`
 - `bin/rails generate upkeep:install`
 - `config.upkeep.enabled`
 - the `Upkeep::Rails::Cable::Channel` ActionCable channel
@@ -91,6 +91,12 @@ Identity dependencies:
 - ActionCable connection identifiers.
 
 ## Install
+
+Add the gem to a Rails app:
+
+```ruby
+gem "upkeep-rails", require: "upkeep"
+```
 
 Run the installer in a Rails app:
 

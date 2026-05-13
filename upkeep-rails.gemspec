@@ -6,12 +6,17 @@ Gem::Specification.new do |spec|
   spec.name = "upkeep-rails"
   spec.version = Upkeep::VERSION
   spec.authors = [ "Felipe Anjos" ]
-  spec.email = [ "felipe@example.com" ]
+  spec.email = [ "felipe.cavalheiro.anjos@gmail.com" ]
   spec.license = "MIT"
 
   spec.summary = "Rails runtime for Upkeep reactive rendering"
   spec.description = "Rails runtime for deriving render dependency graphs from Rails rendering, data, and identity surfaces."
+  spec.homepage = "https://github.com/fc-anjos/upkeep-rails"
   spec.required_ruby_version = ">= 3.2.0"
+  spec.metadata["homepage_uri"] = spec.homepage
+  spec.metadata["source_code_uri"] = "#{spec.homepage}/tree/main"
+  spec.metadata["bug_tracker_uri"] = "#{spec.homepage}/issues"
+  spec.metadata["rubygems_mfa_required"] = "true"
 
   internal_files = Dir[
     "lib/upkeep/probes/**/*.rb",
@@ -26,16 +31,19 @@ Gem::Specification.new do |spec|
 
   spec.files = (Dir[
     "README.md",
+    "LICENSE.txt",
+    "upkeep-rails.gemspec",
     "lib/**/*.rb",
     "lib/generators/**/templates/**/*"
   ] - internal_files).sort
   spec.require_paths = [ "lib" ]
 
-  spec.add_dependency "actionview", ">= 7.1"
-  spec.add_dependency "actioncable", ">= 7.1"
-  spec.add_dependency "activerecord", ">= 7.1"
-  spec.add_dependency "activesupport", ">= 7.1"
-  spec.add_dependency "nokogiri", ">= 1.15"
-  spec.add_dependency "railties", ">= 7.1"
-  spec.add_dependency "turbo-rails", ">= 1.5"
+  spec.add_dependency "actionview", ">= 7.1", "< 9.0"
+  spec.add_dependency "actionpack", ">= 7.1", "< 9.0"
+  spec.add_dependency "actioncable", ">= 7.1", "< 9.0"
+  spec.add_dependency "activerecord", ">= 7.1", "< 9.0"
+  spec.add_dependency "activesupport", ">= 7.1", "< 9.0"
+  spec.add_dependency "nokogiri", ">= 1.15", "< 2.0"
+  spec.add_dependency "railties", ">= 7.1", "< 9.0"
+  spec.add_dependency "turbo-rails", ">= 2.0", "< 3.0"
 end
