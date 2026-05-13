@@ -273,7 +273,8 @@ module Upkeep
           primary_table: analysis.primary_table,
           table_columns: analysis.table_columns,
           coverage: analysis.coverage,
-          sql: analysis.sql
+          sql: analysis.sql,
+          predicates: analysis.predicates
         )
 
         Runtime::Observation.record_dependency(dependency)
@@ -348,7 +349,8 @@ module Upkeep
             model: value.klass.name,
             sql: analysis.sql,
             primary_key: analysis.primary_key,
-            appendable: analysis.appendable?
+            appendable: analysis.appendable?,
+            predicates: analysis.predicates
           }
           snapshot[:member_ids] = relation_member_ids(value, rendered_collection) if rendered_collection
           snapshot

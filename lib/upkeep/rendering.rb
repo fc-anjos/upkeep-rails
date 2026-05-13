@@ -284,7 +284,8 @@ module Upkeep
           primary_table: analysis.primary_table,
           table_columns: analysis.table_columns,
           coverage: analysis.coverage,
-          sql: analysis.sql
+          sql: analysis.sql,
+          predicates: analysis.predicates
         )
 
         Runtime::Observation.record_dependency(dependency)
