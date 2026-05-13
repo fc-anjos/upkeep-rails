@@ -8,6 +8,7 @@ module Upkeep
       class Channel < ::ActionCable::Channel::Base
         def subscribed
           subscription = Upkeep::Rails.subscriptions.fetch(subscription_id)
+          Upkeep::Rails.subscriptions.touch(subscription.id) if Upkeep::Rails.subscriptions.respond_to?(:touch)
           stream_from stream_name_for(subscription)
           shared_stream_names_for(subscription).each { |stream_name| stream_from stream_name }
         rescue KeyError, ActiveRecord::RecordNotFound

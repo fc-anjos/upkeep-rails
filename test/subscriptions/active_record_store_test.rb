@@ -102,6 +102,40 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     assert_equal 1, Upkeep::Subscriptions::ActiveRecordStore::SubscriptionRecord.count
   end
 
+  def test_touch_updates_persistent_subscription_timestamp
+    create_subscription_card!("Plan")
+
+    _html, recorder = capture_controller_request("/cards?status=open")
+    store = active_record_store
+    subscription = store.register(subscriber_id: "subscriber-a", recorder: recorder, metadata: { stream_name: "stream-a" })
+    seen_at = Time.utc(2026, 1, 1, 12, 0, 0)
+
+    store.touch(subscription.id, now: seen_at)
+
+    assert_equal seen_at.to_i, Upkeep::Subscriptions::ActiveRecordStore::SubscriptionRecord.find(subscription.id).updated_at.to_i
+  end
+
+  def test_prune_stale_removes_subscription_and_reverse_index_rows
+    create_subscription_card!("Plan")
+
+    _html, recorder = capture_controller_request("/cards?status=open")
+    store = active_record_store
+    stale = store.register(subscriber_id: "stale", recorder: recorder, metadata: { stream_name: "stream-stale" })
+    fresh = store.register(subscriber_id: "fresh", recorder: recorder, metadata: { stream_name: "stream-fresh" })
+
+    store.touch(stale.id, now: Time.utc(2026, 1, 1))
+    store.touch(fresh.id, now: Time.utc(2026, 1, 3))
+
+    pruned = store.prune_stale!(older_than: Time.utc(2026, 1, 2))
+
+    assert_equal 1, pruned
+    assert_raises(ActiveRecord::RecordNotFound) { store.fetch(stale.id) }
+    assert_equal fresh.id, store.fetch(fresh.id).id
+    assert_equal [fresh.id], Upkeep::Subscriptions::ActiveRecordStore::SubscriptionRecord.pluck(:id)
+    assert_equal [fresh.id], Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.distinct.pluck(:subscription_id)
+    assert_equal 1, store.summary.fetch(:active_subscriptions)
+  end
+
   def test_active_registry_covers_planning_when_it_matches_persistent_subscription_count
     card = PersistentSubscriptionCard.create!(title: "Plan", status: "open")
 
