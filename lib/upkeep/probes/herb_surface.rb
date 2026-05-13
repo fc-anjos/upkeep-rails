@@ -1,10 +1,9 @@
 # frozen_string_literal: true
 
 require "json"
-require "digest"
 require "pathname"
 require "time"
-require_relative "../herb_loader"
+require_relative "../herb/template_manifest"
 
 module Upkeep
   module Probes
@@ -14,13 +13,7 @@ end
 class Upkeep::Probes::HerbSurface
   HTML_ERB_PATTERN = "app/views/**/*.html.erb"
 
-  PARSE_OPTIONS = {
-    strict: true,
-    track_whitespace: true,
-    render_nodes: true,
-    action_view_helpers: true,
-    transform_conditionals: true
-  }.freeze
+  PARSE_OPTIONS = Upkeep::HerbSupport::TemplateManifest::DEFAULT_PARSE_OPTIONS
 
   def initialize(project_root:)
     @project_root = Pathname(project_root)
@@ -28,7 +21,7 @@ class Upkeep::Probes::HerbSurface
   end
 
   def run
-    templates = template_paths.map { |path| analyze_template(path) }
+    manifests = template_paths.map { |path| analyze_template(path) }
 
     {
       generated_at: Time.now.utc.iso8601,
@@ -37,8 +30,8 @@ class Upkeep::Probes::HerbSurface
         template_pattern: HTML_ERB_PATTERN,
         herb_options: PARSE_OPTIONS
       },
-      summary: summarize(templates),
-      templates: templates
+      summary: Upkeep::HerbSupport::TemplateManifest.summary(manifests),
+      templates: manifests.map(&:to_h)
     }
   end
 
@@ -58,291 +51,14 @@ class Upkeep::Probes::HerbSurface
   end
 
   def analyze_template(path)
-    source = path.read
-    parse_result = Herb.parse(source, **PARSE_OPTIONS)
-    visitor = SurfaceVisitor.new(path: relative(path))
-    parse_result.value&.accept(visitor)
-
-    {
+    Upkeep::HerbSupport::TemplateManifest.build(
       path: relative(path),
-      parse: parse_status(parse_result),
-      root_shape: visitor.root_shape,
-      frontend_tag_plan: visitor.frontend_tag_plan,
-      render_nodes: visitor.render_nodes,
-      helper_lowered_elements: visitor.helper_lowered_elements
-    }
-  rescue StandardError => error
-    {
-      path: relative(path),
-      parse: {
-        ok: false,
-        exception: error.class.name,
-        message: error.message
-      },
-      root_shape: {},
-      frontend_tag_plan: [],
-      render_nodes: [],
-      helper_lowered_elements: []
-    }
-  end
-
-  def parse_status(parse_result)
-    errors = parse_result.errors.map { |error| error_payload(error) }
-    warnings = parse_result.warnings.map { |warning| error_payload(warning) }
-
-    {
-      ok: errors.empty?,
-      errors: errors,
-      warnings: warnings
-    }
-  end
-
-  def error_payload(error)
-    {
-      class: error.class.name,
-      message: error.respond_to?(:message) ? error.message : error.inspect,
-      location: error.respond_to?(:location) ? location_payload(error.location) : nil
-    }
-  end
-
-  def summarize(templates)
-    partials = templates.select { |template| File.basename(template.fetch(:path)).start_with?("_") }
-
-    {
-      templates_scanned: templates.size,
-      strict_parse_failures: templates.count { |template| !template.fetch(:parse).fetch(:ok) },
-      render_nodes: templates.sum { |template| template.fetch(:render_nodes).size },
-      helper_lowered_elements: templates.sum { |template| template.fetch(:helper_lowered_elements).size },
-      frontend_tag_targets: templates.sum { |template| template.fetch(:frontend_tag_plan).size },
-      fragment_root_tags: templates.sum { |template| template.fetch(:frontend_tag_plan).count { |tag| tag.fetch(:kind) == "fragment_root" } },
-      render_site_tags: templates.sum { |template| template.fetch(:frontend_tag_plan).count { |tag| tag.fetch(:kind) == "render_site" } },
-      partials: partials.size,
-      single_root_partials: partials.count { |template| template.fetch(:root_shape).fetch(:single_root, false) },
-      multi_root_partials: partials.count { |template| template.fetch(:root_shape).fetch(:multi_root, false) }
-    }
+      source: path.read,
+      parse_options: PARSE_OPTIONS
+    )
   end
 
   def relative(path)
     path.realpath.relative_path_from(workspace_root).to_s
-  end
-
-  def location_payload(location)
-    return nil unless location
-
-    {
-      start: {
-        line: location.start.line,
-        column: location.start.column
-      },
-      end: {
-        line: location.end.line,
-        column: location.end.column
-      }
-    }
-  end
-
-  class SurfaceVisitor < Herb::Visitor
-    attr_reader :frontend_tag_plan, :render_nodes, :helper_lowered_elements
-
-    def initialize(path:)
-      super()
-      @path = path
-      @frontend_tag_plan = []
-      @render_nodes = []
-      @helper_lowered_elements = []
-      @root_shape = nil
-    end
-
-    def root_shape
-      @root_shape || {
-        significant_children: 0,
-        root_elements: 0,
-        single_root: false,
-        multi_root: false
-      }
-    end
-
-    def visit_document_node(node)
-      significant_children = node.children.reject { |child| insignificant_document_child?(child) }
-      root_elements = significant_children.select { |child| html_element?(child) }
-
-      @root_shape = {
-        significant_children: significant_children.size,
-        root_elements: root_elements.size,
-        root_types: significant_children.map { |child| child.class.name },
-        single_root: significant_children.size == 1 && root_elements.size == 1,
-        multi_root: root_elements.size > 1
-      }
-
-      plan_fragment_root_tag(root_elements.first) if partial_template? && root_shape.fetch(:single_root)
-
-      super
-    end
-
-    def visit_erb_render_node(node)
-      keywords = node.keywords
-      render_node = render_node_payload(node, keywords)
-
-      @render_nodes << render_node
-      @frontend_tag_plan << render_site_tag(render_node)
-
-      super
-    end
-
-    def visit_html_element_node(node)
-      if node.respond_to?(:element_source) && node.element_source && node.element_source != "HTML"
-        @helper_lowered_elements << {
-          location: location_payload(node.location),
-          tag_name: token_value(node.tag_name),
-          element_source: node.element_source
-        }
-      end
-
-      super
-    end
-
-    private
-
-    attr_reader :path
-
-    def render_node_payload(node, keywords)
-      {
-        location: location_payload(node.location),
-        site_id: site_id("render", node.location),
-        expression: token_value(node.content)&.strip,
-        kind: render_kind(keywords),
-        partial: token_value(keywords&.partial),
-        template_path: token_value(keywords&.template_path),
-        layout: token_value(keywords&.layout),
-        collection: token_value(keywords&.collection),
-        object: token_value(keywords&.object),
-        as: token_value(keywords&.as_name),
-        locals: Array(keywords&.locals).map { |local| token_value(local.name) },
-        block_arguments: Array(node.block_arguments).map { |argument| token_value(argument.name) }
-      }
-    end
-
-    def plan_fragment_root_tag(root_element)
-      @frontend_tag_plan << {
-        kind: "fragment_root",
-        target: "root_element",
-        location: location_payload(root_element.location),
-        tag_name: token_value(root_element.tag_name),
-        attributes: [
-          {
-            name: "data-upkeep-frame",
-            value: "<%= upkeep_frame_id %>"
-          },
-          {
-            name: "data-upkeep-template",
-            value: template_id
-          }
-        ],
-        update_role: "morph or replace this rendered fragment when runtime observations match a committed change"
-      }
-    end
-
-    def render_site_tag(render_node)
-      {
-        kind: "render_site",
-        target: render_node.fetch(:kind) == "partial" && render_node.fetch(:collection) ? "collection_region" : "opaque_render_output",
-        location: render_node.fetch(:location),
-        site_id: render_node.fetch(:site_id),
-        attributes: [
-          {
-            name: "data-upkeep-render-site",
-            value: render_node.fetch(:site_id)
-          }
-        ],
-        render: {
-          kind: render_node.fetch(:kind),
-          partial: render_node.fetch(:partial),
-          collection: render_node.fetch(:collection),
-          object: render_node.fetch(:object),
-          as: render_node.fetch(:as)
-        },
-        update_role: render_site_update_role(render_node)
-      }
-    end
-
-    def render_site_update_role(render_node)
-      if render_node.fetch(:kind) == "partial" && render_node.fetch(:collection)
-        "anchor collection membership while child partial roots carry per-record frame tags"
-      else
-        "record where ActionView runtime must confirm the rendered frame target"
-      end
-    end
-
-    def render_kind(keywords)
-      return "unknown" unless keywords
-
-      %i[
-        partial template_path layout file inline_template body plain html
-        renderable collection object
-      ].find { |name| token_value(keywords.public_send(name)) }&.to_s || "unknown"
-    end
-
-    def insignificant_document_child?(node)
-      return true if html_text?(node) && token_value(node.content).to_s.strip.empty?
-      return true if erb_comment?(node)
-
-      false
-    end
-
-    def html_text?(node)
-      node.class.name == "Herb::AST::HTMLTextNode"
-    end
-
-    def html_element?(node)
-      [
-        "Herb::AST::HTMLElementNode",
-        "Herb::AST::HTMLConditionalElementNode"
-      ].include?(node.class.name)
-    end
-
-    def erb_comment?(node)
-      node.respond_to?(:tag_opening) && token_value(node.tag_opening).to_s.start_with?("<%#")
-    end
-
-    def partial_template?
-      File.basename(path).start_with?("_")
-    end
-
-    def template_id
-      Digest::SHA256.hexdigest(path)[0, 16]
-    end
-
-    def site_id(kind, location)
-      Digest::SHA256.hexdigest([
-        path,
-        kind,
-        location&.start&.line,
-        location&.start&.column,
-        location&.end&.line,
-        location&.end&.column
-      ].join(":"))[0, 16]
-    end
-
-    def token_value(token)
-      return nil unless token
-      return token.value if token.respond_to?(:value)
-
-      token.to_s
-    end
-
-    def location_payload(location)
-      return nil unless location
-
-      {
-        start: {
-          line: location.start.line,
-          column: location.start.column
-        },
-        end: {
-          line: location.end.line,
-          column: location.end.column
-        }
-      }
-    end
   end
 end

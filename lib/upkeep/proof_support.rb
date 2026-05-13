@@ -2,6 +2,7 @@
 
 require_relative "../upkeep"
 require_relative "herb_loader"
+require_relative "herb/template_manifest"
 require_relative "domain"
 require_relative "templates"
 require_relative "rendering"
