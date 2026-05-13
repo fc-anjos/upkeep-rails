@@ -7,6 +7,7 @@ module Upkeep
 
       def initialize
         @entries_by_lookup_key = Hash.new { |hash, key| hash[key] = [] }
+        @entry_keys_by_lookup_key = Hash.new { |hash, key| hash[key] = {} }
       end
 
       def index(subscription)
@@ -16,8 +17,12 @@ module Upkeep
       def index_entries(entries)
         entries.each do |entry|
           lookup_keys_for_dependency(entry.dependency).each do |lookup_key|
-            entries = @entries_by_lookup_key[lookup_key]
-            entries << entry unless entries.include?(entry)
+            entry_key = [entry.subscription_id, entry.owner_id, entry.dependency_cache_key]
+            entry_keys = @entry_keys_by_lookup_key[lookup_key]
+            next if entry_keys.key?(entry_key)
+
+            @entries_by_lookup_key[lookup_key] << entry
+            entry_keys[entry_key] = true
           end
         end
       end
