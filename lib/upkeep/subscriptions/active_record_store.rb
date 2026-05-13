@@ -7,6 +7,9 @@ require "securerandom"
 module Upkeep
   module Subscriptions
     class ActiveRecordStore
+      LOOKUP_NOTIFICATION = "lookup_subscription_index.upkeep"
+      REGISTER_NOTIFICATION = "register_subscription_store.upkeep"
+
       class SubscriptionRecord < ActiveRecord::Base
         self.table_name = "upkeep_subscriptions"
         self.primary_key = "id"
@@ -116,31 +119,47 @@ module Upkeep
         end
 
         def entries_for(changes)
-          payload = { changes: Array(changes).size, store: "active_record" }
-          ActiveSupport::Notifications.instrument("lookup_subscription_index.upkeep", payload) do
-            active_entries = active_registry&.entries_for(changes) || []
-            active_count = active_registry&.count || 0
-            payload[:active_entries] = active_entries.size
-            payload[:active_subscriptions] = active_count
-
-            if active_count == 0
-              persistent_entries = persistent_entries_for(changes)
-              payload[:mode] = "persistent"
-              payload[:persistent_entries] = persistent_entries.size
-              next persistent_entries
+          if ActiveSupport::Notifications.notifier.listening?(LOOKUP_NOTIFICATION)
+            payload = { changes: Array(changes).size, store: "active_record" }
+            ActiveSupport::Notifications.instrument(LOOKUP_NOTIFICATION, payload) do
+              entries_for_with_payload(changes, payload)
             end
-
-            if active_registry&.covers?(persistent_subscription_count)
-              payload[:mode] = "active"
-              payload[:persistent_entries] = 0
-              next active_entries
-            end
-
-            persistent_entries = persistent_entries_for(changes)
-            payload[:mode] = "active_and_persistent"
-            payload[:persistent_entries] = persistent_entries.size
-            merge_entries(active_entries, persistent_entries)
+          else
+            entries_for_without_payload(changes)
           end
+        end
+
+        def entries_for_without_payload(changes)
+          active_entries = active_registry&.entries_for(changes) || []
+          return persistent_entries_for(changes) if active_registry&.count == 0
+          return active_entries if active_registry&.covers?(persistent_subscription_count)
+
+          merge_entries(active_entries, persistent_entries_for(changes))
+        end
+
+        def entries_for_with_payload(changes, payload)
+          active_entries = active_registry&.entries_for(changes) || []
+          active_count = active_registry&.count || 0
+          payload[:active_entries] = active_entries.size
+          payload[:active_subscriptions] = active_count
+
+          if active_count == 0
+            persistent_entries = persistent_entries_for(changes)
+            payload[:mode] = "persistent"
+            payload[:persistent_entries] = persistent_entries.size
+            return persistent_entries
+          end
+
+          if active_registry&.covers?(persistent_subscription_count)
+            payload[:mode] = "active"
+            payload[:persistent_entries] = 0
+            return active_entries
+          end
+
+          persistent_entries = persistent_entries_for(changes)
+          payload[:mode] = "active_and_persistent"
+          payload[:persistent_entries] = persistent_entries.size
+          merge_entries(active_entries, persistent_entries)
         end
 
         def summary
@@ -254,23 +273,34 @@ module Upkeep
       end
 
       def register(subscriber_id:, recorder:, metadata: {})
-        payload = { store: "active_record" }
-        ActiveSupport::Notifications.instrument("register_subscription_store.upkeep", payload) do
-          subscription = Subscription.new(
-            next_subscription_id,
-            subscriber_id,
-            recorder,
-            recorder.graph,
-            metadata
-          )
+        if ActiveSupport::Notifications.notifier.listening?(REGISTER_NOTIFICATION)
+          payload = { store: "active_record" }
+          ActiveSupport::Notifications.instrument(REGISTER_NOTIFICATION, payload) do
+            register_subscription(subscriber_id, recorder, metadata, payload: payload)
+          end
+        else
+          register_subscription(subscriber_id, recorder, metadata)
+        end
+      end
 
-          entries = index_builder.entries_for_subscription(subscription)
+      def register_subscription(subscriber_id, recorder, metadata, payload: nil)
+        subscription = Subscription.new(
+          next_subscription_id,
+          subscriber_id,
+          recorder,
+          recorder.graph,
+          metadata
+        )
+
+        entries = index_builder.entries_for_subscription(subscription)
+        if payload
           payload[:subscription_id] = subscription.id
           payload[:dependency_entries] = entries.size
-          payload[:index_rows] = persist_subscription(subscription, entries)
-          active_registry.register(subscription, entries: entries)
-          subscription
         end
+        index_rows = persist_subscription(subscription, entries)
+        payload[:index_rows] = index_rows if payload
+        active_registry.register(subscription, entries: entries)
+        subscription
       end
 
       def shutdown = nil
