@@ -27,6 +27,8 @@ class HerbSourceInstrumenterTest < Minitest::Test
     html = render_erb(instrument(manifest, source), context)
 
     assert_equal [render_site_id], context.render_site_ids
+    assert_equal [manifest.path], context.manifest_paths
+    assert_equal [manifest.fingerprint], context.manifest_fingerprints
     assert_includes html, %(<upkeep-render-site data-upkeep-render-site="#{render_site_id}"><li>Plan</li></upkeep-render-site>)
   end
 
@@ -78,10 +80,12 @@ class HerbSourceInstrumenterTest < Minitest::Test
   end
 
   class RenderSiteContext
-    attr_reader :render_site_ids
+    attr_reader :render_site_ids, :manifest_paths, :manifest_fingerprints
 
     def initialize
       @render_site_ids = []
+      @manifest_paths = []
+      @manifest_fingerprints = []
     end
 
     def cards
@@ -92,8 +96,10 @@ class HerbSourceInstrumenterTest < Minitest::Test
       collection.map { |card| "<li>#{card.title}</li>" }.join
     end
 
-    def render_site(site_id)
+    def render_site(site_id, manifest_path: nil, manifest_fingerprint: nil)
       render_site_ids << site_id
+      manifest_paths << manifest_path
+      manifest_fingerprints << manifest_fingerprint
       %(<upkeep-render-site data-upkeep-render-site="#{site_id}">#{yield}</upkeep-render-site>)
     end
   end

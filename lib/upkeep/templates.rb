@@ -109,6 +109,10 @@ module Upkeep
         end
       end
 
+      def manifest_for(template)
+        plan_for(template).fetch(:manifest)
+      end
+
       def plan_for(template)
         @template_plans[template.name] ||= begin
           manifest = Upkeep::HerbSupport::TemplateManifest.build(
