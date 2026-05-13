@@ -20,6 +20,8 @@ module BenchMetrics
   UPKEEP_SUBSCRIPTION_ATTACH = "upkeep.subscription_attach"
   UPKEEP_SUBSCRIPTION_STORE_FIND_OR_CREATE = "upkeep.subscription_store_find_or_create"
   UPKEEP_SUBSCRIPTION_STORE_CREATE_ENDPOINT = "upkeep.subscription_store_create_endpoint"
+  UPKEEP_SUBSCRIPTION_STORE_REGISTER = "register_subscription_store.upkeep"
+  UPKEEP_SUBSCRIPTION_INDEX_LOOKUP = "lookup_subscription_index.upkeep"
   UPKEEP_BROKER_REQUEST = "upkeep.broker_request"
   UPKEEP_BROKER_SERVER_REQUEST = "upkeep.broker_server_request"
   UPKEEP_RELAY_PUBLISH = "upkeep.relay_publish"
@@ -489,6 +491,34 @@ module BenchMetrics
         duration_ms: event.duration,
         extra: {
           subscription_id: event.payload[:subscription_id]
+        }
+      )
+    end
+
+    ActiveSupport::Notifications.subscribe(UPKEEP_SUBSCRIPTION_STORE_REGISTER) do |event|
+      emit(
+        event: "upkeep_subscription_store_register",
+        duration_ms: event.duration,
+        extra: {
+          store: event.payload[:store],
+          subscription_id: event.payload[:subscription_id],
+          dependency_entries: event.payload[:dependency_entries],
+          index_rows: event.payload[:index_rows]
+        }
+      )
+    end
+
+    ActiveSupport::Notifications.subscribe(UPKEEP_SUBSCRIPTION_INDEX_LOOKUP) do |event|
+      emit(
+        event: "upkeep_subscription_index_lookup",
+        duration_ms: event.duration,
+        extra: {
+          store: event.payload[:store],
+          mode: event.payload[:mode],
+          changes: event.payload[:changes],
+          active_subscriptions: event.payload[:active_subscriptions],
+          active_entries: event.payload[:active_entries],
+          persistent_entries: event.payload[:persistent_entries]
         }
       )
     end

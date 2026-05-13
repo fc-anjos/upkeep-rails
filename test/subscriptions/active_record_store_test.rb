@@ -110,6 +110,41 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     assert_equal 1, Upkeep::Subscriptions::ActiveRecordStore::SubscriptionRecord.count
   end
 
+  def test_register_reports_store_timing_metadata
+    create_subscription_card!("Plan")
+
+    _html, recorder = capture_controller_request("/cards?status=open")
+    events = capture_notifications("register_subscription_store.upkeep") do
+      active_record_store.register(subscriber_id: "subscriber-a", recorder: recorder, metadata: { stream_name: "stream-a" })
+    end
+
+    assert_equal 1, events.size
+    assert_equal "active_record", events.first.payload.fetch(:store)
+    assert_match(/\Asubscription-/, events.first.payload.fetch(:subscription_id))
+    assert_operator events.first.payload.fetch(:dependency_entries), :>, 0
+    assert_operator events.first.payload.fetch(:index_rows), :>, 0
+  end
+
+  def test_persistent_reverse_index_reports_lookup_mode_and_counts
+    card = PersistentSubscriptionCard.create!(title: "Plan", status: "open")
+
+    _html, recorder = capture_controller_request("/cards?status=open")
+    active_record_store.register(subscriber_id: "subscriber-a", recorder: recorder, metadata: { stream_name: "stream-a" })
+    reloaded_store = active_record_store
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.update!(title: "Plan v2")
+
+    events = capture_notifications("lookup_subscription_index.upkeep") do
+      reloaded_store.reverse_index.entries_for(Upkeep::Runtime::ChangeLog.events)
+    end
+
+    assert_equal 1, events.size
+    assert_equal "persistent", events.first.payload.fetch(:mode)
+    assert_equal "active_record", events.first.payload.fetch(:store)
+    assert_operator events.first.payload.fetch(:persistent_entries), :>, 0
+  end
+
   def test_touch_updates_persistent_subscription_timestamp
     create_subscription_card!("Plan")
 
@@ -237,6 +272,15 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     body.each.to_a.join
   ensure
     body.close if body.respond_to?(:close)
+  end
+
+  def capture_notifications(name)
+    events = []
+    subscription = ActiveSupport::Notifications.subscribe(name) { |event| events << event }
+    yield
+    events
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscription) if subscription
   end
 
   def resolver
