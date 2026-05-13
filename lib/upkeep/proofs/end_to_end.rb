@@ -8,6 +8,9 @@ module Upkeep
       def initialize
         @renderer = Rendering::Engine.new
         @selector = Targeting::Selector.new
+        @runtime_alignment = HerbSupport::RuntimeAlignment.new(
+          manifests: HerbSupport::RuntimeAlignment.build_manifests(Templates::REGISTRY.values)
+        )
       end
 
       def run
@@ -23,7 +26,9 @@ module Upkeep
             failed: case_results.count { |result| !result.fetch(:passed) },
             narrow_fragment_cases: case_results.count { |result| result.fetch(:selected_targets).any? { |target| target.fetch(:kind) == "fragment" } },
             render_site_cases: case_results.count { |result| result.fetch(:selected_targets).any? { |target| target.fetch(:kind) == "render_site" } },
-            page_fallback_cases: case_results.count { |result| result.fetch(:selected_targets).any? { |target| target.fetch(:kind) == "page" } }
+            page_fallback_cases: case_results.count { |result| result.fetch(:selected_targets).any? { |target| target.fetch(:kind) == "page" } },
+            manifest_alignment_passed: case_results.count { |result| result.fetch(:manifest_alignment).fetch(:summary).fetch(:gate_passed) },
+            manifest_alignment_failed: case_results.count { |result| !result.fetch(:manifest_alignment).fetch(:summary).fetch(:gate_passed) }
           },
           cases: case_results
         }
@@ -31,7 +36,7 @@ module Upkeep
 
       private
 
-      attr_reader :renderer, :selector
+      attr_reader :renderer, :selector, :runtime_alignment
 
       def cases
         [
@@ -91,6 +96,7 @@ module Upkeep
         full_after = renderer.render_request(test_case.fetch(:template), test_case.fetch(:request))
 
         targets = selector.select(initial.recorder, changes)
+        manifest_alignment = runtime_alignment.report(graph: initial.recorder.graph, selected_targets: targets)
         patches = Targeting::Extraction.patches_from_full_rerender(full_after.html, targets)
         patched_html = Targeting::Patcher.new(initial.html).apply(patches)
         target_replay_results = replay_results(initial.recorder, targets, full_after.html)
@@ -107,6 +113,7 @@ module Upkeep
             target_replay_results.all? { |result| result.fetch(:matches_full_target) },
           selected_targets: targets.map { |target| target_payload(target) },
           replay_results: target_replay_results,
+          manifest_alignment: manifest_alignment,
           changes: changes,
           graph_report: initial.recorder.graph.report,
           initial_html_digest: Targeting::Extraction.digest_html(patched_html),
