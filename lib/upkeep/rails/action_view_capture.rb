@@ -2,14 +2,25 @@
 
 require "action_view"
 require "action_view/renderer/collection_renderer"
+require "cgi"
 require "digest"
+require "nokogiri"
 require "stringio"
 require_relative "../active_record_query"
+require_relative "../herb/source_instrumenter"
 
 module Upkeep
   module Rails
     module ActionViewCapture
       module_function
+
+      FRAME_STACK_KEY = :upkeep_rails_frame_stack
+      RENDER_SITE_STACK_KEY = :upkeep_rails_render_site_stack
+
+      MANIFEST_PARSE_OPTIONS = HerbSupport::TemplateManifest::DEFAULT_PARSE_OPTIONS.merge(
+        action_view_helpers: false,
+        transform_conditionals: false
+      ).freeze
 
       REPLAY_HTTP_ENV_KEYS = %w[
         HTTP_ACCEPT
@@ -23,6 +34,7 @@ module Upkeep
 
         ::ActionView::Template.prepend(TemplateHook)
         ::ActionView::CollectionRenderer.prepend(CollectionRendererHook)
+        ::ActionView::Base.include(ViewHelpers)
 
         @installed = true
       end
@@ -32,6 +44,7 @@ module Upkeep
       end
 
       def capture_template(template, view, locals, implicit_locals:, add_to_stack:, block:)
+        instrument_template_source!(template)
         captured_locals = locals.dup
         metadata = template_metadata(template, captured_locals)
         controller = controller_for_view(view)
@@ -54,12 +67,16 @@ module Upkeep
           )
         end
 
-        Runtime::Observation.capture_frame(frame_id, metadata.merge(recipe: recipe)) { yield }
+        html = Runtime::Observation.capture_frame(frame_id, metadata.merge(recipe: recipe)) do
+          with_frame_id(frame_id) { yield }
+        end
+
+        html && metadata.fetch(:kind) == "page" ? tag_root(html, "data-upkeep-page-frame" => frame_id) : html
       end
 
       def capture_collection(partial, collection, rendered_collection, context, options, block, collection_analysis: nil)
         captured_options = render_options_for_replay(options)
-        metadata = collection_metadata(partial, collection)
+        metadata = collection_metadata(partial, collection, render_site: current_render_site)
         frame_id = "site:#{metadata.fetch(:site_id)}"
         recipe = collection_recipe(
           frame_id: frame_id,
@@ -96,24 +113,26 @@ module Upkeep
 
       def template_metadata(template, locals)
         virtual_path = template.virtual_path || template.identifier
+        manifest = manifest_for_template(template)
         {
           kind: partial_template?(template) ? "fragment" : "page",
           template: virtual_path,
           identifier: template.identifier,
           locals: local_metadata(locals)
-        }
+        }.merge(manifest_metadata(manifest))
       end
 
-      def collection_metadata(partial, collection)
+      def collection_metadata(partial, collection, render_site: nil)
         collection_key = collection_key(collection)
-        site_id = Digest::SHA256.hexdigest(["rails_collection", partial.to_s, collection_key].inspect)[0, 16]
+        site_id = render_site&.fetch(:site_id) ||
+          Digest::SHA256.hexdigest(["rails_collection", partial.to_s, collection_key].inspect)[0, 16]
 
         {
           kind: "render_site",
           site_id: site_id,
           partial: partial.to_s,
           collection: collection_key
-        }
+        }.merge(manifest_metadata(render_site))
       end
 
       def template_recipe(frame_id:, template:, view:, controller:, locals:, metadata:, implicit_locals:, add_to_stack:, block:)
@@ -265,6 +284,98 @@ module Upkeep
         body.close if body.respond_to?(:close)
       end
 
+      def instrument_template_source!(template)
+        return if template.instance_variable_get(:@upkeep_herb_instrumented)
+        return unless erb_template?(template)
+
+        manifest = manifest_for_template(template)
+        instrumented_source = HerbSupport::SourceInstrumenter.new(manifest: manifest).instrument(template.source)
+        template.instance_variable_set(:@source, instrumented_source)
+        template.instance_variable_set(:@upkeep_herb_instrumented, true)
+      end
+
+      def erb_template?(template)
+        template.identifier.to_s.end_with?(".erb") || template.respond_to?(:handler) && template.handler.class.name.include?("ERB")
+      end
+
+      def manifest_for_template(template)
+        template.instance_variable_get(:@upkeep_herb_manifest) || begin
+          manifest = HerbSupport::TemplateManifest.build(
+            path: template.virtual_path || template.identifier,
+            source: template.source,
+            parse_options: MANIFEST_PARSE_OPTIONS
+          )
+          template.instance_variable_set(:@upkeep_herb_manifest, manifest)
+          manifest
+        end
+      end
+
+      def manifest_metadata(manifest)
+        return {} unless manifest
+
+        path = if manifest.respond_to?(:path)
+          manifest.path
+        else
+          manifest[:manifest_path] || manifest[:path]
+        end
+
+        fingerprint = if manifest.respond_to?(:fingerprint)
+          manifest.fingerprint
+        else
+          manifest[:manifest_fingerprint] || manifest[:fingerprint]
+        end
+
+        return {} unless path && fingerprint
+
+        {
+          manifest_path: path,
+          manifest_fingerprint: fingerprint,
+          manifest: {
+            path: path,
+            fingerprint: fingerprint
+          }
+        }
+      end
+
+      def tag_root(html, attributes)
+        fragment = Nokogiri::HTML5.fragment(html)
+        root = fragment.children.find { |child| child.element? }
+        return html unless root
+
+        attributes.each { |name, value| root[name] = value }
+        fragment.to_html
+      end
+
+      def with_frame_id(frame_id)
+        frame_stack.push(frame_id)
+        yield
+      ensure
+        frame_stack.pop
+      end
+
+      def current_frame_id
+        frame_stack.last
+      end
+
+      def frame_stack
+        Thread.current[FRAME_STACK_KEY] ||= []
+      end
+
+      def with_render_site(render_site)
+        render_site_stack.push(render_site)
+        yield
+      ensure
+        render_site_stack.pop
+      end
+
+      def current_render_site
+        render_site_stack.last
+      end
+
+      def render_site_stack
+        Thread.current[RENDER_SITE_STACK_KEY] ||= []
+      end
+
       def record_collection_dependency(collection, collection_analysis: nil)
         return unless active_record_relation?(collection)
 
@@ -409,6 +520,27 @@ module Upkeep
 
       def partial_template?(template)
         File.basename(template.virtual_path.to_s).start_with?("_")
+      end
+
+      module ViewHelpers
+        def upkeep_frame_id
+          Upkeep::Rails::ActionViewCapture.current_frame_id ||
+            raise("upkeep_frame_id is only available while rendering an Upkeep frame")
+        end
+
+        def render_site(site_id, manifest_path: nil, manifest_fingerprint: nil)
+          html = Upkeep::Rails::ActionViewCapture.with_render_site(
+            {
+              site_id: site_id,
+              manifest_path: manifest_path,
+              manifest_fingerprint: manifest_fingerprint
+            }.compact
+          ) do
+            yield
+          end
+
+          %(<upkeep-render-site data-upkeep-render-site="#{CGI.escapeHTML(site_id.to_s)}">#{html}</upkeep-render-site>).html_safe
+        end
       end
 
       module TemplateHook

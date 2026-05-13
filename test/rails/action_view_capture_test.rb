@@ -46,7 +46,7 @@ class ActionViewCaptureTest < Minitest::Test
     shorthand = create_card!("Shorthand")
     object = create_card!("Object")
 
-    _html, recorder = capture_render("boards/mixed", {
+    html, recorder = capture_render("boards/mixed", {
       explicit_card: explicit,
       shorthand_card: shorthand,
       object_card: object
@@ -59,7 +59,10 @@ class ActionViewCaptureTest < Minitest::Test
     assert_includes fragment_ids, "fragment:rails:cards/_card:rails_capture_cards:#{shorthand.id}"
     assert_includes fragment_ids, "fragment:rails:cards/_card:rails_capture_cards:#{object.id}"
     assert_equal 4, recorder.graph.summary.fetch(:replay_recipes)
+    assert_equal 4, recorder.graph.summary.fetch(:manifest_attached_frames)
     assert_includes recorder.graph.summary.fetch(:dependency_sources), "active_record_attribute"
+    assert_includes html, 'data-upkeep-page-frame="page:rails:boards/mixed"'
+    assert_includes html, %(data-upkeep-frame="fragment:rails:cards/_card:rails_capture_cards:#{explicit.id}")
   end
 
   def test_page_recipe_rerenders_with_fresh_relation
@@ -129,7 +132,7 @@ class ActionViewCaptureTest < Minitest::Test
     plan = create_card!("Plan")
     build = create_card!("Build")
 
-    _html, recorder = capture_render("boards/collection", cards: RailsCaptureCard.order(:id))
+    html, recorder = capture_render("boards/collection", cards: RailsCaptureCard.order(:id))
 
     Upkeep::Runtime::ChangeLog.reset
     create_card!("Review")
@@ -143,6 +146,17 @@ class ActionViewCaptureTest < Minitest::Test
     assert_includes replayed_html, "Review"
     assert_equal [plan.id.to_s, build.id.to_s], collection_snapshot.fetch(:member_ids)
     assert_includes recorder.graph.summary.fetch(:dependency_sources), "active_record_collection"
+
+    render_site = recorder.graph.frame_nodes.find { |frame| frame.payload.fetch(:kind) == "render_site" }
+    page = recorder.graph.node("page:rails:boards/collection")
+    fragment = recorder.graph.node("fragment:rails:cards/_card:rails_capture_cards:#{plan.id}")
+
+    assert_equal "boards/collection", page.payload.fetch(:manifest_path)
+    assert_equal "boards/collection", render_site.payload.fetch(:manifest_path)
+    assert_equal "cards/_card", fragment.payload.fetch(:manifest_path)
+    assert_equal render_site.payload.fetch(:manifest_path), recipe.manifest_reference.fetch(:path)
+    assert_includes html, %(upkeep-render-site data-upkeep-render-site="#{render_site.payload.fetch(:site_id)}")
+    assert_includes html, %(data-upkeep-frame="fragment:rails:cards/_card:rails_capture_cards:#{plan.id}")
   end
 
   def test_collection_snapshot_uses_the_rendered_relation_records
