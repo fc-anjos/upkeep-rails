@@ -47,6 +47,14 @@ module Upkeep
           @mutex.synchronize { @subscriptions.values }
         end
 
+        def unregister(ids)
+          ids = Array(ids)
+          @mutex.synchronize do
+            ids.each { |id| @subscriptions.delete(id) }
+            rebuild_reverse_index!
+          end
+        end
+
         def entries_for(changes)
           @mutex.synchronize { @reverse_index.entries_for(changes) }
         end
@@ -70,6 +78,13 @@ module Upkeep
           @mutex.synchronize do
             @reverse_index.summary.merge(subscriptions: @subscriptions.size)
           end
+        end
+
+        private
+
+        def rebuild_reverse_index!
+          @reverse_index = ReverseIndex.new
+          @subscriptions.each_value { |subscription| @reverse_index.index(subscription) }
         end
       end
 
@@ -199,6 +214,25 @@ module Upkeep
       end
 
       def shutdown = nil
+
+      def touch(id, now: Time.now)
+        subscription_record.where(id: id).update_all(updated_at: now)
+      end
+
+      def prune_stale!(older_than:)
+        stale_ids = subscription_record.where(subscription_record.arel_table[:updated_at].lt(older_than)).pluck(:id)
+        return 0 if stale_ids.empty?
+
+        ActiveRecord::Base.connection_pool.with_connection do
+          ActiveRecord::Base.transaction do
+            index_record.where(subscription_id: stale_ids).delete_all
+            subscription_record.where(id: stale_ids).delete_all
+          end
+        end
+
+        active_registry.unregister(stale_ids)
+        stale_ids.size
+      end
 
       def fetch(id)
         active_registry.fetch(id) || fetch_persisted(id)

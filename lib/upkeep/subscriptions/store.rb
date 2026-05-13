@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "securerandom"
+require "time"
 
 module Upkeep
   module Subscriptions
@@ -55,8 +56,30 @@ module Upkeep
         )
 
         @subscriptions[subscription.id] = subscription
+        touch(subscription.id)
         reverse_index.index(subscription)
         subscription
+      end
+
+      def touch(id, now: Time.now)
+        subscription = @subscriptions.fetch(id)
+        @subscriptions[id] = Subscription.new(
+          subscription.id,
+          subscription.subscriber_id,
+          subscription.recorder,
+          subscription.graph,
+          subscription.metadata.merge("last_seen_at" => now.utc.iso8601)
+        )
+      end
+
+      def prune_stale!(older_than:)
+        stale_ids = @subscriptions.filter_map do |id, subscription|
+          id if last_seen_at(subscription) && last_seen_at(subscription) < older_than
+        end
+
+        stale_ids.each { |id| @subscriptions.delete(id) }
+        rebuild_reverse_index!
+        stale_ids.size
       end
 
       def fetch(id)
@@ -84,6 +107,16 @@ module Upkeep
 
       def next_subscription_id
         "subscription-#{SecureRandom.uuid}"
+      end
+
+      def last_seen_at(subscription)
+        value = subscription.metadata["last_seen_at"] || subscription.metadata[:last_seen_at]
+        Time.parse(value.to_s) if value
+      end
+
+      def rebuild_reverse_index!
+        @reverse_index = ReverseIndex.new
+        subscriptions.each { |subscription| reverse_index.index(subscription) }
       end
     end
   end
