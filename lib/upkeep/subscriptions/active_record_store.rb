@@ -292,7 +292,7 @@ module Upkeep
           metadata
         )
 
-        entries = index_builder.entries_for_subscription(subscription)
+        entries = unique_entries(index_builder.entries_for_subscription(subscription))
         if payload
           payload[:subscription_id] = subscription.id
           payload[:dependency_entries] = entries.size
@@ -373,6 +373,10 @@ module Upkeep
       private
 
       attr_reader :subscription_record, :index_record, :index_builder, :active_registry
+
+      def unique_entries(entries)
+        entries.uniq { |entry| [entry.owner_id, entry.dependency_cache_key] }
+      end
 
       def persist_subscription(subscription, entries)
         ActiveRecord::Base.connection_pool.with_connection do
