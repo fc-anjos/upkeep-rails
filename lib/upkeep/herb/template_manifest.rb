@@ -26,7 +26,7 @@ module Upkeep
       def self.build(path:, source:, parse_options: DEFAULT_PARSE_OPTIONS)
         parse_result = ::Herb.parse(source, **parse_options)
         parse = parse_status(parse_result)
-        visitor = Visitor.new(path: path)
+        visitor = Visitor.new(path: path, source: source)
         parse_result.value&.accept(visitor) if parse.fetch(:ok)
 
         new(
@@ -133,13 +133,14 @@ module Upkeep
       class Visitor < ::Herb::Visitor
         attr_reader :frontend_tag_plan, :render_nodes, :helper_lowered_elements
 
-        def initialize(path:)
+        def initialize(path:, source:)
           super()
           @path = path
           @frontend_tag_plan = []
           @render_nodes = []
           @helper_lowered_elements = []
           @root_shape = nil
+          @line_offsets = build_line_offsets(source)
         end
 
         def root_shape
@@ -187,13 +188,27 @@ module Upkeep
 
         private
 
-        attr_reader :path
+        attr_reader :path, :line_offsets
+
+        def build_line_offsets(source)
+          offsets = [0]
+          source.each_line(chomp: false).with_index do |line, index|
+            offsets[index + 1] = offsets[index] + line.bytesize
+          end
+          offsets
+        end
+
+        def offset_for(position)
+          line_offsets.fetch(position.line - 1) + position.column
+        end
 
         def render_node_payload(node, keywords)
           {
             location: location_payload(node.location),
             site_id: site_id("render", node.location),
             expression: token_value(node.content)&.strip,
+            start_offset: offset_for(node.location.start),
+            end_offset: offset_for(node.location.end),
             kind: render_kind(keywords),
             partial: token_value(keywords&.partial),
             template_path: token_value(keywords&.template_path),
