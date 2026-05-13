@@ -152,6 +152,12 @@ module Upkeep
         prepend_recipe = prepend_recipe_for(frame, recipe, entries, changes)
         return ["prepend", prepend_recipe, nil] if prepend_recipe
 
+        member_replace_recipe = member_replace_recipe_for(frame, recipe, entries, changes)
+        if member_replace_recipe
+          delivery_target = target_for_recipe(member_replace_recipe, "render-site member update kept collection order")
+          return ["replace", member_replace_recipe, delivery_target]
+        end
+
         ["replace", recipe, nil]
       end
 
@@ -173,6 +179,18 @@ module Upkeep
         return unless create_changes.one?
 
         CollectionPrepend.build(recipe: recipe, change: create_changes.first)
+      end
+
+      def member_replace_recipe_for(frame, recipe, entries, changes)
+        return unless frame.payload.fetch(:kind) == "render_site"
+        return unless entries.any? { |entry| entry.dependency.source == :active_record_collection }
+
+        update_changes = changes.select do |change|
+          change[:id] && !change.fetch(:type).to_s.include?("create") && !destroy_change?(change)
+        end
+        return unless update_changes.one?
+
+        CollectionMemberReplace.build(recipe: recipe, change: update_changes.first)
       end
 
       def remove_recipe_for(frame, recipe, entries, changes)
