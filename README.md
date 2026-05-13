@@ -21,6 +21,7 @@ against the in-repo benchmark apps and exposes a small integration contract:
 - `gem "upkeep-rails", require: "upkeep"`
 - `bin/rails generate upkeep:install`
 - `config.upkeep.enabled`
+- `config.upkeep.subscription_store = :active_record`
 - the `Upkeep::Rails::Cable::Channel` ActionCable channel
 - the `upkeep_subscriptions` and `upkeep_subscription_index_entries` tables
 - the generated browser subscription bootstrap
@@ -108,6 +109,12 @@ bin/rails db:migrate
 The generator creates subscription tables, writes `config/initializers/upkeep.rb`,
 mounts ActionCable when needed, pins Turbo and ActionCable for importmap apps,
 and imports the browser bootstrap from `app/javascript/application.js`.
+
+Production subscription storage is explicit. `:active_record` is the supported
+production store because Upkeep needs a queryable reverse index shared across
+Puma workers. `:memory` is available only as an explicit development/test
+choice. Delivery still flows through ActionCable, so multi-worker deployments
+also need a shared ActionCable adapter such as Redis or Solid Cable.
 
 ## Delivery Boundary
 
