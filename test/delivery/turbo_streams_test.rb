@@ -12,7 +12,8 @@ end
 
 class DeliveryCardsController < ActionController::Base
   def index
-    @cards = DeliveryCard.where(status: params.fetch(:status, "open")).order(:id)
+    cards = DeliveryCard.where(status: params.fetch(:status, "open"))
+    @cards = params[:order] == "title_desc" ? cards.order(title: :desc) : cards.order(:id)
     render template: "delivery_cards/index"
   end
 end
@@ -144,6 +145,27 @@ class TurboStreamsDeliveryTest < Minitest::Test
     refute_includes stream.html, "Ship"
   end
 
+  def test_collection_create_prepends_when_record_belongs_first
+    create_delivery_card!("Plan")
+    create_delivery_card!("Build")
+
+    store = Upkeep::Subscriptions::Store.new
+    register_controller_subscription(store, subscriber_id: "subscriber-a", path: "/cards?status=open&order=title_desc")
+
+    Upkeep::Runtime::ChangeLog.reset
+    create_delivery_card!("Zed")
+
+    batch = delivery.build(plan_for(store))
+    stream = batch.streams.first
+    turbo_stream = Nokogiri::HTML5.fragment(stream.to_html).at_css("turbo-stream")
+
+    assert_equal "prepend", turbo_stream["action"]
+    assert_equal stream.target_selector, turbo_stream["targets"]
+    assert_includes stream.html, "Zed"
+    refute_includes stream.html, "Plan"
+    refute_includes stream.html, "Build"
+  end
+
   def test_collection_destroy_removes_rendered_member
     card = create_delivery_card!("Plan")
     create_delivery_card!("Build")
@@ -238,8 +260,8 @@ class TurboStreamsDeliveryTest < Minitest::Test
     DeliveryCard.create!(title: title, status: status)
   end
 
-  def register_controller_subscription(store, subscriber_id:)
-    _html, recorder = capture_controller_request("/cards?status=open")
+  def register_controller_subscription(store, subscriber_id:, path: "/cards?status=open")
+    _html, recorder = capture_controller_request(path)
     store.register(subscriber_id: subscriber_id, recorder: recorder)
   end
 

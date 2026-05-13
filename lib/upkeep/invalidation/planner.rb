@@ -132,6 +132,9 @@ module Upkeep
         append_recipe = append_recipe_for(frame, recipe, entries, changes)
         return ["append", append_recipe, nil] if append_recipe
 
+        prepend_recipe = prepend_recipe_for(frame, recipe, entries, changes)
+        return ["prepend", prepend_recipe, nil] if prepend_recipe
+
         ["replace", recipe, nil]
       end
 
@@ -143,6 +146,16 @@ module Upkeep
         return unless create_changes.one?
 
         CollectionAppend.build(recipe: recipe, change: create_changes.first)
+      end
+
+      def prepend_recipe_for(frame, recipe, entries, changes)
+        return unless frame.payload.fetch(:kind) == "render_site"
+        return unless entries.any? { |entry| entry.dependency.source == :active_record_collection }
+
+        create_changes = changes.select { |change| change[:id] && change.fetch(:type).to_s.include?("create") }
+        return unless create_changes.one?
+
+        CollectionPrepend.build(recipe: recipe, change: create_changes.first)
       end
 
       def remove_recipe_for(frame, recipe, entries, changes)
