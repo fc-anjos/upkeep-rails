@@ -166,13 +166,13 @@ module Upkeep
         targets.map do |target|
           frame_id = Targeting::Extraction.frame_id_for(target)
           recipe = recorder.graph.node(frame_id).payload[:recipe]
-          replay_html = recipe&.render
-          replay_target_html = replay_html && Targeting::Extraction.extract_target_html(replay_html, target)
+          replay_target_html = recipe&.render_target(target)
           full_target_html = Targeting::Extraction.extract_target_html(full_html, target)
 
           {
             target: replay_target_payload(target),
             recipe: recipe&.to_h,
+            manifest_direct_replay: recipe&.manifest_target_render?(target),
             replay_html_digest: replay_target_html ? Targeting::Extraction.digest_html(replay_target_html) : nil,
             full_target_html_digest: Targeting::Extraction.digest_html(full_target_html),
             matches_full_target: replay_target_html &&
