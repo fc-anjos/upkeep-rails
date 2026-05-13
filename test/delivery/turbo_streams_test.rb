@@ -129,7 +129,7 @@ class TurboStreamsDeliveryTest < Minitest::Test
     assert_equal batch.streams.size, event.payload.fetch(:streams)
     assert_equal batch.envelopes.size, event.payload.fetch(:envelopes)
     assert_equal({ "append" => 1 }, event.payload.fetch(:actions))
-    assert_equal({ "collection_append_proven" => 1 }, event.payload.fetch(:operation_reasons))
+    assert_equal({}, event.payload.fetch(:deoptimizations))
     assert_equal 1, event.payload.fetch(:renders)
     assert_operator event.payload.fetch(:render_duration_ms), :>=, 0.0
     assert_operator event.payload.fetch(:payload_bytes), :>, 0
@@ -238,7 +238,7 @@ class TurboStreamsDeliveryTest < Minitest::Test
     turbo_stream = Nokogiri::HTML5.fragment(stream.to_html).at_css("turbo-stream")
 
     assert_equal "replace", turbo_stream["action"]
-    assert_equal "collection_member_replace_proven", stream.operation_reason
+    assert_nil stream.deoptimization_reason
     assert_equal "#delivery_card_#{card.id}", turbo_stream["targets"]
     assert_includes stream.html, "Nectarine"
     refute_includes stream.html, "Alpha"
@@ -261,7 +261,7 @@ class TurboStreamsDeliveryTest < Minitest::Test
     turbo_stream = Nokogiri::HTML5.fragment(stream.to_html).at_css("turbo-stream")
 
     assert_equal "replace", turbo_stream["action"]
-    assert_equal "collection_member_replace_unproven", stream.operation_reason
+    assert_equal "collection_member_replace_unproven", stream.deoptimization_reason
     assert_match(/\Aupkeep-render-site\[data-upkeep-render-site="/, turbo_stream["targets"])
     assert_includes stream.html, "Aardvark"
     assert_includes stream.html, "Alpha"
@@ -284,7 +284,7 @@ class TurboStreamsDeliveryTest < Minitest::Test
     turbo_stream = Nokogiri::HTML5.fragment(stream.to_html).at_css("turbo-stream")
 
     assert_equal "replace", turbo_stream["action"]
-    assert_equal "collection_member_replace_unproven", stream.operation_reason
+    assert_equal "collection_member_replace_unproven", stream.deoptimization_reason
     assert_match(/\Aupkeep-render-site\[data-upkeep-render-site="/, turbo_stream["targets"])
     assert_includes stream.html, "Alpha"
     refute_includes stream.html, "Mango"
@@ -342,7 +342,7 @@ class TurboStreamsDeliveryTest < Minitest::Test
     stream_report = report.fetch(:streams).first
 
     assert_equal "replace", stream_report.fetch(:action)
-    assert_equal "replace_dependency_matched", stream_report.fetch(:operation_reason)
+    assert_nil stream_report.fetch(:deoptimization_reason)
     assert_equal "fragment", stream_report.fetch(:target).fetch(:kind)
     assert_equal "public", stream_report.fetch(:identity_signature)
     assert_equal 64, stream_report.fetch(:html_digest).length
