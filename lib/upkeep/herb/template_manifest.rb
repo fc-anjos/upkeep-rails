@@ -126,6 +126,10 @@ module Upkeep
         }
       end
 
+      def fingerprint
+        @fingerprint ||= Digest::SHA256.hexdigest(to_h.inspect)[0, 16]
+      end
+
       def partial?
         File.basename(path).start_with?("_")
       end

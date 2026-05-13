@@ -26,7 +26,7 @@ module Upkeep
           [
             render_node.fetch(:start_offset),
             render_node.fetch(:end_offset),
-            %(<%= render_site("#{render_node.fetch(:site_id)}") { #{render_node.fetch(:expression)} } %>)
+            %(<%= render_site("#{render_node.fetch(:site_id)}", manifest_path: "#{manifest.path}", manifest_fingerprint: "#{manifest.fingerprint}") { #{render_node.fetch(:expression)} } %>)
           ]
         end
       end

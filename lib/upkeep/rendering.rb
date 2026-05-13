@@ -43,7 +43,10 @@ module Upkeep
               end
               context = TemplateContext.new(self, session: session, cookies: cookies, request: request, warden: warden, page_recipe: recipe)
 
-              html = Runtime::Observation.capture_frame(page_frame_id, kind: "page", template: template_name, recipe: recipe) do
+              html = Runtime::Observation.capture_frame(
+                page_frame_id,
+                manifest_metadata(template_name).merge(kind: "page", template: template_name, recipe: recipe)
+              ) do
                 context.render_template(template_name, assigns)
               end
 
@@ -80,7 +83,10 @@ module Upkeep
           end
         end
 
-        html = Runtime::Observation.capture_frame(frame_id, kind: "fragment", template: template_name, locals: frame_local_metadata(locals), recipe: recipe) do
+        html = Runtime::Observation.capture_frame(
+          frame_id,
+          manifest_metadata(template_name).merge(kind: "fragment", template: template_name, locals: frame_local_metadata(locals), recipe: recipe)
+        ) do
           context.with_upkeep_frame(frame_id) do
             render_template(template_name, locals, context)
           end
@@ -104,6 +110,16 @@ module Upkeep
 
         attributes.each { |name, value| root[name] = value }
         fragment.to_html
+      end
+
+      def manifest_metadata(template_name)
+        template = Templates::REGISTRY.fetch(template_name)
+        manifest = @instrumenter.manifest_for(template)
+
+        {
+          manifest_path: manifest.path,
+          manifest_fingerprint: manifest.fingerprint
+        }
       end
 
       def page_frame_id(template_name)
@@ -199,8 +215,14 @@ module Upkeep
         @upkeep_frame_id || raise("upkeep_frame_id is only available while rendering a fragment")
       end
 
-      def render_site(site_id)
+      def render_site(site_id, manifest_path: nil, manifest_fingerprint: nil)
         frame_id = "site:#{site_id}"
+        metadata = {
+          kind: "render_site",
+          site_id: site_id,
+          manifest_path: manifest_path,
+          manifest_fingerprint: manifest_fingerprint
+        }.compact
         recipe = Replay::Recipe.new(
           kind: :render_site,
           frame_id: frame_id,
@@ -212,7 +234,7 @@ module Upkeep
             target = Targeting::Target.new("render_site", site_id, "render-site replay")
             Targeting::Extraction.extract_target_html(page_recipe.render, target)
           else
-            html = Runtime::Observation.capture_frame(frame_id, kind: "render_site", site_id: site_id) do
+            html = Runtime::Observation.capture_frame(frame_id, metadata) do
               yield
             end
 
@@ -220,7 +242,7 @@ module Upkeep
           end
         end
 
-        html = Runtime::Observation.capture_frame(frame_id, kind: "render_site", site_id: site_id, recipe: recipe) do
+        html = Runtime::Observation.capture_frame(frame_id, metadata.merge(recipe: recipe)) do
           yield
         end
 

@@ -104,49 +104,72 @@ module Upkeep
       def template_alignment(frame)
         template = frame.payload[:template]
         manifest = manifests_by_path[template]
-        matched = manifest&.parse&.fetch(:ok, false)
+        provenance = provenance_alignment(frame, manifest)
+        matched = manifest&.parse&.fetch(:ok, false) && provenance.fetch(:matched)
 
         {
           id: frame.id,
           kind: "page",
           template: template,
           manifest_path: manifest&.path,
+          runtime_manifest_path: frame.payload[:manifest_path],
+          manifest_fingerprint: manifest&.fingerprint,
+          runtime_manifest_fingerprint: frame.payload[:manifest_fingerprint],
           matched: matched,
-          deopt_reason: matched ? nil : template_deopt_reason(template, manifest)
+          deopt_reason: matched ? nil : provenance.fetch(:deopt_reason) || template_deopt_reason(template, manifest)
         }.compact
       end
 
       def fragment_alignment(frame)
         template = frame.payload[:template]
         manifest = manifests_by_path[template]
+        provenance = provenance_alignment(frame, manifest)
         matched = manifest&.parse&.fetch(:ok, false) &&
           manifest.partial? &&
-          manifest.root_shape.fetch(:single_root, false)
+          manifest.root_shape.fetch(:single_root, false) &&
+          provenance.fetch(:matched)
 
         {
           id: frame.id,
           kind: "fragment",
           template: template,
           manifest_path: manifest&.path,
+          runtime_manifest_path: frame.payload[:manifest_path],
+          manifest_fingerprint: manifest&.fingerprint,
+          runtime_manifest_fingerprint: frame.payload[:manifest_fingerprint],
           matched: matched,
-          deopt_reason: matched ? nil : fragment_deopt_reason(template, manifest)
+          deopt_reason: matched ? nil : provenance.fetch(:deopt_reason) || fragment_deopt_reason(template, manifest)
         }.compact
       end
 
       def render_site_alignment(frame)
         site_id = frame.payload[:site_id]
         manifest, render_node = render_sites_by_id[site_id]
-        matched = !!render_node
+        provenance = render_node ? provenance_alignment(frame, manifest) : { matched: false, deopt_reason: nil }
+        matched = !!render_node && provenance.fetch(:matched)
 
         {
           id: frame.id,
           kind: "render_site",
           site_id: site_id,
           manifest_path: manifest&.path,
+          runtime_manifest_path: frame.payload[:manifest_path],
+          manifest_fingerprint: manifest&.fingerprint,
+          runtime_manifest_fingerprint: frame.payload[:manifest_fingerprint],
           location: render_node&.fetch(:location),
           matched: matched,
-          deopt_reason: matched ? nil : "render_site_missing_from_manifest"
+          deopt_reason: matched ? nil : provenance.fetch(:deopt_reason) || "render_site_missing_from_manifest"
         }.compact
+      end
+
+      def provenance_alignment(frame, manifest)
+        return { matched: false, deopt_reason: "manifest_missing" } unless manifest
+        return { matched: false, deopt_reason: "runtime_manifest_path_missing" } unless frame.payload[:manifest_path]
+        return { matched: false, deopt_reason: "runtime_manifest_fingerprint_missing" } unless frame.payload[:manifest_fingerprint]
+        return { matched: false, deopt_reason: "runtime_manifest_path_mismatch" } unless frame.payload[:manifest_path] == manifest.path
+        return { matched: false, deopt_reason: "runtime_manifest_fingerprint_mismatch" } unless frame.payload[:manifest_fingerprint] == manifest.fingerprint
+
+        { matched: true, deopt_reason: nil }
       end
 
       def template_deopt_reason(template, manifest)
