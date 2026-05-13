@@ -57,11 +57,19 @@ class BenchmarkLayoutTest < Minitest::Test
 
     assert_includes files, "lib/upkeep.rb"
     assert_includes files, "lib/upkeep/rails/testing.rb"
+    assert_includes files, "lib/upkeep/herb/developer_report.rb"
+    assert_includes files, "lib/upkeep/herb/manifest_cache.rb"
+    assert_includes files, "lib/upkeep/herb/manifest_diff.rb"
+    assert_includes files, "lib/upkeep/herb/source_instrumenter.rb"
+    assert_includes files, "lib/upkeep/herb/template_manifest.rb"
     assert_includes files, "lib/generators/upkeep/install/install_generator.rb"
     assert_includes files, "lib/generators/upkeep/install/templates/subscription.js"
     refute_includes files, "lib/upkeep/proof_support.rb"
     refute_includes files, "lib/upkeep/proofs/end_to_end.rb"
     refute_includes files, "lib/upkeep/probes/herb_surface.rb"
+    refute_includes files, "lib/upkeep/herb/fallback_analyzer.rb"
+    refute_includes files, "lib/upkeep/herb/performance_gate.rb"
+    refute_includes files, "lib/upkeep/herb/runtime_alignment.rb"
     refute_includes files, "lib/upkeep/domain.rb"
   end
 

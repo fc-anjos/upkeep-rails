@@ -1,7 +1,13 @@
 # frozen_string_literal: true
 
 require_relative "../upkeep"
-require_relative "herb_loader"
+require_relative "herb/template_manifest"
+require_relative "herb/runtime_alignment"
+require_relative "herb/fallback_analyzer"
+require_relative "herb/manifest_diff"
+require_relative "herb/manifest_cache"
+require_relative "herb/developer_report"
+require_relative "herb/performance_gate"
 require_relative "domain"
 require_relative "templates"
 require_relative "rendering"

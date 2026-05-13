@@ -23,7 +23,9 @@ Gem::Specification.new do |spec|
     "lib/upkeep/proofs/**/*.rb"
   ] + %w[
     lib/upkeep/domain.rb
-    lib/upkeep/herb_loader.rb
+    lib/upkeep/herb/fallback_analyzer.rb
+    lib/upkeep/herb/performance_gate.rb
+    lib/upkeep/herb/runtime_alignment.rb
     lib/upkeep/proof_support.rb
     lib/upkeep/rendering.rb
     lib/upkeep/templates.rb
@@ -43,6 +45,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency "actioncable", ">= 7.1", "< 9.0"
   spec.add_dependency "activerecord", ">= 7.1", "< 9.0"
   spec.add_dependency "activesupport", ">= 7.1", "< 9.0"
+  spec.add_dependency "herb", ">= 0.10.1"
   spec.add_dependency "nokogiri", ">= 1.15", "< 2.0"
   spec.add_dependency "railties", ">= 7.1", "< 9.0"
   spec.add_dependency "turbo-rails", ">= 2.0", "< 3.0"

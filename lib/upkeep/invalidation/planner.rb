@@ -18,7 +18,11 @@ module Upkeep
         :deoptimization_reason
       ) do
         def render
-          recipe.render
+          recipe.render_target(target)
+        end
+
+        def manifest_replay?
+          recipe.manifest_target_render?(target)
         end
       end
 
@@ -29,6 +33,7 @@ module Upkeep
             candidate_entries: candidate_entries.size,
             matched_entries: matched_entries.size,
             target_kinds: targets.map { |target| target.target.kind }.uniq.sort,
+            manifest_replay_targets: targets.count(&:manifest_replay?),
             deoptimizations: targets.filter_map(&:deoptimization_reason).tally
           }
         end
@@ -65,6 +70,7 @@ module Upkeep
           matched_entries: plan.matched_entries.size,
           targets: plan.targets.size,
           target_kinds: plan.targets.map { |target| target.target.kind }.uniq.sort,
+          manifest_replay_targets: plan.targets.count(&:manifest_replay?),
           actions: plan.targets.map(&:action).tally,
           deoptimizations: plan.targets.filter_map(&:deoptimization_reason).tally
         }
