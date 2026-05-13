@@ -62,6 +62,31 @@ class InvalidationPlannerTest < Minitest::Test
     end
   end
 
+  def test_planning_emits_cost_notification
+    create_subscription_card!("Plan")
+    store = Upkeep::Subscriptions::Store.new
+    register_controller_subscription(store, subscriber_id: "subscriber-a")
+
+    Upkeep::Runtime::ChangeLog.reset
+    create_subscription_card!("Review")
+
+    events = []
+    subscription = ActiveSupport::Notifications.subscribe("plan.upkeep") { |event| events << event }
+
+    plan = planner(store).plan(Upkeep::Runtime::ChangeLog.events)
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscription) if subscription
+
+    event = events.first
+    assert event
+    assert_equal 1, event.payload.fetch(:change_count)
+    assert_equal plan.candidate_entries.size, event.payload.fetch(:candidate_entries)
+    assert_equal plan.matched_entries.size, event.payload.fetch(:matched_entries)
+    assert_equal plan.targets.size, event.payload.fetch(:targets)
+    assert_equal ["render_site"], event.payload.fetch(:target_kinds)
+    assert_equal({ "append" => 1 }, event.payload.fetch(:actions))
+  end
+
   def test_same_subscriber_same_identity_target_is_deduplicated
     card = create_subscription_card!("Plan")
 
