@@ -81,10 +81,12 @@ module Upkeep
         end
 
         html = Runtime::Observation.capture_frame(frame_id, kind: "fragment", template: template_name, locals: frame_local_metadata(locals), recipe: recipe) do
-          render_template(template_name, locals, context)
+          context.with_upkeep_frame(frame_id) do
+            render_template(template_name, locals, context)
+          end
         end
 
-        tag_root(html, "data-upkeep-frame" => frame_id, "data-upkeep-template" => template_digest(template_name))
+        html
       end
 
       private
@@ -126,10 +128,6 @@ module Upkeep
             value.class.name
           end
         end
-      end
-
-      def template_digest(template_name)
-        Digest::SHA256.hexdigest(template_name)[0, 16]
       end
 
       def with_current_attributes(attributes)
@@ -187,6 +185,18 @@ module Upkeep
 
       def render_template(template_name, locals)
         @engine.render_template(template_name, locals, self)
+      end
+
+      def with_upkeep_frame(frame_id)
+        previous_frame_id = @upkeep_frame_id
+        @upkeep_frame_id = frame_id
+        yield
+      ensure
+        @upkeep_frame_id = previous_frame_id
+      end
+
+      def upkeep_frame_id
+        @upkeep_frame_id || raise("upkeep_frame_id is only available while rendering a fragment")
       end
 
       def render_site(site_id)

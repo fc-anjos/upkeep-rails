@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "herb/template_manifest"
+require_relative "herb/source_instrumenter"
 
 module Upkeep
   module Templates
@@ -102,12 +103,9 @@ module Upkeep
 
       def source_for(template)
         @instrumented_sources[template.name] ||= begin
-          source = template.source.dup
-          plan_for(template).fetch(:render_sites).sort_by { |site| -site.fetch(:start_offset) }.each do |site|
-            source[site.fetch(:start_offset)...site.fetch(:end_offset)] =
-              %(<%= render_site("#{site.fetch(:site_id)}") { #{site.fetch(:expression)} } %>)
-          end
-          source
+          Upkeep::HerbSupport::SourceInstrumenter.new(
+            manifest: plan_for(template).fetch(:manifest)
+          ).instrument(template.source)
         end
       end
 
@@ -119,7 +117,7 @@ module Upkeep
             parse_options: PARSE_OPTIONS
           )
 
-          { render_sites: render_sites_from(manifest) }
+          { manifest: manifest, render_sites: render_sites_from(manifest) }
         end
       end
 
