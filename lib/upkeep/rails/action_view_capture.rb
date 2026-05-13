@@ -7,6 +7,7 @@ require "digest"
 require "nokogiri"
 require "stringio"
 require_relative "../active_record_query"
+require_relative "../herb/manifest_cache"
 require_relative "../herb/source_instrumenter"
 
 module Upkeep
@@ -290,6 +291,7 @@ module Upkeep
 
         manifest = manifest_for_template(template)
         instrumented_source = HerbSupport::SourceInstrumenter.new(manifest: manifest).instrument(template.source)
+        template.instance_variable_set(:@upkeep_herb_original_source, template.source)
         template.instance_variable_set(:@source, instrumented_source)
         template.instance_variable_set(:@upkeep_herb_instrumented, true)
       end
@@ -300,9 +302,10 @@ module Upkeep
 
       def manifest_for_template(template)
         template.instance_variable_get(:@upkeep_herb_manifest) || begin
-          manifest = HerbSupport::TemplateManifest.build(
+          source = template.instance_variable_get(:@upkeep_herb_original_source) || template.source
+          manifest = manifest_cache.fetch(
             path: template.virtual_path || template.identifier,
-            source: template.source,
+            source: source,
             parse_options: MANIFEST_PARSE_OPTIONS
           )
           template.instance_variable_set(:@upkeep_herb_manifest, manifest)
@@ -374,6 +377,14 @@ module Upkeep
 
       def render_site_stack
         Thread.current[RENDER_SITE_STACK_KEY] ||= []
+      end
+
+      def manifest_cache
+        @manifest_cache ||= HerbSupport::ManifestCache.new
+      end
+
+      def reset_manifest_cache!
+        @manifest_cache = HerbSupport::ManifestCache.new
       end
 
       def record_collection_dependency(collection, collection_analysis: nil)
