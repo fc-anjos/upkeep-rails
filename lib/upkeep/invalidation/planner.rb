@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "active_support/notifications"
+
 module Upkeep
   module Invalidation
     class Planner
@@ -36,19 +38,34 @@ module Upkeep
 
       def plan(changes)
         changes = Array(changes)
-        candidate_entries = store.reverse_index.entries_for(changes)
-        matched_entries = candidate_entries.select { |entry| changes.any? { |change| entry.dependency.matches_change?(change) } }
+        payload = { change_count: changes.size }
+        ActiveSupport::Notifications.instrument("plan.upkeep", payload) do
+          candidate_entries = store.reverse_index.entries_for(changes)
+          matched_entries = candidate_entries.select { |entry| changes.any? { |change| entry.dependency.matches_change?(change) } }
 
-        targets = matched_entries
-          .group_by(&:subscription_id)
-          .flat_map { |subscription_id, entries| targets_for_subscription(store.fetch(subscription_id), entries, changes) }
+          targets = matched_entries
+            .group_by(&:subscription_id)
+            .flat_map { |subscription_id, entries| targets_for_subscription(store.fetch(subscription_id), entries, changes) }
 
-        Plan.new(deduplicate_targets(targets), candidate_entries, matched_entries)
+          plan = Plan.new(deduplicate_targets(targets), candidate_entries, matched_entries)
+          payload.merge!(payload_for(plan))
+          plan
+        end
       end
 
       private
 
       attr_reader :store
+
+      def payload_for(plan)
+        {
+          candidate_entries: plan.candidate_entries.size,
+          matched_entries: plan.matched_entries.size,
+          targets: plan.targets.size,
+          target_kinds: plan.targets.map { |target| target.target.kind }.uniq.sort,
+          actions: plan.targets.map(&:action).tally
+        }
+      end
 
       def targets_for_subscription(subscription, entries, changes)
         frames_by_id = Hash.new { |hash, key| hash[key] = { node: nil, dependency_keys: [], entries: [] } }
