@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
-require "digest"
-require_relative "herb_loader"
+require_relative "herb/template_manifest"
 
 module Upkeep
   module Templates
@@ -91,6 +90,11 @@ module Upkeep
     }.freeze
 
     class Instrumenter
+      PARSE_OPTIONS = Upkeep::HerbSupport::TemplateManifest::DEFAULT_PARSE_OPTIONS.merge(
+        action_view_helpers: false,
+        transform_conditionals: false
+      ).freeze
+
       def initialize
         @instrumented_sources = {}
         @template_plans = {}
@@ -109,60 +113,28 @@ module Upkeep
 
       def plan_for(template)
         @template_plans[template.name] ||= begin
-          parse = Herb.parse(template.source, strict: true, render_nodes: true, track_whitespace: true)
-          visitor = RenderSiteVisitor.new(template.name, template.source)
-          parse.value&.accept(visitor)
-          { render_sites: visitor.render_sites }
+          manifest = Upkeep::HerbSupport::TemplateManifest.build(
+            path: template.name,
+            source: template.source,
+            parse_options: PARSE_OPTIONS
+          )
+
+          { render_sites: render_sites_from(manifest) }
         end
       end
-    end
 
-    class RenderSiteVisitor < Herb::Visitor
-      attr_reader :render_sites
-
-      def initialize(template_name, source)
-        super()
-        @template_name = template_name
-        @render_sites = []
-        @line_offsets = build_line_offsets(source)
-      end
-
-      def visit_erb_render_node(node)
-        @render_sites << {
-          site_id: site_id(node.location),
-          expression: node.content.value.strip,
-          start_offset: offset_for(node.location.start),
-          end_offset: offset_for(node.location.end)
-        }
-
-        super
-      end
-
-      private
-
-      attr_reader :template_name, :line_offsets
-
-      def build_line_offsets(source)
-        offsets = [0]
-        source.each_line(chomp: false).with_index do |line, index|
-          offsets[index + 1] = offsets[index] + line.bytesize
+      def render_sites_from(manifest)
+        manifest.render_nodes.map do |render_node|
+          {
+            site_id: render_node.fetch(:site_id),
+            expression: render_node.fetch(:expression),
+            start_offset: render_node.fetch(:start_offset),
+            end_offset: render_node.fetch(:end_offset)
+          }
         end
-        offsets
       end
 
-      def offset_for(position)
-        line_offsets.fetch(position.line - 1) + position.column
-      end
-
-      def site_id(location)
-        Digest::SHA256.hexdigest([
-          template_name,
-          location.start.line,
-          location.start.column,
-          location.end.line,
-          location.end.column
-        ].join(":"))[0, 16]
-      end
+      private :render_sites_from
     end
   end
 end

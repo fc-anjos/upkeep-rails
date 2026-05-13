@@ -43,6 +43,7 @@ class HerbTemplateManifestTest < Minitest::Test
     assert_equal "cards/card", render_node.fetch(:partial)
     assert_equal "@cards", render_node.fetch(:collection)
     assert_equal "card", render_node.fetch(:as)
+    assert_operator render_node.fetch(:start_offset), :<, render_node.fetch(:end_offset)
     assert_equal render_node.fetch(:site_id), tag.fetch(:site_id)
     assert_equal "collection_region", tag.fetch(:target)
     assert_match(/\A[0-9a-f]{16}\z/, render_node.fetch(:site_id))
