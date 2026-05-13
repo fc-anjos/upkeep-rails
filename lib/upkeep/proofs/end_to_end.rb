@@ -8,8 +8,9 @@ module Upkeep
       def initialize
         @renderer = Rendering::Engine.new
         @selector = Targeting::Selector.new
+        @manifests = HerbSupport::RuntimeAlignment.build_manifests(Templates::REGISTRY.values)
         @runtime_alignment = HerbSupport::RuntimeAlignment.new(
-          manifests: HerbSupport::RuntimeAlignment.build_manifests(Templates::REGISTRY.values)
+          manifests: manifests
         )
       end
 
@@ -27,6 +28,8 @@ module Upkeep
             narrow_fragment_cases: case_results.count { |result| result.fetch(:selected_targets).any? { |target| target.fetch(:kind) == "fragment" } },
             render_site_cases: case_results.count { |result| result.fetch(:selected_targets).any? { |target| target.fetch(:kind) == "render_site" } },
             page_fallback_cases: case_results.count { |result| result.fetch(:selected_targets).any? { |target| target.fetch(:kind) == "page" } },
+            page_fallback_reasons: page_fallback_reasons(case_results),
+            unexplained_page_fallback_cases: unexplained_page_fallback_cases(case_results),
             manifest_alignment_passed: case_results.count { |result| result.fetch(:manifest_alignment).fetch(:summary).fetch(:gate_passed) },
             manifest_alignment_failed: case_results.count { |result| !result.fetch(:manifest_alignment).fetch(:summary).fetch(:gate_passed) }
           },
@@ -36,7 +39,7 @@ module Upkeep
 
       private
 
-      attr_reader :renderer, :selector, :runtime_alignment
+      attr_reader :renderer, :selector, :manifests, :runtime_alignment
 
       def cases
         [
@@ -97,6 +100,7 @@ module Upkeep
 
         targets = selector.select(initial.recorder, changes)
         manifest_alignment = runtime_alignment.report(graph: initial.recorder.graph, selected_targets: targets)
+        fallback_analyzer = HerbSupport::FallbackAnalyzer.new(manifests: manifests, alignment_report: manifest_alignment)
         patches = Targeting::Extraction.patches_from_full_rerender(full_after.html, targets)
         patched_html = Targeting::Patcher.new(initial.html).apply(patches)
         target_replay_results = replay_results(initial.recorder, targets, full_after.html)
@@ -111,7 +115,7 @@ module Upkeep
           passed: normalized_patched == normalized_full &&
             selected_kinds.include?(test_case.fetch(:expected_strategy)) &&
             target_replay_results.all? { |result| result.fetch(:matches_full_target) },
-          selected_targets: targets.map { |target| target_payload(target) },
+          selected_targets: targets.map { |target| target_payload(target, initial.recorder.graph, changes, fallback_analyzer) },
           replay_results: target_replay_results,
           manifest_alignment: manifest_alignment,
           changes: changes,
@@ -138,7 +142,23 @@ module Upkeep
         }
       end
 
-      def target_payload(target)
+      def page_fallback_reasons(case_results)
+        case_results.flat_map do |result|
+          result.fetch(:selected_targets).filter_map { |target| target[:fallback_reason] if target.fetch(:kind) == "page" }
+        end.tally
+      end
+
+      def unexplained_page_fallback_cases(case_results)
+        case_results.count do |result|
+          result.fetch(:selected_targets).any? { |target| target.fetch(:kind) == "page" && !target[:fallback_reason] }
+        end
+      end
+
+      def target_payload(target, graph, changes, fallback_analyzer)
+        fallback_analyzer.target_payload(graph: graph, target: target, changes: changes)
+      end
+
+      def replay_target_payload(target)
         { kind: target.kind, id: target.id, reason: target.reason }
       end
 
@@ -151,7 +171,7 @@ module Upkeep
           full_target_html = Targeting::Extraction.extract_target_html(full_html, target)
 
           {
-            target: target_payload(target),
+            target: replay_target_payload(target),
             recipe: recipe&.to_h,
             replay_html_digest: replay_target_html ? Targeting::Extraction.digest_html(replay_target_html) : nil,
             full_target_html_digest: Targeting::Extraction.digest_html(full_target_html),
