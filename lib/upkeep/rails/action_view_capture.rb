@@ -2,6 +2,7 @@
 
 require "action_view"
 require "action_view/renderer/collection_renderer"
+require "active_support/notifications"
 require "cgi"
 require "digest"
 require "stringio"
@@ -28,6 +29,8 @@ module Upkeep
         HTTP_X_FORWARDED_HOST
         HTTP_X_FORWARDED_PROTO
       ].freeze
+
+      RefusedCollection = Data.define(:reason, :message, :suggestions, :error)
 
       def install
         return if @installed
@@ -99,6 +102,8 @@ module Upkeep
         return unless active_record_relation?(collection)
 
         ActiveRecordQuery.analyze(collection)
+      rescue ActiveRecordQuery::OpaqueRelationError => error
+        handle_refused_collection(error)
       end
 
       def collection_capture_pair(collection)
@@ -377,6 +382,7 @@ module Upkeep
 
       def record_collection_dependency(collection, collection_analysis: nil)
         return unless active_record_relation?(collection)
+        return if refused_collection_analysis?(collection_analysis)
 
         analysis = collection_analysis || ActiveRecordQuery.analyze(collection)
         dependency = Dependencies::ActiveRecordCollection.new(
@@ -453,7 +459,13 @@ module Upkeep
         if value.is_a?(ActiveRecord::Base)
           { type: "active_record", model: value.class.name, id: value.id }
         elsif active_record_relation?(value)
-          analysis = relation_analysis || ActiveRecordQuery.analyze(value)
+          if refused_collection_analysis?(relation_analysis)
+            return refused_relation_snapshot(value, relation_analysis)
+          end
+
+          analysis = relation_analysis || analyze_relation_for_snapshot(value)
+          return refused_relation_snapshot(value, analysis) if refused_collection_analysis?(analysis)
+
           snapshot = {
             type: "active_record_relation",
             model: value.klass.name,
@@ -490,6 +502,57 @@ module Upkeep
 
       def active_record_relation?(value)
         value.respond_to?(:klass) && value.respond_to?(:to_sql)
+      end
+
+      def handle_refused_collection(error)
+        raise error if Upkeep::Rails.configuration.refused_boundary_behavior == :raise
+
+        refused = RefusedCollection.new(
+          "opaque_active_record_relation",
+          error.message,
+          error.suggestions,
+          error
+        )
+        payload = {
+          reason: refused.reason,
+          message: refused.message,
+          suggestions: refused.suggestions,
+          source: "active_record_collection"
+        }
+
+        if Runtime::Observation.refuse_boundary(payload)
+          ActiveSupport::Notifications.instrument("refused_boundary.upkeep", payload)
+          warn_refused_boundary(payload)
+        end
+        refused
+      end
+
+      def analyze_relation_for_snapshot(value)
+        ActiveRecordQuery.analyze(value)
+      rescue ActiveRecordQuery::OpaqueRelationError => error
+        handle_refused_collection(error)
+      end
+
+      def refused_collection_analysis?(value)
+        value.is_a?(RefusedCollection)
+      end
+
+      def refused_relation_snapshot(value, refused)
+        {
+          type: "refused_active_record_relation",
+          model: value.klass.name,
+          sql_digest: Digest::SHA256.hexdigest(value.to_sql)[0, 16],
+          reason: refused.reason
+        }
+      end
+
+      def warn_refused_boundary(payload)
+        return unless defined?(::Rails) && ::Rails.respond_to?(:logger) && ::Rails.logger
+
+        ::Rails.logger.warn(
+          "Upkeep refused #{payload.fetch(:source)}: #{payload.fetch(:reason)}. " \
+          "#{payload.fetch(:suggestions).join(" ")}"
+        )
       end
 
       def replay_value(value)

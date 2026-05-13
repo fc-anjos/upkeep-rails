@@ -82,6 +82,9 @@ module Upkeep
       def initialize(primary_table:, table_columns:, coverage:, sql:, predicates: [])
         table_columns = normalize_table_columns(table_columns)
         coverage = coverage.to_sym
+        unless coverage == :columns
+          raise ArgumentError, "unsupported Active Record collection coverage: #{coverage}; collection dependencies require proven column coverage"
+        end
 
         super(
           source: :active_record_collection,
@@ -107,18 +110,12 @@ module Upkeep
 
         return true if create_change?(change)
         return true if delete_change?(change)
-        return true if coverage == :tables
 
         table_columns.fetch(change.fetch(:table)).intersect?(change.fetch(:changed_attributes, []))
       end
 
       def precision
-        case coverage
-        when :tables
-          :collection_table
-        else
-          :collection_predicate
-        end
+        :collection_predicate
       end
 
       def collection_lookup_tables
@@ -173,7 +170,7 @@ module Upkeep
 
       def coverage
         metadata.fetch(:coverage).to_sym.tap do |value|
-          raise ArgumentError, "unsupported Active Record collection coverage: #{value}" unless %i[columns tables].include?(value)
+          raise ArgumentError, "unsupported Active Record collection coverage: #{value}" unless value == :columns
         end
       end
 
