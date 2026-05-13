@@ -52,6 +52,7 @@ class InvalidationPlannerTest < Minitest::Test
 
     assert_equal ["subscriber-a", "subscriber-b"], plan.targets.map(&:subscriber_id).sort
     assert_equal ["render_site"], plan.targets.map { |target| target.target.kind }.uniq
+    assert_equal 2, plan.summary.fetch(:manifest_replay_targets)
     assert_equal 2, plan.matched_entries.size
     assert_operator store.summary.fetch(:reverse_index).fetch(:lookup_keys), :>, 0
 
@@ -84,6 +85,7 @@ class InvalidationPlannerTest < Minitest::Test
     assert_equal plan.matched_entries.size, event.payload.fetch(:matched_entries)
     assert_equal plan.targets.size, event.payload.fetch(:targets)
     assert_equal ["render_site"], event.payload.fetch(:target_kinds)
+    assert_equal plan.summary.fetch(:manifest_replay_targets), event.payload.fetch(:manifest_replay_targets)
     assert_equal({ "append" => 1 }, event.payload.fetch(:actions))
     assert_equal({}, event.payload.fetch(:deoptimizations))
   end

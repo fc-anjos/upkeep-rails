@@ -23,6 +23,26 @@ module Upkeep
         runtime_renderer.render(self)
       end
 
+      def render_target(target)
+        html = render
+        return html if target_match?(target)
+
+        require_relative "targeting"
+        Targeting::Extraction.extract_target_html(html, target)
+      end
+
+      def target_match?(target)
+        target && target.kind != "page" && target.kind == target_kind && target.id == target_id
+      end
+
+      def manifest_target_render?(target)
+        !!manifest_reference && target_match?(target)
+      end
+
+      def manifest_reference
+        metadata[:manifest] || metadata["manifest"]
+      end
+
       def to_h
         snapshot = {
           kind: kind,
