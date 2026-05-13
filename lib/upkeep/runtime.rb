@@ -146,6 +146,93 @@ module Upkeep
       end
     end
 
+    module ChangeEvents
+      module_function
+
+      def active_record_commit(record)
+        return active_record_destroy(record) if record.destroyed?
+
+        attribute_changes = previous_changes(record.previous_changes)
+
+        {
+          type: created_record?(record, attribute_changes) ? "create" : "update",
+          table: record.class.table_name,
+          model: record.class.name,
+          id: record.id,
+          changed_attributes: attribute_changes.keys.sort,
+          old_values: attribute_changes.transform_values { |change| change.fetch(:old) },
+          new_values: attribute_changes.transform_values { |change| change.fetch(:new) },
+          attribute_changes: attribute_changes
+        }
+      end
+
+      def active_record_destroy(record)
+        old_values = record.attributes.transform_keys(&:to_s)
+
+        {
+          type: "destroy",
+          table: record.class.table_name,
+          model: record.class.name,
+          id: record.id,
+          changed_attributes: old_values.keys.sort,
+          old_values: old_values,
+          new_values: {},
+          attribute_changes: old_values.transform_values { |value| { old: value, new: nil } }
+        }
+      end
+
+      def bulk_update(table:, model:, changed_attributes:, predicate_sql:, predicate_coverage:, predicate_table_columns:, new_values: {})
+        changed_attributes = Array(changed_attributes).map(&:to_s).sort
+        new_values = new_values.transform_keys(&:to_s)
+
+        {
+          type: "bulk_update",
+          table: table,
+          model: model,
+          changed_attributes: changed_attributes,
+          old_values: {},
+          new_values: new_values,
+          attribute_changes: changed_attributes.to_h do |attribute|
+            [attribute, { old: nil, new: new_values[attribute] }]
+          end,
+          predicate_sql: predicate_sql,
+          predicate_coverage: predicate_coverage,
+          predicate_table_columns: predicate_table_columns
+        }
+      end
+
+      def bulk_delete(table:, model:, changed_attributes:, predicate_sql:, predicate_coverage:, predicate_table_columns:)
+        changed_attributes = Array(changed_attributes).map(&:to_s).sort
+
+        {
+          type: "bulk_delete",
+          table: table,
+          model: model,
+          changed_attributes: changed_attributes,
+          old_values: {},
+          new_values: {},
+          attribute_changes: changed_attributes.to_h { |attribute| [attribute, { old: nil, new: nil }] },
+          predicate_sql: predicate_sql,
+          predicate_coverage: predicate_coverage,
+          predicate_table_columns: predicate_table_columns
+        }
+      end
+
+      def previous_changes(changes)
+        changes.to_h.transform_keys(&:to_s).transform_values do |(old_value, new_value)|
+          { old: old_value, new: new_value }
+        end
+      end
+
+      def created_record?(record, attribute_changes)
+        primary_key = record.class.primary_key
+        return false unless primary_key
+
+        primary_key_change = attribute_changes[primary_key.to_s]
+        primary_key_change && primary_key_change.fetch(:old).nil? && !primary_key_change.fetch(:new).nil?
+      end
+    end
+
     module Ambient
       module_function
 
@@ -462,30 +549,31 @@ module Upkeep
     module RelationObserver
       def update_all(updates)
         analysis = ActiveRecordQuery.analyze(self, opaque_table_policy: :allow_table)
-        ChangeLog.record({
-          type: "bulk_update",
+        event = ChangeEvents.bulk_update(
           table: klass.table_name,
+          model: klass.name,
           changed_attributes: update_columns(updates),
           predicate_sql: analysis.sql,
           predicate_coverage: analysis.coverage.to_s,
-          predicate_table_columns: analysis.table_columns
-        })
+          predicate_table_columns: analysis.table_columns,
+          new_values: update_values(updates)
+        )
 
-        super
+        super.tap { ChangeLog.record(event) }
       end
 
       def delete_all
         analysis = ActiveRecordQuery.analyze(self, opaque_table_policy: :allow_table)
-        ChangeLog.record({
-          type: "bulk_delete",
+        event = ChangeEvents.bulk_delete(
           table: klass.table_name,
+          model: klass.name,
           changed_attributes: [klass.primary_key].compact,
           predicate_sql: analysis.sql,
           predicate_coverage: analysis.coverage.to_s,
           predicate_table_columns: analysis.table_columns
-        })
+        )
 
-        super
+        super.tap { ChangeLog.record(event) }
       end
 
       private
@@ -497,6 +585,12 @@ module Upkeep
         else
           klass.column_names
         end
+      end
+
+      def update_values(updates)
+        return {} unless updates.is_a?(Hash)
+
+        updates.transform_keys(&:to_s)
       end
     end
 
@@ -514,13 +608,7 @@ module Upkeep
         ActiveRecord::Relation.prepend(RelationObserver)
 
         ActiveRecord::Base.after_commit do |record|
-          ChangeLog.record({
-            type: record.previous_changes.key?("id") ? "create_or_update" : "update",
-            table: record.class.table_name,
-            model: record.class.name,
-            id: record.id,
-            changed_attributes: record.previous_changes.keys.map(&:to_s).sort
-          })
+          ChangeLog.record(ChangeEvents.active_record_commit(record))
         end
 
         @installed = true
