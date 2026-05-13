@@ -32,6 +32,15 @@ class HerbSourceInstrumenterTest < Minitest::Test
     assert_includes html, %(<upkeep-render-site data-upkeep-render-site="#{render_site_id}"><li>Plan</li></upkeep-render-site>)
   end
 
+  def test_inserts_page_root_marker_in_source
+    source = "<main><h1>Launch</h1></main>"
+    manifest = build_manifest(path: "boards/show", source: source)
+
+    html = render_erb(instrument(manifest, source), PageContext.new(frame_id: "page:boards/show"))
+
+    assert_includes html, 'data-upkeep-page-frame="page:boards/show"'
+  end
+
   def test_does_not_duplicate_existing_fragment_root_markers
     source = '<li data-upkeep-frame="<%= upkeep_frame_id %>" data-upkeep-template="static"><%= card.title %></li>'
     manifest = build_manifest(path: "cards/_card", source: source)
@@ -79,6 +88,16 @@ class HerbSourceInstrumenterTest < Minitest::Test
     end
   end
 
+  class PageContext
+    def initialize(frame_id:)
+      @frame_id = frame_id
+    end
+
+    def upkeep_page_frame_id
+      @frame_id
+    end
+  end
+
   class RenderSiteContext
     attr_reader :render_site_ids, :manifest_paths, :manifest_fingerprints
 
@@ -90,6 +109,10 @@ class HerbSourceInstrumenterTest < Minitest::Test
 
     def cards
       [Card.new("Plan")]
+    end
+
+    def upkeep_page_frame_id
+      "page:boards/show"
     end
 
     def render(partial:, collection:, as:)

@@ -20,7 +20,7 @@ module Upkeep
       attr_reader :manifest
 
       def replacements_for(source)
-        render_site_replacements + fragment_root_replacements(source)
+        render_site_replacements + root_marker_replacements(source)
       end
 
       def render_site_replacements
@@ -33,19 +33,22 @@ module Upkeep
         end
       end
 
-      def fragment_root_replacements(source)
-        tag = manifest.frontend_tag_plan.find { |entry| entry.fetch(:kind) == "fragment_root" }
-        return [] unless tag
+      def root_marker_replacements(source)
+        manifest.frontend_tag_plan
+          .select { |entry| %w[fragment_root page_root].include?(entry.fetch(:kind)) }
+          .filter_map { |tag| root_marker_replacement(source, tag) }
+      end
 
+      def root_marker_replacement(source, tag)
         offset = offset_for_location(source, tag.fetch(:location).fetch(:start))
         open_tag_end = source.index(">", offset)
-        return [] unless open_tag_end
+        return unless open_tag_end
 
         open_tag = source[offset...open_tag_end]
-        return [] if open_tag.include?("data-upkeep-frame=")
+        return if tag.fetch(:attributes).any? { |attribute| open_tag.include?(%(#{attribute.fetch(:name)}=)) }
 
         insert_at = fragment_root_insert_offset(source, offset, tag.fetch(:tag_name))
-        [[insert_at, insert_at, " #{attributes_source(tag.fetch(:attributes))}"]]
+        [insert_at, insert_at, " #{attributes_source(tag.fetch(:attributes))}"]
       end
 
       def fragment_root_insert_offset(source, offset, tag_name)
