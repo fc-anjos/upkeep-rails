@@ -144,6 +144,26 @@ class TurboStreamsDeliveryTest < Minitest::Test
     refute_includes stream.html, "Ship"
   end
 
+  def test_collection_destroy_removes_rendered_member
+    card = create_delivery_card!("Plan")
+    create_delivery_card!("Build")
+
+    store = Upkeep::Subscriptions::Store.new
+    register_controller_subscription(store, subscriber_id: "subscriber-a")
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.destroy!
+
+    batch = delivery.build(plan_for(store))
+    stream = batch.streams.first
+    turbo_stream = Nokogiri::HTML5.fragment(stream.to_html).at_css("turbo-stream")
+
+    assert_equal "remove", turbo_stream["action"]
+    assert_equal "#delivery_card_#{card.id}", turbo_stream["targets"]
+    assert_empty turbo_stream.css("template")
+    assert_empty stream.html
+  end
+
   def test_collection_create_skips_delivery_when_created_record_does_not_match_relation
     create_delivery_card!("Plan")
     create_delivery_card!("Build")

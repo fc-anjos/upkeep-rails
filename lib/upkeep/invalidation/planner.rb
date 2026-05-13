@@ -62,15 +62,29 @@ module Upkeep
           end
         end
 
-        remove_contained_frames(subscription.graph, frames_by_id.values.map { |bucket| bucket.fetch(:node) }).filter_map do |frame|
+        remove_contained_frames(subscription.graph, frames_by_id.values.map { |bucket| bucket.fetch(:node) }, changes: changes).filter_map do |frame|
           bucket = frames_by_id.fetch(frame.id)
           build_target(subscription, frame, bucket.fetch(:dependency_keys).uniq, bucket.fetch(:entries), changes)
         end
       end
 
-      def remove_contained_frames(graph, frames)
-        frames.uniq(&:id).reject do |frame|
+      def remove_contained_frames(graph, frames, changes:)
+        frames = prefer_render_sites_for_destroy(graph, frames.uniq(&:id), changes)
+
+        frames.reject do |frame|
           frames.any? { |candidate| candidate.id != frame.id && graph.contained_by?(frame.id, candidate.id) }
+        end
+      end
+
+      def prefer_render_sites_for_destroy(graph, frames, changes)
+        return frames unless changes.any? { |change| destroy_change?(change) }
+
+        render_sites = frames.select { |frame| frame.payload.fetch(:kind) == "render_site" }
+        return frames if render_sites.empty?
+
+        frames.reject do |frame|
+          frame.payload.fetch(:kind) == "page" &&
+            render_sites.any? { |render_site| graph.contained_by?(render_site.id, frame.id) }
         end
       end
 
@@ -84,7 +98,8 @@ module Upkeep
 
         identity_signature = subscription.identity_signature(frame_id)
         sharing_signature = SharedStreams.signature_for(recipe) if identity_signature == "public" && frame.payload.fetch(:kind) == "render_site"
-        action, recipe = delivery_strategy(frame, recipe, entries, changes)
+        action, recipe, delivery_target = delivery_strategy(frame, recipe, entries, changes)
+        target = delivery_target || target
 
         PlannedTarget.new(
           subscription.id,
@@ -111,10 +126,13 @@ module Upkeep
       end
 
       def delivery_strategy(frame, recipe, entries, changes)
-        append_recipe = append_recipe_for(frame, recipe, entries, changes)
-        return ["append", append_recipe] if append_recipe
+        remove_recipe = remove_recipe_for(frame, recipe, entries, changes)
+        return ["remove", remove_recipe, target_for_recipe(remove_recipe, "render-site member was destroyed")] if remove_recipe
 
-        ["replace", recipe]
+        append_recipe = append_recipe_for(frame, recipe, entries, changes)
+        return ["append", append_recipe, nil] if append_recipe
+
+        ["replace", recipe, nil]
       end
 
       def append_recipe_for(frame, recipe, entries, changes)
@@ -125,6 +143,27 @@ module Upkeep
         return unless create_changes.one?
 
         CollectionAppend.build(recipe: recipe, change: create_changes.first)
+      end
+
+      def remove_recipe_for(frame, recipe, entries, changes)
+        return unless frame.payload.fetch(:kind) == "render_site"
+        return unless entries.any? { |entry| entry.dependency.source == :active_record_collection }
+
+        destroy_changes = changes.select do |change|
+          change[:id] && destroy_change?(change)
+        end
+        return unless destroy_changes.one?
+
+        CollectionRemove.build(recipe: recipe, change: destroy_changes.first)
+      end
+
+      def destroy_change?(change)
+        type = change.fetch(:type).to_s
+        type.include?("destroy") || type.include?("delete")
+      end
+
+      def target_for_recipe(recipe, reason)
+        Targeting::Target.new(recipe.target_kind, recipe.target_id, reason)
       end
 
       def deduplicate_targets(targets)

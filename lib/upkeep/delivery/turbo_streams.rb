@@ -18,6 +18,7 @@ module Upkeep
       ) do
         def to_html
           attributes = %(action="#{CGI.escapeHTML(action)}" targets="#{CGI.escapeHTML(target_selector)}")
+          return %(<turbo-stream #{attributes}></turbo-stream>) if action == "remove"
 
           %(<turbo-stream #{attributes}><template>#{html}</template></turbo-stream>)
         end
@@ -121,7 +122,7 @@ module Upkeep
       end
 
       def stream_for(planned_target, subscriber_ids: [planned_target.subscriber_id], matched_dependency_keys: planned_target.matched_dependency_keys)
-        html = planned_target.render
+        html = planned_target.action == "remove" ? "" : planned_target.render
 
         Stream.new(
           planned_target.action,
@@ -187,6 +188,8 @@ module Upkeep
           %([data-upkeep-frame="#{css_escape(target.id)}"])
         when "render_site"
           %[upkeep-render-site[data-upkeep-render-site="#{css_escape(target.id)}"]]
+        when "dom_id"
+          %[##{css_escape(target.id)}]
         else
           raise "unknown delivery target kind: #{target.kind.inspect}"
         end
