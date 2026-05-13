@@ -117,6 +117,7 @@ module Upkeep
 
         def entries_for(changes)
           active_entries = active_registry&.entries_for(changes) || []
+          return persistent_entries_for(changes) if active_registry&.count == 0
           return active_entries if active_registry&.covers?(persistent_subscription_count)
 
           merge_entries(active_entries, persistent_entries_for(changes))
