@@ -14,7 +14,8 @@ module Upkeep
         :sharing_signature,
         :recipe,
         :matched_dependency_keys,
-        :action
+        :action,
+        :operation_reason
       ) do
         def render
           recipe.render
@@ -27,7 +28,8 @@ module Upkeep
             targets: targets.size,
             candidate_entries: candidate_entries.size,
             matched_entries: matched_entries.size,
-            target_kinds: targets.map { |target| target.target.kind }.uniq.sort
+            target_kinds: targets.map { |target| target.target.kind }.uniq.sort,
+            operation_reasons: targets.map(&:operation_reason).tally
           }
         end
       end
@@ -63,7 +65,8 @@ module Upkeep
           matched_entries: plan.matched_entries.size,
           targets: plan.targets.size,
           target_kinds: plan.targets.map { |target| target.target.kind }.uniq.sort,
-          actions: plan.targets.map(&:action).tally
+          actions: plan.targets.map(&:action).tally,
+          operation_reasons: plan.targets.map(&:operation_reason).tally
         }
       end
 
@@ -115,7 +118,7 @@ module Upkeep
 
         identity_signature = subscription.identity_signature(frame_id)
         sharing_signature = SharedStreams.signature_for(recipe) if identity_signature == "public" && frame.payload.fetch(:kind) == "render_site"
-        action, recipe, delivery_target = delivery_strategy(frame, recipe, entries, changes)
+        action, recipe, delivery_target, operation_reason = delivery_strategy(frame, recipe, entries, changes)
         target = delivery_target || target
 
         PlannedTarget.new(
@@ -127,7 +130,8 @@ module Upkeep
           sharing_signature,
           recipe,
           dependency_keys,
-          action
+          action,
+          operation_reason
         )
       end
 
@@ -144,21 +148,28 @@ module Upkeep
 
       def delivery_strategy(frame, recipe, entries, changes)
         remove_recipe = remove_recipe_for(frame, recipe, entries, changes)
-        return ["remove", remove_recipe, target_for_recipe(remove_recipe, "render-site member was destroyed")] if remove_recipe
+        if remove_recipe
+          return [
+            "remove",
+            remove_recipe,
+            target_for_recipe(remove_recipe, "render-site member was destroyed"),
+            "collection_remove_proven"
+          ]
+        end
 
         append_recipe = append_recipe_for(frame, recipe, entries, changes)
-        return ["append", append_recipe, nil] if append_recipe
+        return ["append", append_recipe, nil, "collection_append_proven"] if append_recipe
 
         prepend_recipe = prepend_recipe_for(frame, recipe, entries, changes)
-        return ["prepend", prepend_recipe, nil] if prepend_recipe
+        return ["prepend", prepend_recipe, nil, "collection_prepend_proven"] if prepend_recipe
 
         member_replace_recipe = member_replace_recipe_for(frame, recipe, entries, changes)
         if member_replace_recipe
           delivery_target = target_for_recipe(member_replace_recipe, "render-site member update kept collection order")
-          return ["replace", member_replace_recipe, delivery_target]
+          return ["replace", member_replace_recipe, delivery_target, "collection_member_replace_proven"]
         end
 
-        ["replace", recipe, nil]
+        ["replace", recipe, nil, fallback_operation_reason(frame, entries, changes)]
       end
 
       def append_recipe_for(frame, recipe, entries, changes)
@@ -205,6 +216,21 @@ module Upkeep
         CollectionRemove.build(recipe: recipe, change: destroy_changes.first)
       end
 
+      def fallback_operation_reason(frame, entries, changes)
+        return "replace_dependency_matched" unless frame.payload.fetch(:kind) == "render_site"
+        return "replace_dependency_matched" unless entries.any? { |entry| entry.dependency.source == :active_record_collection }
+
+        if changes.one? { |change| change[:id] && change.fetch(:type).to_s.include?("create") }
+          "collection_create_position_unproven"
+        elsif changes.one? { |change| change[:id] && destroy_change?(change) }
+          "collection_remove_unproven"
+        elsif changes.one? { |change| change[:id] && !change.fetch(:type).to_s.include?("create") && !destroy_change?(change) }
+          "collection_member_replace_unproven"
+        else
+          "collection_multi_change_fallback"
+        end
+      end
+
       def destroy_change?(change)
         type = change.fetch(:type).to_s
         type.include?("destroy") || type.include?("delete")
@@ -216,7 +242,15 @@ module Upkeep
 
       def deduplicate_targets(targets)
         targets.each_with_object({}) do |target, indexed_targets|
-          key = [target.subscriber_id, target.target.kind, target.target.id, target.identity_signature, target.sharing_signature, target.action]
+          key = [
+            target.subscriber_id,
+            target.target.kind,
+            target.target.id,
+            target.identity_signature,
+            target.sharing_signature,
+            target.action,
+            target.operation_reason
+          ]
           indexed_targets[key] = merge_target(indexed_targets[key], target)
         end.values
       end
@@ -233,7 +267,8 @@ module Upkeep
           existing.sharing_signature,
           existing.recipe,
           (existing.matched_dependency_keys + target.matched_dependency_keys).uniq,
-          existing.action
+          existing.action,
+          existing.operation_reason
         )
       end
     end
