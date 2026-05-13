@@ -20,7 +20,7 @@ module Upkeep
 
       initializer "upkeep_rails.validate_configuration", after: "upkeep_rails.install" do |app|
         app.config.after_initialize do
-          Upkeep::Rails.validate_configuration!(environment: app.env) unless Railtie.rake_task?
+          Upkeep::Rails.validate_configuration! unless Railtie.rake_task?
         end
       end
 
