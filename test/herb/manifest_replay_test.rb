@@ -22,6 +22,15 @@ class HerbManifestReplayTest < Minitest::Test
 
       assert_equal expected_manifest, recipe.manifest_reference
       assert_equal expected_manifest, Upkeep::Replay::Recipe.from_h(recipe.to_h).manifest_reference
+
+      target = Upkeep::Targeting::Target.new(recipe.target_kind, recipe.target_id, "test")
+      if target.kind == "page"
+        refute recipe.manifest_target_render?(target)
+        assert_equal Upkeep::Targeting::Extraction.extract_target_html(recipe.render, target), recipe.render_target(target)
+      else
+        assert recipe.manifest_target_render?(target)
+        assert_equal recipe.render, recipe.render_target(target)
+      end
     end
   end
 end
