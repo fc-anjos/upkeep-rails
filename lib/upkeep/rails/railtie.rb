@@ -26,6 +26,7 @@ module Upkeep
 
       def self.rake_task?
         defined?(::Rake) &&
+          ::Rake.respond_to?(:application) &&
           ::Rake.application.top_level_tasks.any?
       end
     end
