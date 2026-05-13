@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "template_manifest"
+
 module Upkeep
   module HerbSupport
     class SourceInstrumenter
@@ -22,7 +24,7 @@ module Upkeep
       end
 
       def render_site_replacements
-        manifest.render_nodes.map do |render_node|
+        manifest.render_nodes.select { |render_node| render_node.fetch(:collection) }.map do |render_node|
           [
             render_node.fetch(:start_offset),
             render_node.fetch(:end_offset),
