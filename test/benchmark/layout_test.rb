@@ -62,6 +62,8 @@ class BenchmarkLayoutTest < Minitest::Test
     refute_includes files, "lib/upkeep/proof_support.rb"
     refute_includes files, "lib/upkeep/proofs/end_to_end.rb"
     refute_includes files, "lib/upkeep/probes/herb_surface.rb"
+    refute_includes files, "lib/upkeep/herb/runtime_alignment.rb"
+    refute_includes files, "lib/upkeep/herb/template_manifest.rb"
     refute_includes files, "lib/upkeep/domain.rb"
   end
 
