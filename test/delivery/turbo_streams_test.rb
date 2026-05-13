@@ -144,7 +144,7 @@ class TurboStreamsDeliveryTest < Minitest::Test
     refute_includes stream.html, "Ship"
   end
 
-  def test_collection_create_replaces_when_created_record_is_not_appended_by_the_relation
+  def test_collection_create_skips_delivery_when_created_record_does_not_match_relation
     create_delivery_card!("Plan")
     create_delivery_card!("Build")
 
@@ -155,13 +155,8 @@ class TurboStreamsDeliveryTest < Minitest::Test
     create_delivery_card!("Archived", status: "closed")
 
     batch = delivery.build(plan_for(store))
-    stream = batch.streams.first
-    turbo_stream = Nokogiri::HTML5.fragment(stream.to_html).at_css("turbo-stream")
 
-    assert_equal "replace", turbo_stream["action"]
-    assert_includes stream.html, "Plan"
-    assert_includes stream.html, "Build"
-    refute_includes stream.html, "Archived"
+    assert_empty batch.streams
   end
 
   def test_identity_partitioned_payloads_are_not_cross_delivered

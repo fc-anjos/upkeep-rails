@@ -77,7 +77,9 @@ module Upkeep
     end
 
     class ActiveRecordCollection < Base
-      def initialize(primary_table:, table_columns:, coverage:, sql:)
+      UNKNOWN = Object.new
+
+      def initialize(primary_table:, table_columns:, coverage:, sql:, predicates: [])
         table_columns = normalize_table_columns(table_columns)
         coverage = coverage.to_sym
 
@@ -91,7 +93,8 @@ module Upkeep
             primary_table: primary_table,
             table_columns: table_columns,
             coverage: coverage.to_s,
-            sql: sql
+            sql: sql,
+            predicates: normalize_predicates(predicates)
           }
         )
       end
@@ -99,8 +102,11 @@ module Upkeep
       def matches_change?(change)
         return false unless table_columns.key?(change.fetch(:table))
 
-        return true if change.fetch(:type).to_s.include?("create")
-        return true if change.fetch(:type).to_s.include?("delete")
+        predicate_match = predicate_match(change)
+        return predicate_match unless predicate_match == UNKNOWN
+
+        return true if create_change?(change)
+        return true if delete_change?(change)
         return true if coverage == :tables
 
         table_columns.fetch(change.fetch(:table)).intersect?(change.fetch(:changed_attributes, []))
@@ -121,6 +127,50 @@ module Upkeep
 
       private
 
+      def predicate_match(change)
+        predicates = predicates_for_table(change.fetch(:table))
+        return UNKNOWN if predicates.empty?
+
+        old_match = values_match_predicates(change.fetch(:old_values, {}), predicates)
+        new_match = values_match_predicates(change.fetch(:new_values, {}), predicates)
+        return true if old_match == true || new_match == true
+
+        if old_match == false || new_match == false
+          return false if predicate_columns(predicates).intersect?(change.fetch(:changed_attributes, [])) ||
+            create_change?(change) ||
+            delete_change?(change)
+        end
+
+        UNKNOWN
+      end
+
+      def create_change?(change)
+        change.fetch(:type).to_s.include?("create")
+      end
+
+      def delete_change?(change)
+        type = change.fetch(:type).to_s
+        type.include?("delete") || type.include?("destroy")
+      end
+
+      def values_match_predicates(values, predicates)
+        values = stringify_keys(values)
+        return UNKNOWN unless predicates.all? { |predicate| values.key?(predicate.fetch(:column)) }
+
+        predicates.all? do |predicate|
+          value = values.fetch(predicate.fetch(:column))
+          predicate.fetch(:values).include?(value)
+        end
+      end
+
+      def predicates_for_table(table)
+        predicates.select { |predicate| predicate.fetch(:table) == table.to_s }
+      end
+
+      def predicate_columns(predicates)
+        predicates.map { |predicate| predicate.fetch(:column) }.uniq
+      end
+
       def coverage
         metadata.fetch(:coverage).to_sym.tap do |value|
           raise ArgumentError, "unsupported Active Record collection coverage: #{value}" unless %i[columns tables].include?(value)
@@ -131,10 +181,33 @@ module Upkeep
         metadata.fetch(:table_columns)
       end
 
+      def predicates
+        metadata.fetch(:predicates, [])
+      end
+
       def normalize_table_columns(value)
         Dependencies.symbolize_keys(value).to_h do |table, columns|
           [table.to_s, Array(columns).map(&:to_s).uniq.sort]
         end
+      end
+
+      def normalize_predicates(value)
+        Array(value).filter_map do |predicate|
+          predicate = Dependencies.symbolize_keys(predicate)
+          values = Array(predicate[:values]).compact
+          next if predicate[:table].nil? || predicate[:column].nil? || values.empty?
+
+          {
+            table: predicate.fetch(:table).to_s,
+            column: predicate.fetch(:column).to_s,
+            operator: predicate.fetch(:operator, "eq").to_s,
+            values: values.uniq
+          }
+        end
+      end
+
+      def stringify_keys(values)
+        values.to_h.transform_keys(&:to_s)
       end
     end
 
@@ -274,7 +347,8 @@ module Upkeep
           primary_table: metadata.fetch(:primary_table, key.fetch(:table)),
           table_columns: metadata.fetch(:table_columns),
           coverage: metadata.fetch(:coverage),
-          sql: metadata.fetch(:sql)
+          sql: metadata.fetch(:sql),
+          predicates: metadata.fetch(:predicates, [])
         )
       else
         if snapshot.fetch(:visibility).to_sym == :identity_bound

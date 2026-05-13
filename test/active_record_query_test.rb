@@ -61,8 +61,84 @@ class ActiveRecordQueryTest < Minitest::Test
     assert_equal({
       "query_analysis_cards" => %w[id position status]
     }, analysis.table_columns)
+    assert_equal [
+      {
+        table: "query_analysis_cards",
+        column: "status",
+        operator: "eq",
+        values: ["open"]
+      }
+    ], analysis.predicates
     assert dependency.matches_change?(change(table: "query_analysis_cards", attributes: ["status"]))
     refute dependency.matches_change?(change(table: "query_analysis_cards", attributes: ["title"]))
+  end
+
+  def test_collection_dependency_uses_predicate_values_to_filter_updates
+    analysis = analyze(QueryAnalysisCard.where(status: "open").order(:position))
+    dependency = dependency_for(analysis)
+
+    assert dependency.matches_change?(
+      change(
+        table: "query_analysis_cards",
+        attributes: ["status"],
+        old_values: { "status" => "open" },
+        new_values: { "status" => "done" }
+      )
+    )
+    assert dependency.matches_change?(
+      change(
+        table: "query_analysis_cards",
+        attributes: ["status"],
+        old_values: { "status" => "done" },
+        new_values: { "status" => "open" }
+      )
+    )
+    refute dependency.matches_change?(
+      change(
+        table: "query_analysis_cards",
+        attributes: ["status"],
+        old_values: { "status" => "done" },
+        new_values: { "status" => "archived" }
+      )
+    )
+  end
+
+  def test_collection_dependency_uses_predicate_values_to_filter_creates_and_deletes
+    analysis = analyze(QueryAnalysisCard.where(status: "open").order(:position))
+    dependency = dependency_for(analysis)
+
+    assert dependency.matches_change?(
+      change(
+        table: "query_analysis_cards",
+        attributes: %w[id status title],
+        type: "create",
+        new_values: { "status" => "open" }
+      )
+    )
+    refute dependency.matches_change?(
+      change(
+        table: "query_analysis_cards",
+        attributes: %w[id status title],
+        type: "create",
+        new_values: { "status" => "done" }
+      )
+    )
+    assert dependency.matches_change?(
+      change(
+        table: "query_analysis_cards",
+        attributes: %w[id status title],
+        type: "destroy",
+        old_values: { "status" => "open" }
+      )
+    )
+    refute dependency.matches_change?(
+      change(
+        table: "query_analysis_cards",
+        attributes: %w[id status title],
+        type: "destroy",
+        old_values: { "status" => "done" }
+      )
+    )
   end
 
   def test_opaque_predicate_uses_known_table_coverage
@@ -184,15 +260,18 @@ class ActiveRecordQueryTest < Minitest::Test
       primary_table: analysis.primary_table,
       table_columns: analysis.table_columns,
       coverage: analysis.coverage,
-      sql: analysis.sql
+      sql: analysis.sql,
+      predicates: analysis.predicates
     )
   end
 
-  def change(table:, attributes:, type: "update")
+  def change(table:, attributes:, type: "update", old_values: {}, new_values: {})
     {
       type: type,
       table: table,
-      changed_attributes: attributes
+      changed_attributes: attributes,
+      old_values: old_values,
+      new_values: new_values
     }
   end
 end

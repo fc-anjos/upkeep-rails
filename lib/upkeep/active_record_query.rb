@@ -46,7 +46,8 @@ module Upkeep
       :coverage,
       :sql,
       :primary_key,
-      :appendable
+      :appendable,
+      :predicates
     ) do
       def tables = table_columns.keys.sort
 
@@ -73,6 +74,7 @@ module Upkeep
         @opaque_columns = false
         @opaque_tables = false
         @opaque_table_reasons = []
+        @predicates = []
       end
 
       def analyze
@@ -86,7 +88,8 @@ module Upkeep
           coverage: coverage,
           sql: safe_sql,
           primary_key: @primary_key,
-          appendable: appendable_relation?
+          appendable: appendable_relation?,
+          predicates: normalized_predicates
         )
       end
 
@@ -142,6 +145,12 @@ module Upkeep
           value.each_value { |entry| walk(entry, source: source) }
         when Arel::Attributes::Attribute
           attribute(value)
+        when Arel::Nodes::Equality
+          equality_predicate(value)
+          walk_arel_node(value, source: source)
+        when Arel::Nodes::HomogeneousIn
+          homogeneous_in_predicate(value)
+          walk_arel_node(value, source: source)
         when Arel::Table
           table(value.name)
         when Arel::Nodes::TableAlias
@@ -207,6 +216,49 @@ module Upkeep
 
       def column(table_name, column_name)
         @table_columns[table_name.to_s] << column_name.to_s
+      end
+
+      def equality_predicate(node)
+        predicate = predicate_for(node.left, "eq", [predicate_value(node.right)])
+        @predicates << predicate if predicate
+      end
+
+      def homogeneous_in_predicate(node)
+        predicate = predicate_for(node.attribute, "in", Array(node.values).map { |value| predicate_value(value) })
+        @predicates << predicate if predicate
+      end
+
+      def predicate_for(attribute, operator, values)
+        return unless attribute.is_a?(Arel::Attributes::Attribute)
+
+        table_name = table_name_for(attribute.relation)
+        return unless table_name
+
+        values = values.compact
+        return if values.empty?
+
+        {
+          table: table_name.to_s,
+          column: attribute.name.to_s,
+          operator: operator,
+          values: values.uniq
+        }
+      end
+
+      def predicate_value(value)
+        if value.respond_to?(:value_for_database)
+          value.value_for_database
+        elsif value.respond_to?(:value)
+          value.value
+        elsif value.nil? || value.is_a?(String) || value.is_a?(Numeric) || value == true || value == false || value.is_a?(Symbol)
+          value
+        end
+      end
+
+      def normalized_predicates
+        @predicates
+          .uniq
+          .sort_by { |predicate| [predicate.fetch(:table), predicate.fetch(:column), predicate.fetch(:operator), predicate.fetch(:values).inspect] }
       end
 
       def safe_sql
