@@ -99,6 +99,32 @@ class TurboStreamsDeliveryTest < Minitest::Test
     assert_includes batch.envelopes.first.body, "Review"
   end
 
+  def test_building_turbo_streams_emits_cost_notification
+    create_delivery_card!("Plan")
+
+    store = Upkeep::Subscriptions::Store.new
+    register_controller_subscription(store, subscriber_id: "subscriber-a")
+
+    Upkeep::Runtime::ChangeLog.reset
+    create_delivery_card!("Review")
+
+    events = []
+    subscription = ActiveSupport::Notifications.subscribe("build_turbo_streams.upkeep") { |event| events << event }
+
+    batch = delivery.build(plan_for(store))
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscription) if subscription
+
+    event = events.first
+    assert event
+    assert_equal 1, event.payload.fetch(:plans)
+    assert_equal 1, event.payload.fetch(:planned_targets)
+    assert_equal batch.streams.size, event.payload.fetch(:streams)
+    assert_equal batch.envelopes.size, event.payload.fetch(:envelopes)
+    assert_equal({ "append" => 1 }, event.payload.fetch(:actions))
+    assert_operator event.payload.fetch(:payload_bytes), :>, 0
+  end
+
   def test_public_collection_create_renders_once_for_shared_delivery_stream
     create_delivery_card!("Plan")
     create_delivery_card!("Build")
