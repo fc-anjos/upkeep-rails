@@ -19,6 +19,7 @@ Gem::Specification.new do |spec|
   spec.metadata["rubygems_mfa_required"] = "true"
 
   internal_files = Dir[
+    "lib/upkeep/herb/**/*.rb",
     "lib/upkeep/probes/**/*.rb",
     "lib/upkeep/proofs/**/*.rb"
   ] + %w[
