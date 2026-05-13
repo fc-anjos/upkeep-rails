@@ -34,6 +34,10 @@ module Upkeep
         Thread.current[THREAD_KEY]&.record_dependency(dependency)
       end
 
+      def refuse_boundary(boundary)
+        Thread.current[THREAD_KEY]&.refuse_boundary(**boundary)
+      end
+
       def recorder
         Thread.current[THREAD_KEY]
       end
@@ -42,12 +46,14 @@ module Upkeep
 
     class Recorder
       REQUEST_NODE_ID = :request
+      RefusedBoundary = Data.define(:reason, :message, :suggestions, :source)
 
-      attr_reader :graph
+      attr_reader :graph, :refused_boundaries
 
       def initialize(graph: nil)
         @frame_stack = []
         @graph = graph || DAG::Graph.new
+        @refused_boundaries = []
         @graph.add_node(REQUEST_NODE_ID, kind: :request, payload: {}) unless @graph.node?(REQUEST_NODE_ID)
       end
 
@@ -71,6 +77,23 @@ module Upkeep
 
       def record_dependency(dependency)
         @graph.add_dependency(current_owner, dependency)
+      end
+
+      def refuse_boundary(reason:, message:, suggestions:, source:)
+        boundary = RefusedBoundary.new(
+          reason.to_s,
+          message.to_s,
+          Array(suggestions).map(&:to_s),
+          source.to_s
+        )
+        return false if @refused_boundaries.include?(boundary)
+
+        @refused_boundaries << boundary
+        true
+      end
+
+      def reactive?
+        @refused_boundaries.empty?
       end
 
       def current_frame

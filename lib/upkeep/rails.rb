@@ -41,6 +41,7 @@ module Upkeep
 
       def register_controller_subscription(controller, recorder)
         return unless subscription_response?(controller, recorder)
+        return unless recorder.reactive?
 
         identity = Cable::SubscriberIdentity.derive_from_request(controller.request, recorder: recorder)
         subscription = subscriptions.register(

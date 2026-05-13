@@ -141,14 +141,14 @@ class ActiveRecordQueryTest < Minitest::Test
     )
   end
 
-  def test_opaque_predicate_uses_known_table_coverage
-    analysis = analyze(QueryAnalysisCard.where("status = ?", "open").order(:position))
-    dependency = dependency_for(analysis)
+  def test_opaque_predicate_raises_relation_error
+    error = assert_raises(Upkeep::ActiveRecordQuery::OpaqueRelationError) do
+      analyze(QueryAnalysisCard.where("status = ?", "open").order(:position))
+    end
 
-    assert_equal :tables, analysis.coverage
-    assert_equal ["query_analysis_cards"], analysis.tables
-    assert dependency.matches_change?(change(table: "query_analysis_cards", attributes: ["title"]))
-    refute dependency.matches_change?(change(table: "query_analysis_authors", attributes: ["name"]))
+    assert_includes error.message, "cannot make this Active Record relation reactive"
+    assert_includes error.message, "raw SQL predicate"
+    assert_includes error.message, "Rewrite raw SQL predicates"
   end
 
   def test_association_join_records_joined_table_columns
@@ -197,12 +197,35 @@ class ActiveRecordQueryTest < Minitest::Test
     assert_equal ["query_analysis_cards"], analysis.tables
   end
 
+  def test_write_observation_can_describe_opaque_predicate_against_the_model_table
+    analysis = analyze(
+      QueryAnalysisCard.where("status = ?", "open"),
+      opaque_table_policy: :allow_table
+    )
+
+    assert_equal :tables, analysis.coverage
+    assert_equal ["query_analysis_cards"], analysis.tables
+  end
+
+  def test_collection_dependency_rejects_table_coverage
+    error = assert_raises(ArgumentError) do
+      Upkeep::Dependencies::ActiveRecordCollection.new(
+        primary_table: "query_analysis_cards",
+        table_columns: { "query_analysis_cards" => ["id"] },
+        coverage: :tables,
+        sql: QueryAnalysisCard.all.to_sql
+      )
+    end
+
+    assert_includes error.message, "collection dependencies require proven column coverage"
+  end
+
   def test_appendability_comes_from_relation_shape
     assert analyze(QueryAnalysisCard.where(status: "open").order(:id)).appendable?
-    refute analyze(QueryAnalysisCard.where("status = ?", "open").order(:id)).appendable?
+    refute analyze(QueryAnalysisCard.where("status = ?", "open").order(:id), opaque_table_policy: :allow_table).appendable?
     refute analyze(QueryAnalysisCard.where(status: "open").limit(10)).appendable?
     refute analyze(QueryAnalysisCard.distinct.where(status: "open")).appendable?
-    refute analyze(QueryAnalysisCard.group(:status).having("count(*) > 1")).appendable?
+    refute analyze(QueryAnalysisCard.group(:status)).appendable?
   end
 
   def test_append_recipe_only_handles_creates_for_the_collection_model_table

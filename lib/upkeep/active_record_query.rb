@@ -15,14 +15,14 @@ module Upkeep
 
         super(build_message)
       rescue StandardError => error
-        super("Upkeep cannot prove this Active Record relation's table dependencies: #{error.message}")
+        super("Upkeep cannot prove this Active Record relation's structural dependencies: #{error.message}")
       end
 
       private
 
       def build_message
         <<~MESSAGE
-          Upkeep cannot make this Active Record relation reactive because its table sources are opaque.
+          Upkeep cannot make this Active Record relation reactive because its query shape is opaque.
 
           Relation:
             #{model_name} (#{table_name})
@@ -34,9 +34,20 @@ module Upkeep
           #{reasons.map { |reason| "            - #{reason}" }.join("\n")}
 
           What to do:
+            - Rewrite raw SQL predicates with structural Active Record hash or Arel predicates.
             - Rewrite raw SQL joins or FROM sources with structural Active Record/Arel joins.
             - Render this boundary outside Upkeep reactivity when the query cannot expose its sources.
         MESSAGE
+      end
+
+      public
+
+      def suggestions
+        [
+          "Rewrite raw SQL predicates with structural Active Record hash or Arel predicates.",
+          "Rewrite raw SQL joins or FROM sources with structural Active Record/Arel joins.",
+          "Render this boundary outside Upkeep reactivity when the query cannot expose its sources."
+        ]
       end
     end
 
@@ -74,13 +85,14 @@ module Upkeep
         @opaque_columns = false
         @opaque_tables = false
         @opaque_table_reasons = []
+        @opaque_column_reasons = []
         @predicates = []
       end
 
       def analyze
         table(@primary_table)
         collect_relation_shape
-        raise_opaque_relation! if @opaque_tables && @opaque_table_policy == :raise
+        raise_opaque_relation! if opaque_relation? && @opaque_table_policy == :raise
 
         Result.new(
           primary_table: @primary_table,
@@ -158,9 +170,9 @@ module Upkeep
         when Arel::Nodes::StringJoin
           opaque_table!("raw SQL join")
         when Arel::Nodes::BoundSqlLiteral, Arel::Nodes::SqlLiteral
-          source ? opaque_table!("raw SQL source") : @opaque_columns = true
+          source ? opaque_table!("raw SQL source") : opaque_column!("raw SQL predicate or order expression")
         when String
-          source ? opaque_table!("string SQL source") : @opaque_columns = true
+          source ? opaque_table!("string SQL source") : opaque_column!("string SQL predicate or order expression")
         else
           walk_arel_node(value, source: source)
         end
@@ -206,8 +218,17 @@ module Upkeep
         @opaque_table_reasons << reason
       end
 
+      def opaque_column!(reason)
+        @opaque_columns = true
+        @opaque_column_reasons << reason
+      end
+
+      def opaque_relation?
+        @opaque_tables || @opaque_columns
+      end
+
       def raise_opaque_relation!
-        raise OpaqueRelationError.new(@relation, reasons: @opaque_table_reasons.uniq)
+        raise OpaqueRelationError.new(@relation, reasons: (@opaque_table_reasons + @opaque_column_reasons).uniq)
       end
 
       def table(name)

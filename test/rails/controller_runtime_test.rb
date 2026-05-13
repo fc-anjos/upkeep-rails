@@ -23,6 +23,11 @@ class RuntimeDeliveryCardsController < ActionController::Base
     render template: "runtime_delivery_cards/index"
   end
 
+  def raw
+    @cards = RuntimeDeliveryCard.where("title IS NOT NULL").order(:id)
+    render template: "runtime_delivery_cards/index"
+  end
+
   def update
     RuntimeDeliveryCard.find(params.fetch(:id)).update!(title: params.fetch(:title))
     head :ok
@@ -86,6 +91,23 @@ class ControllerRuntimeTest < Minitest::Test
     assert_includes html, "data-upkeep-subscription"
     assert_includes html, subscription.id
     assert_includes html, Upkeep::Rails::Cable::SubscriberIdentity.for_identifiers(current_user: user).stream_name
+  end
+
+  def test_warn_policy_refuses_subscription_registration_for_opaque_collection
+    previous_behavior = Upkeep::Rails.configuration.refused_boundary_behavior
+    Upkeep::Rails.configuration.refused_boundary_behavior = :warn
+    user = RuntimeDeliveryUser.create!(name: "Alice")
+    RuntimeDeliveryCard.create!(title: "Plan")
+    RuntimeDeliveryCurrent.user = user
+
+    _status, _headers, body = RuntimeDeliveryCardsController.action(:raw).call(env_for("/cards/raw"))
+    html = collect_body(body)
+
+    assert_includes html, "Plan"
+    assert_empty Upkeep::Rails.subscriptions.subscriptions
+    refute_includes html, "data-upkeep-subscription"
+  ensure
+    Upkeep::Rails.configuration.refused_boundary_behavior = previous_behavior if previous_behavior
   end
 
   def test_mutation_request_delivers_planned_streams_to_connected_subscriber
