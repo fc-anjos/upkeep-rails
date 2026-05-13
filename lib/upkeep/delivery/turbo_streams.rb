@@ -16,7 +16,7 @@ module Upkeep
         :shared_stream_name,
         :subscriber_ids,
         :matched_dependency_keys,
-        :operation_reason,
+        :deoptimization_reason,
         :render_duration_ms
       ) do
         def to_html
@@ -44,7 +44,7 @@ module Upkeep
             html_digest: html_digest,
             subscriber_ids: subscriber_ids,
             matched_dependency_keys: matched_dependency_keys,
-            operation_reason: operation_reason,
+            deoptimization_reason: deoptimization_reason,
             render_duration_ms: render_duration_ms
           }
         end
@@ -133,7 +133,7 @@ module Upkeep
           streams: batch.streams.size,
           envelopes: envelopes.size,
           actions: batch.streams.map(&:action).tally,
-          operation_reasons: batch.streams.map(&:operation_reason).tally,
+          deoptimizations: batch.streams.filter_map(&:deoptimization_reason).tally,
           renders: rendered_streams.count(&:rendered?),
           render_duration_ms: sum_render_duration(rendered_streams),
           payload_bytes: envelopes.sum { |envelope| envelope.body.bytesize }
@@ -166,7 +166,7 @@ module Upkeep
           shared_stream_name_for(planned_target),
           subscriber_ids.uniq.sort_by(&:to_s),
           matched_dependency_keys.uniq,
-          planned_target.operation_reason,
+          planned_target.deoptimization_reason,
           render_duration_ms
         )
       end
@@ -187,7 +187,7 @@ module Upkeep
           planned_target.target.id,
           planned_target.identity_signature,
           planned_target.sharing_signature,
-          planned_target.operation_reason
+          planned_target.deoptimization_reason
         ]
       end
 
@@ -200,7 +200,7 @@ module Upkeep
             stream.identity_signature,
             stream.shared_stream_name,
             stream.html_digest,
-            stream.operation_reason
+            stream.deoptimization_reason
           ]
           indexed_streams[key] = merge_stream(indexed_streams[key], stream)
         end.values
@@ -219,7 +219,7 @@ module Upkeep
           existing.shared_stream_name,
           (existing.subscriber_ids + stream.subscriber_ids).uniq.sort_by(&:to_s),
           (existing.matched_dependency_keys + stream.matched_dependency_keys).uniq,
-          existing.operation_reason,
+          existing.deoptimization_reason,
           (existing.render_duration_ms + stream.render_duration_ms).round(3)
         )
       end

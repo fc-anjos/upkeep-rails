@@ -15,7 +15,7 @@ module Upkeep
         :recipe,
         :matched_dependency_keys,
         :action,
-        :operation_reason
+        :deoptimization_reason
       ) do
         def render
           recipe.render
@@ -29,7 +29,7 @@ module Upkeep
             candidate_entries: candidate_entries.size,
             matched_entries: matched_entries.size,
             target_kinds: targets.map { |target| target.target.kind }.uniq.sort,
-            operation_reasons: targets.map(&:operation_reason).tally
+            deoptimizations: targets.filter_map(&:deoptimization_reason).tally
           }
         end
       end
@@ -66,7 +66,7 @@ module Upkeep
           targets: plan.targets.size,
           target_kinds: plan.targets.map { |target| target.target.kind }.uniq.sort,
           actions: plan.targets.map(&:action).tally,
-          operation_reasons: plan.targets.map(&:operation_reason).tally
+          deoptimizations: plan.targets.filter_map(&:deoptimization_reason).tally
         }
       end
 
@@ -118,7 +118,7 @@ module Upkeep
 
         identity_signature = subscription.identity_signature(frame_id)
         sharing_signature = SharedStreams.signature_for(recipe) if identity_signature == "public" && frame.payload.fetch(:kind) == "render_site"
-        action, recipe, delivery_target, operation_reason = delivery_strategy(frame, recipe, entries, changes)
+        action, recipe, delivery_target, deoptimization_reason = delivery_strategy(frame, recipe, entries, changes)
         target = delivery_target || target
 
         PlannedTarget.new(
@@ -131,7 +131,7 @@ module Upkeep
           recipe,
           dependency_keys,
           action,
-          operation_reason
+          deoptimization_reason
         )
       end
 
@@ -153,23 +153,23 @@ module Upkeep
             "remove",
             remove_recipe,
             target_for_recipe(remove_recipe, "render-site member was destroyed"),
-            "collection_remove_proven"
+            nil
           ]
         end
 
         append_recipe = append_recipe_for(frame, recipe, entries, changes)
-        return ["append", append_recipe, nil, "collection_append_proven"] if append_recipe
+        return ["append", append_recipe, nil, nil] if append_recipe
 
         prepend_recipe = prepend_recipe_for(frame, recipe, entries, changes)
-        return ["prepend", prepend_recipe, nil, "collection_prepend_proven"] if prepend_recipe
+        return ["prepend", prepend_recipe, nil, nil] if prepend_recipe
 
         member_replace_recipe = member_replace_recipe_for(frame, recipe, entries, changes)
         if member_replace_recipe
           delivery_target = target_for_recipe(member_replace_recipe, "render-site member update kept collection order")
-          return ["replace", member_replace_recipe, delivery_target, "collection_member_replace_proven"]
+          return ["replace", member_replace_recipe, delivery_target, nil]
         end
 
-        ["replace", recipe, nil, fallback_operation_reason(frame, entries, changes)]
+        ["replace", recipe, nil, deoptimization_reason(frame, entries, changes)]
       end
 
       def append_recipe_for(frame, recipe, entries, changes)
@@ -216,9 +216,9 @@ module Upkeep
         CollectionRemove.build(recipe: recipe, change: destroy_changes.first)
       end
 
-      def fallback_operation_reason(frame, entries, changes)
-        return "replace_dependency_matched" unless frame.payload.fetch(:kind) == "render_site"
-        return "replace_dependency_matched" unless entries.any? { |entry| entry.dependency.source == :active_record_collection }
+      def deoptimization_reason(frame, entries, changes)
+        return unless frame.payload.fetch(:kind) == "render_site"
+        return unless entries.any? { |entry| entry.dependency.source == :active_record_collection }
 
         if changes.one? { |change| change[:id] && change.fetch(:type).to_s.include?("create") }
           "collection_create_position_unproven"
@@ -249,7 +249,7 @@ module Upkeep
             target.identity_signature,
             target.sharing_signature,
             target.action,
-            target.operation_reason
+            target.deoptimization_reason
           ]
           indexed_targets[key] = merge_target(indexed_targets[key], target)
         end.values
@@ -268,7 +268,7 @@ module Upkeep
           existing.recipe,
           (existing.matched_dependency_keys + target.matched_dependency_keys).uniq,
           existing.action,
-          existing.operation_reason
+          existing.deoptimization_reason
         )
       end
     end
