@@ -116,11 +116,31 @@ module Upkeep
         end
 
         def entries_for(changes)
-          active_entries = active_registry&.entries_for(changes) || []
-          return persistent_entries_for(changes) if active_registry&.count == 0
-          return active_entries if active_registry&.covers?(persistent_subscription_count)
+          payload = { changes: Array(changes).size, store: "active_record" }
+          ActiveSupport::Notifications.instrument("lookup_subscription_index.upkeep", payload) do
+            active_entries = active_registry&.entries_for(changes) || []
+            active_count = active_registry&.count || 0
+            payload[:active_entries] = active_entries.size
+            payload[:active_subscriptions] = active_count
 
-          merge_entries(active_entries, persistent_entries_for(changes))
+            if active_count == 0
+              persistent_entries = persistent_entries_for(changes)
+              payload[:mode] = "persistent"
+              payload[:persistent_entries] = persistent_entries.size
+              next persistent_entries
+            end
+
+            if active_registry&.covers?(persistent_subscription_count)
+              payload[:mode] = "active"
+              payload[:persistent_entries] = 0
+              next active_entries
+            end
+
+            persistent_entries = persistent_entries_for(changes)
+            payload[:mode] = "active_and_persistent"
+            payload[:persistent_entries] = persistent_entries.size
+            merge_entries(active_entries, persistent_entries)
+          end
         end
 
         def summary
@@ -234,18 +254,23 @@ module Upkeep
       end
 
       def register(subscriber_id:, recorder:, metadata: {})
-        subscription = Subscription.new(
-          next_subscription_id,
-          subscriber_id,
-          recorder,
-          recorder.graph,
-          metadata
-        )
+        payload = { store: "active_record" }
+        ActiveSupport::Notifications.instrument("register_subscription_store.upkeep", payload) do
+          subscription = Subscription.new(
+            next_subscription_id,
+            subscriber_id,
+            recorder,
+            recorder.graph,
+            metadata
+          )
 
-        entries = index_builder.entries_for_subscription(subscription)
-        persist_subscription(subscription, entries)
-        active_registry.register(subscription, entries: entries)
-        subscription
+          entries = index_builder.entries_for_subscription(subscription)
+          payload[:subscription_id] = subscription.id
+          payload[:dependency_entries] = entries.size
+          payload[:index_rows] = persist_subscription(subscription, entries)
+          active_registry.register(subscription, entries: entries)
+          subscription
+        end
       end
 
       def shutdown = nil
@@ -360,6 +385,7 @@ module Upkeep
         end
 
         index_record.insert_all!(rows) if rows.any?
+        rows.size
       end
 
       def next_subscription_id
