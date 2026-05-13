@@ -55,6 +55,21 @@ module Upkeep
           end
         end
 
+        def touch(id, metadata:)
+          @mutex.synchronize do
+            subscription = @subscriptions[id]
+            return unless subscription
+
+            @subscriptions[id] = Subscription.new(
+              subscription.id,
+              subscription.subscriber_id,
+              subscription.recorder,
+              subscription.graph,
+              subscription.metadata.merge(metadata)
+            )
+          end
+        end
+
         def entries_for(changes)
           @mutex.synchronize { @reverse_index.entries_for(changes) }
         end
@@ -216,7 +231,14 @@ module Upkeep
       def shutdown = nil
 
       def touch(id, now: Time.now)
-        subscription_record.where(id: id).update_all(updated_at: now)
+        metadata = { "last_seen_at" => now.utc.iso8601 }
+        subscription_record.where(id: id).find_each do |record|
+          record.update_columns(
+            metadata: record.metadata.to_h.merge(metadata),
+            updated_at: now
+          )
+        end
+        active_registry.touch(id, metadata: metadata)
       end
 
       def prune_stale!(older_than:)
@@ -239,7 +261,15 @@ module Upkeep
       end
 
       def fetch_persisted(id)
-        Subscription.from_h(load(subscription_record.find(id).recorder_snapshot))
+        record = subscription_record.find(id)
+        subscription = Subscription.from_h(load(record.recorder_snapshot))
+        Subscription.new(
+          subscription.id,
+          subscription.subscriber_id,
+          subscription.recorder,
+          subscription.graph,
+          subscription.metadata.merge(record.metadata.to_h)
+        )
       end
 
       def subscriptions
