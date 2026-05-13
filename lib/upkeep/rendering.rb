@@ -28,7 +28,7 @@ module Upkeep
                 target_kind: "page",
                 target_id: page_frame_id,
                 template: template_name,
-                metadata: { user: replay_value_metadata(user) }
+                metadata: replay_metadata(template_name, user: replay_value_metadata(user))
               ) do
                 render_request(
                   template_name,
@@ -73,7 +73,7 @@ module Upkeep
           target_kind: "fragment",
           target_id: frame_id,
           template: template_name,
-          metadata: { locals: frame_local_metadata(locals) }
+          metadata: replay_metadata(template_name, locals: frame_local_metadata(locals))
         ) do
           if context.page_recipe
             target = Targeting::Target.new("fragment", frame_id, "fragment replay")
@@ -120,6 +120,17 @@ module Upkeep
           manifest_path: manifest.path,
           manifest_fingerprint: manifest.fingerprint
         }
+      end
+
+      def replay_metadata(template_name, metadata = {})
+        manifest = manifest_metadata(template_name)
+
+        metadata.merge(
+          manifest: {
+            path: manifest.fetch(:manifest_path),
+            fingerprint: manifest.fetch(:manifest_fingerprint)
+          }
+        )
       end
 
       def page_frame_id(template_name)
@@ -228,7 +239,10 @@ module Upkeep
           frame_id: frame_id,
           target_kind: "render_site",
           target_id: site_id,
-          metadata: { site_id: site_id }
+          metadata: {
+            site_id: site_id,
+            manifest: manifest_reference(manifest_path, manifest_fingerprint)
+          }.compact
         ) do
           if page_recipe
             target = Targeting::Target.new("render_site", site_id, "render-site replay")
@@ -247,6 +261,15 @@ module Upkeep
         end
 
         %(<upkeep-render-site data-upkeep-render-site="#{h(site_id)}">#{html}</upkeep-render-site>)
+      end
+
+      def manifest_reference(manifest_path, manifest_fingerprint)
+        return unless manifest_path && manifest_fingerprint
+
+        {
+          path: manifest_path,
+          fingerprint: manifest_fingerprint
+        }
       end
 
       def render(partial:, collection: nil, as: nil, locals: {})

@@ -23,6 +23,10 @@ module Upkeep
         runtime_renderer.render(self)
       end
 
+      def manifest_reference
+        metadata[:manifest] || metadata["manifest"]
+      end
+
       def to_h
         snapshot = {
           kind: kind,
