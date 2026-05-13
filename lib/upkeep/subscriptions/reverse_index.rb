@@ -10,7 +10,11 @@ module Upkeep
       end
 
       def index(subscription)
-        entries_for_subscription(subscription).each do |entry|
+        index_entries(entries_for_subscription(subscription))
+      end
+
+      def index_entries(entries)
+        entries.each do |entry|
           lookup_keys_for_dependency(entry.dependency).each do |lookup_key|
             entries = @entries_by_lookup_key[lookup_key]
             entries << entry unless entries.include?(entry)
