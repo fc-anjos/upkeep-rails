@@ -32,10 +32,14 @@ module Upkeep
           @reverse_index = ReverseIndex.new
         end
 
-        def register(subscription)
+        def register(subscription, entries: nil)
           @mutex.synchronize do
             @subscriptions[subscription.id] = subscription
-            @reverse_index.index(subscription)
+            if entries
+              @reverse_index.index_entries(entries)
+            else
+              @reverse_index.index(subscription)
+            end
           end
         end
 
@@ -137,7 +141,11 @@ module Upkeep
         end
 
         def self.digest(value)
-          Digest::SHA256.hexdigest(Marshal.dump(value))
+          digest_snapshot(Marshal.dump(value))
+        end
+
+        def self.digest_snapshot(snapshot)
+          Digest::SHA256.hexdigest(snapshot)
         end
 
         private
@@ -233,8 +241,9 @@ module Upkeep
           metadata
         )
 
-        persist_subscription(subscription)
-        active_registry.register(subscription)
+        entries = index_builder.entries_for_subscription(subscription)
+        persist_subscription(subscription, entries)
+        active_registry.register(subscription, entries: entries)
         subscription
       end
 
@@ -309,11 +318,11 @@ module Upkeep
 
       attr_reader :subscription_record, :index_record, :index_builder, :active_registry
 
-      def persist_subscription(subscription)
+      def persist_subscription(subscription, entries)
         ActiveRecord::Base.connection_pool.with_connection do
           ActiveRecord::Base.transaction do
             persist_subscription_record(subscription)
-            index_subscription(subscription)
+            index_subscription(subscription, entries)
           end
         end
       end
@@ -327,18 +336,24 @@ module Upkeep
         )
       end
 
-      def index_subscription(subscription)
-        rows = index_builder.entries_for_subscription(subscription).flat_map do |entry|
+      def index_subscription(subscription, entries)
+        now = Time.now
+        rows = entries.flat_map do |entry|
+          owner_id_snapshot = dump(entry.owner_id)
+          dependency_cache_key_snapshot = dump(entry.dependency_cache_key)
+          dependency_snapshot = dump(entry.dependency)
+
           index_builder.lookup_keys_for_dependency(entry.dependency).map do |lookup_key|
+            lookup_key_snapshot = dump(lookup_key)
             {
               subscription_id: subscription.id,
-              lookup_key_digest: PersistentReverseIndex.digest(lookup_key),
-              lookup_key_snapshot: dump(lookup_key),
-              owner_id_snapshot: dump(entry.owner_id),
-              dependency_cache_key_snapshot: dump(entry.dependency_cache_key),
-              dependency_snapshot: dump(entry.dependency),
-              created_at: Time.now,
-              updated_at: Time.now
+              lookup_key_digest: PersistentReverseIndex.digest_snapshot(lookup_key_snapshot),
+              lookup_key_snapshot: lookup_key_snapshot,
+              owner_id_snapshot: owner_id_snapshot,
+              dependency_cache_key_snapshot: dependency_cache_key_snapshot,
+              dependency_snapshot: dependency_snapshot,
+              created_at: now,
+              updated_at: now
             }
           end
         end

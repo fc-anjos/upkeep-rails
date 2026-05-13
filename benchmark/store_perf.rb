@@ -10,21 +10,27 @@ require "upkeep"
 
 N = Integer(ENV.fetch("N", "1000"))
 LOOKUPS = Integer(ENV.fetch("LOOKUPS", "50"))
+DEPENDENCIES = Integer(ENV.fetch("DEPENDENCIES", "2"))
 
 def recorder_for(id)
   recorder = Upkeep::Runtime::Recorder.new
-  recorder.record_dependency(
-    Upkeep::Dependencies::ActiveRecordAttribute.new(
-      table: "perf_cards",
-      model: "PerfCard",
-      id: id,
-      attribute: "title"
+  attribute_dependencies = [DEPENDENCIES - 1, 1].max
+
+  attribute_dependencies.times do |idx|
+    recorder.record_dependency(
+      Upkeep::Dependencies::ActiveRecordAttribute.new(
+        table: "perf_cards",
+        model: "PerfCard",
+        id: id,
+        attribute: "field_#{idx}"
+      )
     )
-  )
+  end
+
   recorder.record_dependency(
     Upkeep::Dependencies::ActiveRecordCollection.new(
       primary_table: "perf_cards",
-      table_columns: { "perf_cards" => ["id", "status", "title"] },
+      table_columns: { "perf_cards" => ["id", "status", "field_0"] },
       coverage: :columns,
       sql: "SELECT perf_cards.* FROM perf_cards WHERE status = 'open' ORDER BY id"
     )
@@ -51,7 +57,7 @@ def timed_sql
 end
 
 def emit(rows)
-  puts "N=#{N} subscriptions, #{LOOKUPS} lookup iterations"
+  puts "N=#{N} subscriptions, #{LOOKUPS} lookup iterations, #{DEPENDENCIES} dependencies"
   puts "metric,total_ms,per_op_ms,sql"
   rows.each do |name, elapsed, ops, sql|
     puts format("%s,%.2f,%.4f,%d", name, elapsed * 1000, (elapsed * 1000) / ops, sql)
@@ -90,9 +96,9 @@ Dir.mktmpdir("upkeep-store-perf") do |dir|
     type: "update",
     table: "perf_cards",
     id: (N / 2) + 1,
-    changed_attributes: ["title"],
-    old_values: { "title" => "old" },
-    new_values: { "title" => "new" }
+    changed_attributes: ["field_0"],
+    old_values: { "field_0" => "old" },
+    new_values: { "field_0" => "new" }
   }
   collection_change = {
     type: "update",
