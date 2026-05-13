@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "active_support/notifications"
 require "cgi"
 
 module Upkeep
@@ -102,11 +103,31 @@ module Upkeep
       end
 
       def build_many(plans)
-        streams = plans.flat_map { |plan| stream_targets(plan.targets) }
-        Batch.new(merge_streams(streams))
+        payload = {
+          plans: plans.size,
+          planned_targets: plans.sum { |plan| plan.targets.size }
+        }
+
+        ActiveSupport::Notifications.instrument("build_turbo_streams.upkeep", payload) do
+          streams = plans.flat_map { |plan| stream_targets(plan.targets) }
+          batch = Batch.new(merge_streams(streams))
+          payload.merge!(payload_for(batch))
+          batch
+        end
       end
 
       private
+
+      def payload_for(batch)
+        envelopes = batch.envelopes
+
+        {
+          streams: batch.streams.size,
+          envelopes: envelopes.size,
+          actions: batch.streams.map(&:action).tally,
+          payload_bytes: envelopes.sum { |envelope| envelope.body.bytesize }
+        }
+      end
 
       def stream_targets(planned_targets)
         shared_targets, direct_targets = planned_targets.partition(&:sharing_signature)
