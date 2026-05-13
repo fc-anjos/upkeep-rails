@@ -125,6 +125,21 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     assert_operator events.first.payload.fetch(:index_rows), :>, 0
   end
 
+  def test_register_deduplicates_persistent_index_entries
+    recorder = Upkeep::Runtime::Recorder.new
+    dependency = Upkeep::Dependencies::ActiveRecordAttribute.new(
+      table: "persistent_subscription_cards",
+      model: "PersistentSubscriptionCard",
+      id: 1,
+      attribute: "title"
+    )
+    2.times { recorder.record_dependency(dependency) }
+
+    active_record_store.register(subscriber_id: "subscriber-a", recorder: recorder, metadata: {})
+
+    assert_equal 2, Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.count
+  end
+
   def test_persistent_reverse_index_reports_lookup_mode_and_counts
     card = PersistentSubscriptionCard.create!(title: "Plan", status: "open")
 
