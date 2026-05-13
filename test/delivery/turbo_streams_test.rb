@@ -13,7 +13,14 @@ end
 class DeliveryCardsController < ActionController::Base
   def index
     cards = DeliveryCard.where(status: params.fetch(:status, "open"))
-    @cards = params[:order] == "title_desc" ? cards.order(title: :desc) : cards.order(:id)
+    @cards = case params[:order]
+    when "title"
+      cards.order(:title)
+    when "title_desc"
+      cards.order(title: :desc)
+    else
+      cards.order(:id)
+    end
     render template: "delivery_cards/index"
   end
 end
@@ -210,6 +217,72 @@ class TurboStreamsDeliveryTest < Minitest::Test
     assert_equal "#delivery_card_#{card.id}", turbo_stream["targets"]
     assert_empty turbo_stream.css("template")
     assert_empty stream.html
+  end
+
+  def test_collection_update_replaces_existing_member_when_order_is_stable
+    create_delivery_card!("Alpha")
+    card = create_delivery_card!("Mango")
+    create_delivery_card!("Zulu")
+
+    store = Upkeep::Subscriptions::Store.new
+    register_controller_subscription(store, subscriber_id: "subscriber-a", path: "/cards?status=open&order=title")
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.update!(title: "Nectarine")
+
+    batch = delivery.build(plan_for(store))
+    stream = batch.streams.first
+    turbo_stream = Nokogiri::HTML5.fragment(stream.to_html).at_css("turbo-stream")
+
+    assert_equal "replace", turbo_stream["action"]
+    assert_equal "#delivery_card_#{card.id}", turbo_stream["targets"]
+    assert_includes stream.html, "Nectarine"
+    refute_includes stream.html, "Alpha"
+    refute_includes stream.html, "Zulu"
+  end
+
+  def test_collection_update_falls_back_to_render_site_when_member_order_changes
+    create_delivery_card!("Alpha")
+    card = create_delivery_card!("Mango")
+    create_delivery_card!("Zulu")
+
+    store = Upkeep::Subscriptions::Store.new
+    register_controller_subscription(store, subscriber_id: "subscriber-a", path: "/cards?status=open&order=title")
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.update!(title: "Aardvark")
+
+    batch = delivery.build(plan_for(store))
+    stream = batch.streams.first
+    turbo_stream = Nokogiri::HTML5.fragment(stream.to_html).at_css("turbo-stream")
+
+    assert_equal "replace", turbo_stream["action"]
+    assert_match(/\Aupkeep-render-site\[data-upkeep-render-site="/, turbo_stream["targets"])
+    assert_includes stream.html, "Aardvark"
+    assert_includes stream.html, "Alpha"
+    assert_includes stream.html, "Zulu"
+  end
+
+  def test_collection_update_falls_back_to_render_site_when_member_leaves_relation
+    create_delivery_card!("Alpha")
+    card = create_delivery_card!("Mango")
+    create_delivery_card!("Zulu")
+
+    store = Upkeep::Subscriptions::Store.new
+    register_controller_subscription(store, subscriber_id: "subscriber-a", path: "/cards?status=open&order=title")
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.update!(status: "closed")
+
+    batch = delivery.build(plan_for(store))
+    stream = batch.streams.first
+    turbo_stream = Nokogiri::HTML5.fragment(stream.to_html).at_css("turbo-stream")
+
+    assert_equal "replace", turbo_stream["action"]
+    assert_match(/\Aupkeep-render-site\[data-upkeep-render-site="/, turbo_stream["targets"])
+    assert_includes stream.html, "Alpha"
+    refute_includes stream.html, "Mango"
+    assert_includes stream.html, "Zulu"
   end
 
   def test_collection_create_skips_delivery_when_created_record_does_not_match_relation
