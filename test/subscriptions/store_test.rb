@@ -30,6 +30,26 @@ class SubscriptionStoreTest < Minitest::Test
     assert_equal 1, store.reverse_index.entries_for([change]).size
   end
 
+  def test_nil_id_attribute_dependency_matches_record_changes
+    store = Upkeep::Subscriptions::Store.new
+    subscription = store.register(subscriber_id: "subscriber-a", recorder: recorder_with_nil_id_dependency)
+
+    entries = store.reverse_index.entries_for([change.merge(id: nil)])
+
+    assert_equal [subscription.id], entries.map(&:subscription_id)
+  end
+
+  def test_collection_dependency_indexes_proven_columns
+    store = Upkeep::Subscriptions::Store.new
+    subscription = store.register(subscriber_id: "subscriber-a", recorder: recorder_with_collection_dependency)
+
+    status_entries = store.reverse_index.entries_for([change.merge(changed_attributes: ["status"])])
+    title_entries = store.reverse_index.entries_for([change.merge(changed_attributes: ["title"])])
+
+    assert_equal [subscription.id], status_entries.map(&:subscription_id)
+    assert_empty title_entries
+  end
+
   private
 
   def recorder_with_dependency
@@ -39,6 +59,32 @@ class SubscriptionStoreTest < Minitest::Test
         table: "subscription_store_cards",
         model: "SubscriptionStoreCard",
         id: 1,
+        attribute: "title"
+      )
+    )
+    recorder
+  end
+
+  def recorder_with_collection_dependency
+    recorder = Upkeep::Runtime::Recorder.new
+    recorder.record_dependency(
+      Upkeep::Dependencies::ActiveRecordCollection.new(
+        primary_table: "subscription_store_cards",
+        table_columns: { "subscription_store_cards" => ["id", "status"] },
+        coverage: :columns,
+        sql: "SELECT * FROM subscription_store_cards WHERE status = 'open'"
+      )
+    )
+    recorder
+  end
+
+  def recorder_with_nil_id_dependency
+    recorder = Upkeep::Runtime::Recorder.new
+    recorder.record_dependency(
+      Upkeep::Dependencies::ActiveRecordAttribute.new(
+        table: "subscription_store_cards",
+        model: "SubscriptionStoreCard",
+        id: nil,
         attribute: "title"
       )
     )
