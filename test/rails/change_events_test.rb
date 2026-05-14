@@ -142,4 +142,51 @@ class ChangeEventsTest < Minitest::Test
     assert_equal "change_event_cards", dependency.key.fetch(:table)
     assert_includes dependency.metadata.fetch(:table_columns).fetch("change_event_cards"), "status"
   end
+
+  def test_opaque_relation_materialization_raises_before_querying
+    ChangeEventCard.create!(title: "Plan", status: "open", position: 1)
+    select_sql = []
+    subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |_name, _started, _finished, _id, payload|
+      sql = payload[:sql].to_s
+      select_sql << sql if sql.start_with?("SELECT") && sql.include?('"change_event_cards"')
+    end
+
+    error = assert_raises(Upkeep::ActiveRecordQuery::OpaqueRelationError) do
+      Upkeep::Runtime::Observation.capture_request do
+        ChangeEventCard.where("status = ?", "open").to_a
+      end
+    end
+
+    assert_includes error.message, "cannot make this Active Record relation reactive"
+    assert_includes error.message, "raw SQL predicate"
+    assert_empty select_sql
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
+  end
+
+  def test_warn_policy_refuses_opaque_relation_materialization_without_dependency
+    previous_behavior = Upkeep::Rails.configuration.refused_boundary_behavior
+    Upkeep::Rails.configuration.refused_boundary_behavior = :warn
+    ChangeEventCard.create!(title: "Plan", status: "open", position: 1)
+    events = []
+    subscriber = ActiveSupport::Notifications.subscribe("refused_boundary.upkeep") do |_name, _started, _finished, _id, payload|
+      events << payload
+    end
+
+    result, recorder = Upkeep::Runtime::Observation.capture_request do
+      ChangeEventCard.where("status = ?", "open").to_a
+    end
+
+    assert_equal ["Plan"], result.map(&:title)
+    refute recorder.reactive?
+    assert_equal 1, recorder.refused_boundaries.size
+    assert_equal "opaque_active_record_relation", recorder.refused_boundaries.first.reason
+    assert_equal "active_record_relation", recorder.refused_boundaries.first.source
+    assert_includes recorder.refused_boundaries.first.suggestions.join(" "), "structural Active Record"
+    assert_includes events.map { |event| event.fetch(:reason) }, "opaque_active_record_relation"
+    refute_includes recorder.graph.summary.fetch(:dependency_sources), "active_record_collection"
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
+    Upkeep::Rails.configuration.refused_boundary_behavior = previous_behavior if previous_behavior
+  end
 end
