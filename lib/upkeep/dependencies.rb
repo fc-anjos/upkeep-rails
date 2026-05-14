@@ -79,15 +79,25 @@ module Upkeep
     class ActiveRecordCollection < Base
       UNKNOWN = Object.new
 
-      def initialize(primary_table:, table_columns:, coverage:, sql:, predicates: [])
+      def initialize(
+        primary_table:,
+        table_columns:,
+        coverage:,
+        sql:,
+        predicates: [],
+        source: :active_record_collection,
+        precision: :collection_predicate
+      )
         table_columns = normalize_table_columns(table_columns)
         coverage = coverage.to_sym
         unless coverage == :columns
-          raise ArgumentError, "unsupported Active Record collection coverage: #{coverage}; collection dependencies require proven column coverage"
+          raise ArgumentError,
+            "unsupported Active Record predicate coverage: #{coverage}; dependencies require proven column coverage"
         end
 
+        @precision = precision.to_sym
         super(
-          source: :active_record_collection,
+          source: source.to_sym,
           key: {
             table: primary_table,
             predicate_digest: Digest::SHA256.hexdigest(sql)[0, 16]
@@ -115,7 +125,7 @@ module Upkeep
       end
 
       def precision
-        :collection_predicate
+        @precision
       end
 
       def collection_lookup_tables
@@ -211,6 +221,20 @@ module Upkeep
 
       def stringify_keys(values)
         values.to_h.transform_keys(&:to_s)
+      end
+    end
+
+    class ActiveRecordQuery < ActiveRecordCollection
+      def initialize(primary_table:, table_columns:, coverage:, sql:, predicates: [])
+        super(
+          primary_table: primary_table,
+          table_columns: table_columns,
+          coverage: coverage,
+          sql: sql,
+          predicates: predicates,
+          source: :active_record_query,
+          precision: :query_predicate
+        )
       end
     end
 
@@ -345,8 +369,9 @@ module Upkeep
           attribute: key.fetch(:attribute),
           model: metadata[:model]
         )
-      when :active_record_collection
-        ActiveRecordCollection.new(
+      when :active_record_collection, :active_record_query
+        dependency_class = source.to_sym == :active_record_query ? ActiveRecordQuery : ActiveRecordCollection
+        dependency_class.new(
           primary_table: metadata.fetch(:primary_table, key.fetch(:table)),
           table_columns: metadata.fetch(:table_columns),
           coverage: metadata.fetch(:coverage),

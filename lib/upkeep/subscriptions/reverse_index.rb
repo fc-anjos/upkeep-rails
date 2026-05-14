@@ -58,7 +58,7 @@ module Upkeep
         case dependency.source
         when :active_record_attribute
           active_record_attribute_lookup_keys(dependency.key)
-        when :active_record_collection
+        when :active_record_collection, :active_record_query
           active_record_collection_lookup_keys(dependency)
         else
           []

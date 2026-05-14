@@ -15,6 +15,11 @@ class SubscriptionCardsController < ActionController::Base
     @cards = SubscriptionCard.where(status: params.fetch(:status, "open")).order(:id)
     render template: "subscription_cards/index"
   end
+
+  def titles
+    @titles = SubscriptionCard.where(status: params.fetch(:status, "open")).pluck(:title)
+    render template: "subscription_cards/titles"
+  end
 end
 
 class InvalidationPlannerTest < Minitest::Test
@@ -61,6 +66,27 @@ class InvalidationPlannerTest < Minitest::Test
       assert_includes rendered, "Review"
       refute_includes rendered, "Archived"
     end
+  end
+
+  def test_scalar_query_dependency_targets_page_replay
+    card = create_subscription_card!("Plan")
+
+    store = Upkeep::Subscriptions::Store.new
+    html, recorder = capture_controller_request("/cards/titles?status=open", action: :titles)
+    store.register(subscriber_id: "subscriber-a", recorder: recorder)
+
+    assert_includes html, "Plan"
+    refute_includes recorder.graph.summary.fetch(:dependency_sources), "active_record_collection"
+    assert_includes recorder.graph.summary.fetch(:dependency_sources), "active_record_query"
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.update!(title: "Plan v2")
+
+    plan = planner(store).plan(Upkeep::Runtime::ChangeLog.events)
+
+    assert_equal ["page"], plan.targets.map { |target| target.target.kind }.uniq
+    assert_equal [:active_record_query], plan.matched_entries.map { |entry| entry.dependency.source }.uniq
+    assert_includes plan.targets.first.render, "Plan v2"
   end
 
   def test_planning_emits_cost_notification
@@ -196,9 +222,9 @@ class InvalidationPlannerTest < Minitest::Test
     store.register(subscriber_id: subscriber_id, recorder: recorder)
   end
 
-  def capture_controller_request(path)
+  def capture_controller_request(path, action: :index)
     result, recorder = Upkeep::Runtime::Observation.capture_request do
-      _status, _headers, body = SubscriptionCardsController.action(:index).call(Rack::MockRequest.env_for(path))
+      _status, _headers, body = SubscriptionCardsController.action(action).call(Rack::MockRequest.env_for(path))
       [collect_body(body), Upkeep::Runtime::Observation.recorder]
     end
 
@@ -257,6 +283,11 @@ class InvalidationPlannerTest < Minitest::Test
           <ul>
             <%= render partial: "subscription_cards/card", collection: @cards, as: :card %>
           </ul>
+        </main>
+      ERB
+      "subscription_cards/titles.html.erb" => <<~ERB,
+        <main>
+          <%= @titles.join(", ") %>
         </main>
       ERB
       "subscription_cards/_card.html.erb" => <<~ERB
