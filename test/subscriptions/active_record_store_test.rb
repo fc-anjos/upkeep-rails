@@ -137,7 +137,7 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
 
     active_record_store.register(subscriber_id: "subscriber-a", recorder: recorder, metadata: {})
 
-    assert_equal 2, Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.count
+    assert_equal 1, Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.count
   end
 
   def test_persistent_reverse_index_reports_lookup_mode_and_counts

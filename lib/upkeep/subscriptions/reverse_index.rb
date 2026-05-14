@@ -77,20 +77,22 @@ module Upkeep
           end
         end
 
-        keys << [:active_record_collection_table, table]
+        keys.concat(attributes.map { |attribute| [:active_record_collection_column, table, attribute] })
+        keys.uniq
       end
 
       private
 
       def active_record_collection_lookup_keys(dependency)
-        dependency.collection_lookup_tables.map { |table| [:active_record_collection_table, table] }
+        dependency.collection_lookup_columns.map { |table, column| [:active_record_collection_column, table, column] }
       end
 
       def active_record_attribute_lookup_keys(key)
-        [
-          [:active_record_attribute, key.fetch(:table), key.fetch(:id), key.fetch(:attribute)],
-          [:active_record_attribute_any_id, key.fetch(:table), key.fetch(:attribute)]
-        ]
+        if key.fetch(:id)
+          [[:active_record_attribute, key.fetch(:table), key.fetch(:id), key.fetch(:attribute)]]
+        else
+          [[:active_record_attribute_any_id, key.fetch(:table), key.fetch(:attribute)]]
+        end
       end
     end
   end

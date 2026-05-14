@@ -122,6 +122,12 @@ module Upkeep
         table_columns.keys.sort
       end
 
+      def collection_lookup_columns
+        table_columns.flat_map do |table, columns|
+          columns.map { |column| [table, column] }
+        end.sort
+      end
+
       private
 
       def predicate_match(change)
