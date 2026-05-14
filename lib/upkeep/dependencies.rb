@@ -92,7 +92,7 @@ module Upkeep
         coverage = coverage.to_sym
         unless coverage == :columns
           raise ArgumentError,
-            "unsupported Active Record predicate coverage: #{coverage}; dependencies require proven column coverage"
+            "unsupported Active Record predicate coverage: #{coverage}; collection dependencies require proven column coverage"
         end
 
         @precision = precision.to_sym
