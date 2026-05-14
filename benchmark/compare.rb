@@ -100,6 +100,12 @@ def polled_summary(entries)
   before = entries.find { |entry| entry["label"] == "before" }&.dig("data") || {}
   final = entries.find { |entry| entry["label"] == "final" }&.dig("data") || {}
   relay = final["relay"] || {}
+  reactivity = final["upkeep_reactivity"] || {}
+  graph = reactivity["subscription_graphs"] || {}
+  ambient = graph["ambient_replay_inputs"] || {}
+  refused = reactivity["refused_boundaries"] || {}
+  delivery = reactivity["delivery"] || {}
+  live_deopts = delivery["live_deoptimizations"] || {}
 
   effective_transmits = final.dig("counters", "transmits_total") ||
                         final.dig("counters", "transmits")
@@ -125,6 +131,21 @@ def polled_summary(entries)
     "relay_render_mode_page_replay" => relay.dig("render_groups_by_mode", "page_replay"),
     "relay_proof_fallbacks" => relay.dig("proof_fallback", "by_reason"),
     "relay_runtime_contradictions" => relay.dig("runtime_contradiction", "by_mode"),
+    "reactivity_subscriptions" => graph["subscriptions"],
+    "reactivity_frames" => graph["frames"],
+    "reactivity_dependencies" => graph["dependencies"],
+    "reactivity_replay_recipes" => graph["replay_recipes"],
+    "reactivity_replay_recipe_bytes_total" => graph["replay_recipe_bytes_total"],
+    "reactivity_replay_recipe_bytes_max" => graph["replay_recipe_bytes_max"],
+    "reactivity_ambient_replay_inputs" => ambient["total"],
+    "reactivity_ambient_replay_inputs_by_source" => ambient["by_source"],
+    "reactivity_dependency_sources" => graph["dependency_sources"],
+    "reactivity_refused_boundaries" => refused["total"],
+    "reactivity_refused_boundaries_by_reason" => refused["by_reason"],
+    "reactivity_live_deoptimizations" => live_deopts["total"],
+    "reactivity_live_deoptimizations_by_reason" => live_deopts["by_reason"],
+    "reactivity_render_groups" => delivery["render_groups"],
+    "reactivity_render_count" => delivery["render_count"],
     "subscription_count" => final.dig("subscription_count")
   }
 end
@@ -348,6 +369,26 @@ report = <<~MD
   | Broadcasts | #{fmt polled["upkeep"]["broadcasts"]} | #{fmt polled["turbo"]["broadcasts"]} |
   | Transmits | #{fmt polled["upkeep"]["transmits"]} | #{fmt polled["turbo"]["transmits"]} |
   | Subscriptions (final) | #{fmt polled["upkeep"]["subscription_count"]} | #{fmt polled["turbo"]["subscription_count"]} |
+
+  ## Upkeep Reactivity Surface
+
+  | Metric | Value |
+  |--------|-------|
+  | Stored subscription graphs | #{fmt polled["upkeep"]["reactivity_subscriptions"]} |
+  | Frames | #{fmt polled["upkeep"]["reactivity_frames"]} |
+  | Dependencies | #{fmt polled["upkeep"]["reactivity_dependencies"]} |
+  | Replay recipes | #{fmt polled["upkeep"]["reactivity_replay_recipes"]} |
+  | Replay recipe bytes (total) | #{fmt polled["upkeep"]["reactivity_replay_recipe_bytes_total"]} |
+  | Replay recipe bytes (max) | #{fmt polled["upkeep"]["reactivity_replay_recipe_bytes_max"]} |
+  | Ambient replay inputs | #{fmt polled["upkeep"]["reactivity_ambient_replay_inputs"]} |
+  | Ambient replay inputs by source | #{fmt polled["upkeep"]["reactivity_ambient_replay_inputs_by_source"]} |
+  | Dependency sources | #{fmt polled["upkeep"]["reactivity_dependency_sources"]} |
+  | Refused boundaries | #{fmt polled["upkeep"]["reactivity_refused_boundaries"]} |
+  | Refused boundaries by reason | #{fmt polled["upkeep"]["reactivity_refused_boundaries_by_reason"]} |
+  | Live deoptimizations | #{fmt polled["upkeep"]["reactivity_live_deoptimizations"]} |
+  | Live deoptimizations by reason | #{fmt polled["upkeep"]["reactivity_live_deoptimizations_by_reason"]} |
+  | Runtime render groups | #{fmt polled["upkeep"]["reactivity_render_groups"]} |
+  | Runtime render count | #{fmt polled["upkeep"]["reactivity_render_count"]} |
 
   ## Dispatch Dedup (Upkeep only)
 

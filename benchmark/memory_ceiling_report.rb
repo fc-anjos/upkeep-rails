@@ -378,6 +378,7 @@ def app_summary(results_dir, timestamp, app_name, after_label, k6_file, rss_file
   server_events = server_events_for_run(results_dir, app_name, timestamp, bounds: run_wall_time_bounds(entries))
   phases = memory_phase_snapshots(server_events)
   snapshot = memory_payload(latest_memory_snapshot(server_events))
+  reactivity = after["upkeep_reactivity"] || {}
 
   {
     "before_rss_mb" => before.dig("rss_mb"),
@@ -401,7 +402,8 @@ def app_summary(results_dir, timestamp, app_name, after_label, k6_file, rss_file
     "phase_rss" => phase_rss_summary(phases, rss_records),
     "phase_deltas" => phase_deltas(phases),
     "retained_owner_deltas" => retained_owner_deltas(phases),
-    "delivery_drain" => delivery_drain_summary(server_events, before, after)
+    "delivery_drain" => delivery_drain_summary(server_events, before, after),
+    "reactivity" => reactivity
   }
 end
 
@@ -689,6 +691,33 @@ def delivery_drain_admissibility(report)
   drain["admissible"] == false ? "non_admissible_render_readiness" : "admissible"
 end
 
+def reactivity_table(report)
+  reactivity = report.dig("upkeep", "reactivity") || {}
+  graph = reactivity["subscription_graphs"] || {}
+  ambient = graph["ambient_replay_inputs"] || {}
+  refused = reactivity["refused_boundaries"] || {}
+  delivery = reactivity["delivery"] || {}
+  live_deopts = delivery["live_deoptimizations"] || {}
+
+  [
+    "| Stored subscription graphs | #{fmt(graph["subscriptions"])} |",
+    "| Frames | #{fmt(graph["frames"])} |",
+    "| Dependencies | #{fmt(graph["dependencies"])} |",
+    "| Replay recipes | #{fmt(graph["replay_recipes"])} |",
+    "| Replay recipe bytes (total) | #{fmt(graph["replay_recipe_bytes_total"])} |",
+    "| Replay recipe bytes (max) | #{fmt(graph["replay_recipe_bytes_max"])} |",
+    "| Ambient replay inputs | #{fmt(ambient["total"])} |",
+    "| Ambient replay inputs by source | #{fmt(ambient["by_source"])} |",
+    "| Dependency sources | #{fmt(graph["dependency_sources"])} |",
+    "| Refused boundaries | #{fmt(refused["total"])} |",
+    "| Refused boundaries by reason | #{fmt(refused["by_reason"])} |",
+    "| Live deoptimizations | #{fmt(live_deopts["total"])} |",
+    "| Live deoptimizations by reason | #{fmt(live_deopts["by_reason"])} |",
+    "| Runtime render groups | #{fmt(delivery["render_groups"])} |",
+    "| Runtime render count | #{fmt(delivery["render_count"])} |"
+  ].join("\n")
+end
+
 File.write(md_path, <<~MARKDOWN)
   # Memory Ceiling Shared Feed Churn
 
@@ -768,6 +797,12 @@ File.write(md_path, <<~MARKDOWN)
   Admissibility: `#{delivery_drain_admissibility(report)}`
 
   Next optimization: `#{report.dig("upkeep", "delivery_drain", "next_optimization")}`
+
+  ## Upkeep Reactivity Surface
+
+  | Metric | Value |
+  | --- | ---: |
+  #{reactivity_table(report)}
 
   ## Upkeep Process — Allocation Pressure Per Phase
 

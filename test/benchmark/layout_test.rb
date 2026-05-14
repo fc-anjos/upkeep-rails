@@ -5,6 +5,7 @@ require "pathname"
 require_relative "../../benchmark/runner/config"
 require_relative "../../benchmark/runner/k6_runner"
 require_relative "../../benchmark/runner/metrics_collector"
+require_relative "../../benchmark/shared/bench_metrics"
 
 class BenchmarkLayoutTest < Minitest::Test
   def test_runner_defaults_to_in_repo_benchmark_apps
@@ -80,6 +81,55 @@ class BenchmarkLayoutTest < Minitest::Test
     assert_equal "/bench/metrics?memory_phase=final", collector.send(:metrics_path_for, "upkeep", "final")
   end
 
+  def test_benchmark_metrics_summarize_subscription_graphs_without_replay_values
+    store = Upkeep::Rails.subscriptions
+    store.reset
+    BenchMetrics.reset_counters
+
+    store.register(
+      subscriber_id: "subscriber-a",
+      recorder: reactivity_recorder,
+      metadata: { "shared_stream_names" => ["upkeep:shared:test"] }
+    )
+
+    snapshot = BenchMetrics.snapshot
+    graph = snapshot.fetch(:upkeep_reactivity).fetch(:subscription_graphs)
+    ambient = graph.fetch(:ambient_replay_inputs)
+
+    assert_equal 1, snapshot.fetch(:subscription_count)
+    assert_equal 1, graph.fetch(:subscriptions)
+    assert_equal 1, graph.fetch(:frames)
+    assert_equal 4, graph.fetch(:dependencies)
+    assert_equal 1, graph.fetch(:replay_recipes)
+    assert_operator graph.fetch(:replay_recipe_bytes_total), :>, 0
+    assert_equal 3, ambient.fetch(:total)
+    assert_equal({ "cookie" => 1, "request" => 1, "session" => 1 }, ambient.fetch(:by_source))
+    assert_equal 1, graph.fetch(:shared_stream_names)
+
+    snapshot_json = JSON.generate(snapshot)
+    refute_includes snapshot_json, "secret-session-value"
+    refute_includes snapshot_json, "secret-cookie-value"
+  ensure
+    store&.reset
+  end
+
+  def test_benchmark_metrics_summarize_refused_boundaries_and_live_deopts
+    BenchMetrics.reset_counters
+
+    BenchMetrics.send(:increment_reactivity_tally, :refused_boundaries_by_reason, "opaque_active_record_relation")
+    BenchMetrics.send(:increment_reactivity_tally, :live_deoptimizations_by_reason, "collection_member_replace_unproven")
+
+    reactivity = BenchMetrics.snapshot.fetch(:upkeep_reactivity)
+
+    assert_equal 1, reactivity.fetch(:refused_boundaries).fetch(:total)
+    assert_equal({ "opaque_active_record_relation" => 1 }, reactivity.fetch(:refused_boundaries).fetch(:by_reason))
+    assert_equal 1, reactivity.fetch(:delivery).fetch(:live_deoptimizations).fetch(:total)
+    assert_equal(
+      { "collection_member_replace_unproven" => 1 },
+      reactivity.fetch(:delivery).fetch(:live_deoptimizations).fetch(:by_reason)
+    )
+  end
+
   private
 
   def matrix_config
@@ -116,5 +166,48 @@ class BenchmarkLayoutTest < Minitest::Test
 
   def project_root
     Pathname(__dir__).join("../..").expand_path
+  end
+
+  def reactivity_recorder
+    recorder = Upkeep::Runtime::Recorder.new
+    recipe = Upkeep::Replay::Recipe.new(
+      kind: "page",
+      frame_id: "page:benchmark/test",
+      target_kind: "page",
+      target_id: "page:benchmark/test",
+      runtime: "rails",
+      replay: {
+        type: "controller_page",
+        env: {
+          "rack.session" => {
+            "__upkeep_replay_type" => "rack_session",
+            "values" => {
+              "account_token" => "secret-session-value",
+              "session_id" => "session-id"
+            }
+          },
+          "HTTP_COOKIE" => "theme=secret-cookie-value"
+        }
+      }
+    )
+
+    recorder.graph.add_node(
+      "page:benchmark/test",
+      kind: :frame,
+      payload: { kind: "page", recipe: recipe }
+    )
+    recorder.graph.add_edge(Upkeep::Runtime::Recorder::REQUEST_NODE_ID, "page:benchmark/test", reason: :contains)
+    recorder.record_dependency(Upkeep::Dependencies::SessionValue.new(key: :account_token, value: "secret-session-value"))
+    recorder.record_dependency(Upkeep::Dependencies::CookieValue.new(key: :theme, value: "secret-cookie-value"))
+    recorder.record_dependency(Upkeep::Dependencies::RequestValue.new(key: :user_agent, value: "Benchmark"))
+    recorder.record_dependency(
+      Upkeep::Dependencies::ActiveRecordAttribute.new(
+        table: "benchmark_cards",
+        model: "BenchmarkCard",
+        id: 1,
+        attribute: "title"
+      )
+    )
+    recorder
   end
 end
