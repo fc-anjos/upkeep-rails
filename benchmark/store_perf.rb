@@ -80,7 +80,7 @@ Dir.mktmpdir("upkeep-store-perf") do |dir|
       table.string :subscription_id, null: false
       table.string :lookup_key_digest, null: false
       table.json :lookup_key_snapshot, null: false
-      table.json :owner_id_snapshot, null: false
+      table.json :owner_ids_snapshot, null: false
       table.json :dependency_cache_key_snapshot, null: false
       table.json :dependency_snapshot, null: false
       table.timestamps
@@ -125,7 +125,10 @@ Dir.mktmpdir("upkeep-store-perf") do |dir|
       active_record.register(subscriber_id: "ar-#{idx}", recorder: recorder, metadata: {})
     end
   end
-  rows << ["register active_record", elapsed, N, sql]
+  rows << ["register active_record live", elapsed, N, sql]
+
+  elapsed, sql = timed_sql { active_record.drain }
+  rows << ["persist active_record drain", elapsed, N, sql]
 
   cold_active_record = Upkeep::Subscriptions::ActiveRecordStore.new
   ids = active_record.subscriptions.first(100).map(&:id)
@@ -146,4 +149,6 @@ Dir.mktmpdir("upkeep-store-perf") do |dir|
   rows << ["fetch 100 active_record cold", elapsed, ids.size, sql]
 
   emit(rows)
+  active_record.shutdown
+  cold_active_record.shutdown
 end

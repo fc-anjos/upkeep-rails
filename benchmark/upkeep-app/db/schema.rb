@@ -90,7 +90,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_29_000004) do
     t.datetime "created_at", null: false
     t.string "lookup_key_digest", null: false
     t.json "lookup_key_snapshot", null: false
-    t.json "owner_id_snapshot", null: false
+    t.json "owner_ids_snapshot", null: false
     t.string "subscription_id", null: false
     t.datetime "updated_at", null: false
     t.index ["lookup_key_digest"], name: "index_upkeep_subscription_index_entries_on_lookup_key_digest"
