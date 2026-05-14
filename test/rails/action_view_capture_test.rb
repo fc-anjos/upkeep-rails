@@ -202,6 +202,24 @@ class ActionViewCaptureTest < Minitest::Test
     refute_includes first_env.fetch("rack.session").fetch("values"), "oauth_state"
   end
 
+  def test_page_identity_inherits_request_ambient_reads_without_poisoning_render_site_sharing
+    create_card!("Plan")
+
+    _html, recorder = capture_controller_request(
+      :session_index,
+      "/cards/session",
+      session: { viewer: "Alice" }
+    )
+
+    render_site = recorder.graph.frame_nodes.find { |frame| frame.payload.fetch(:kind) == "render_site" }
+
+    assert render_site
+    assert_includes recorder.identity_profile("page:rails:controller_cards/session_index").map { |dependency| dependency.fetch(:source).to_s }, "session"
+    refute_equal "public", recorder.identity_signature("page:rails:controller_cards/session_index")
+    assert_equal "public", recorder.identity_signature(render_site.id)
+    assert_equal ["upkeep:shared:"], Upkeep::SharedStreams.names_for_recorder(recorder).map { |name| name[0, 14] }.uniq
+  end
+
 
   def test_collection_render_records_render_site_and_replays_membership_change
     plan = create_card!("Plan")
