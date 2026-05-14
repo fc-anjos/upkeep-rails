@@ -94,6 +94,14 @@ module Upkeep
         persistence.touch(id, metadata: metadata, now: now)
       end
 
+      def unregister(ids)
+        ids = Array(ids)
+        active_registry.unregister(ids)
+        persisted_ids = durable_writer.cancel(ids)
+        persistence.delete(persisted_ids)
+        ids.size
+      end
+
       def prune_stale!(older_than:)
         durable_writer.drain
         stale_ids = persistence.prune_stale!(older_than: older_than)

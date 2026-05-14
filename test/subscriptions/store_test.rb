@@ -13,7 +13,7 @@ class SubscriptionStoreTest < Minitest::Test
     assert_equal seen_at.iso8601, store.fetch(subscription.id).metadata.fetch("last_seen_at")
   end
 
-  def test_prune_stale_removes_old_subscriptions_and_rebuilds_index
+  def test_prune_stale_removes_old_subscriptions_from_index
     store = Upkeep::Subscriptions::Store.new
     stale = store.register(subscriber_id: "stale", recorder: recorder_with_dependency)
     fresh = store.register(subscriber_id: "fresh", recorder: recorder_with_dependency)
@@ -28,6 +28,19 @@ class SubscriptionStoreTest < Minitest::Test
     assert_equal fresh.id, store.fetch(fresh.id).id
     assert_equal 1, store.summary.fetch(:subscriptions)
     assert_equal 1, store.reverse_index.entries_for([change]).size
+  end
+
+  def test_unregister_removes_only_selected_subscription_from_index
+    store = Upkeep::Subscriptions::Store.new
+    removed = store.register(subscriber_id: "removed", recorder: recorder_with_dependency)
+    retained = store.register(subscriber_id: "retained", recorder: recorder_with_dependency)
+
+    assert_equal 1, store.unregister(removed.id)
+
+    entries = store.reverse_index.entries_for([change])
+    assert_equal [retained.id], entries.map(&:subscription_id)
+    assert_raises(KeyError) { store.fetch(removed.id) }
+    assert_equal retained.id, store.fetch(retained.id).id
   end
 
   def test_nil_id_attribute_dependency_matches_record_changes

@@ -8,6 +8,7 @@ module Upkeep
       def initialize
         @entries_by_lookup_key = Hash.new { |hash, key| hash[key] = [] }
         @entry_keys_by_lookup_key = Hash.new { |hash, key| hash[key] = {} }
+        @lookup_keys_by_subscription_id = Hash.new { |hash, key| hash[key] = {} }
       end
 
       def index(subscription)
@@ -23,7 +24,24 @@ module Upkeep
 
             @entries_by_lookup_key[lookup_key] << entry
             entry_keys[entry_key] = true
+            @lookup_keys_by_subscription_id[entry.subscription_id][lookup_key] = true
           end
+        end
+      end
+
+      def delete_subscription(subscription_id)
+        lookup_keys = @lookup_keys_by_subscription_id.delete(subscription_id)&.keys || []
+        lookup_keys.each do |lookup_key|
+          entries = @entries_by_lookup_key.fetch(lookup_key, nil)
+          next unless entries
+
+          entries.reject! { |entry| entry.subscription_id == subscription_id }
+          @entry_keys_by_lookup_key[lookup_key].delete_if { |entry_key, _present| entry_key.fetch(0) == subscription_id }
+
+          next unless entries.empty?
+
+          @entries_by_lookup_key.delete(lookup_key)
+          @entry_keys_by_lookup_key.delete(lookup_key)
         end
       end
 

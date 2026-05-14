@@ -14,6 +14,12 @@ module Upkeep
           reject
         end
 
+        def unsubscribed
+          Upkeep::Rails.subscriptions.unregister(subscription_id) if Upkeep::Rails.subscriptions.respond_to?(:unregister)
+        rescue KeyError, ActiveRecord::RecordNotFound
+          nil
+        end
+
         private
 
         def subscription_id

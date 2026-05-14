@@ -32,6 +32,7 @@ class UpkeepChannelTest < ActionCable::Channel::TestCase
     unsubscribe
 
     refute Upkeep::Rails.transport.connected?(subscription_record.subscriber_id)
+    assert_raises(KeyError) { Upkeep::Rails.subscriptions.fetch(subscription_record.id) }
   end
 
   test "rejects subscriptions without server record" do
