@@ -45,6 +45,12 @@ class RailsCaptureCardsController < ActionController::Base
     render template: "controller_cards/session_index"
   end
 
+  def request_index
+    @viewer = request.user_agent
+    @cards = RailsCaptureCard.order(:id)
+    render template: "controller_cards/session_index"
+  end
+
   def session_members
     @cards = RailsCaptureCard.order(:id)
     render template: "controller_cards/session_members"
@@ -312,6 +318,60 @@ class ActionViewCaptureTest < Minitest::Test
     refute_includes cookie_header, "oauth_state"
   end
 
+  def test_controller_page_recipe_excludes_unread_security_cookie_values
+    create_card!("Plan")
+    secrets = {
+      oauth_state: "oauth-cookie-secret",
+      csrf_token: "csrf-cookie-secret",
+      redirect_state: "redirect-cookie-secret"
+    }
+
+    _html, recorder = capture_controller_request(
+      :cookie_index,
+      "/cards/cookie",
+      cookies: secrets.merge(viewer: "Alice")
+    )
+
+    recipe_snapshot = recorder.graph.node("page:rails:controller_cards/session_index").payload.fetch(:recipe).to_h
+    recipe_json = JSON.generate(recipe_snapshot)
+    cookie_header = recipe_snapshot.fetch(:replay).fetch(:env).fetch("HTTP_COOKIE")
+
+    assert_includes cookie_header, "viewer=Alice"
+    assert_operator JSON.generate(recipe_snapshot.fetch(:replay)).bytesize, :<, 2_500
+    secrets.each_value { |secret| refute_includes recipe_json, secret }
+    secrets.each_key { |key| refute_includes cookie_header, key.to_s }
+  end
+
+  def test_controller_page_recipe_replays_observed_request_headers_only
+    create_card!("Plan")
+
+    html, recorder = capture_controller_request(
+      :request_index,
+      "/cards/request",
+      env: {
+        "HTTP_USER_AGENT" => "UpkeepBrowser",
+        "HTTP_AUTHORIZATION" => "Bearer request-secret",
+        "HTTP_X_CSRF_TOKEN" => "csrf-request-secret"
+      }
+    )
+
+    assert_includes html, "UpkeepBrowser"
+
+    recipe_snapshot = recorder.graph.node("page:rails:controller_cards/session_index").payload.fetch(:recipe).to_h
+    recipe = Upkeep::Replay::Recipe.from_h(recipe_snapshot)
+    replayed_html = recipe.render
+    replay_env = recipe_snapshot.fetch(:replay).fetch(:env)
+    recipe_json = JSON.generate(recipe_snapshot)
+
+    assert_includes replayed_html, "UpkeepBrowser"
+    assert_equal "UpkeepBrowser", replay_env.fetch("HTTP_USER_AGENT")
+    assert_operator JSON.generate(recipe_snapshot.fetch(:replay)).bytesize, :<, 2_500
+    refute_includes replay_env, "HTTP_AUTHORIZATION"
+    refute_includes replay_env, "HTTP_X_CSRF_TOKEN"
+    refute_includes recipe_json, "request-secret"
+    refute_includes recipe_json, "csrf-request-secret"
+  end
+
   def test_render_site_identity_includes_descendant_ambient_reads
     create_card!("Plan")
 
@@ -524,16 +584,16 @@ class ActionViewCaptureTest < Minitest::Test
     result || [nil, recorder]
   end
 
-  def capture_controller_request(action_or_path, path = nil, path_parameters: {}, session: nil, cookies: nil)
+  def capture_controller_request(action_or_path, path = nil, path_parameters: {}, session: nil, cookies: nil, env: {})
     action = path ? action_or_path : :index
     path ||= action_or_path
 
     result, recorder = Upkeep::Runtime::Observation.capture_request do
-      env = Rack::MockRequest.env_for(path)
-      env["action_dispatch.request.path_parameters"] = path_parameters if path_parameters.any?
-      env["rack.session"] = TestRackSession.new(session) if session
-      env["HTTP_COOKIE"] = cookie_header(cookies) if cookies
-      _status, _headers, body = RailsCaptureCardsController.action(action).call(env)
+      request_env = Rack::MockRequest.env_for(path).merge(env)
+      request_env["action_dispatch.request.path_parameters"] = path_parameters if path_parameters.any?
+      request_env["rack.session"] = TestRackSession.new(session) if session
+      request_env["HTTP_COOKIE"] = cookie_header(cookies) if cookies
+      _status, _headers, body = RailsCaptureCardsController.action(action).call(request_env)
       [collect_body(body), Upkeep::Runtime::Observation.recorder]
     end
 

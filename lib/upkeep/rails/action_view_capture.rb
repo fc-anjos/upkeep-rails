@@ -30,6 +30,13 @@ module Upkeep
         HTTP_X_FORWARDED_PROTO
       ].freeze
 
+      REQUEST_REPLAY_ENV_KEYS = {
+        "host" => "HTTP_HOST",
+        "request_method" => "REQUEST_METHOD",
+        "user_agent" => "HTTP_USER_AGENT",
+        "remote_ip" => "REMOTE_ADDR"
+      }.freeze
+
       RefusedCollection = Data.define(:reason, :message, :suggestions, :error)
 
       def install
@@ -266,6 +273,9 @@ module Upkeep
         cookie_header = cookie_replay_header(ambient_inputs.fetch(:cookie, {}))
         copy["rack.session"] = session_snapshot if session_snapshot
         copy["HTTP_COOKIE"] = cookie_header if cookie_header
+        request_replay_env(ambient_inputs.fetch(:request, {})).each do |key, value|
+          copy[key] = value
+        end
         copy["rack.input"] = StringIO.new
         copy["rack.errors"] ||= StringIO.new
         copy["action_dispatch.request.path_parameters"] = path_parameters if path_parameters
@@ -343,6 +353,13 @@ module Upkeep
         values.map do |key, value|
           "#{CGI.escape(key)}=#{CGI.escape(value.to_s)}"
         end.join("; ")
+      end
+
+      def request_replay_env(observed_values)
+        observed_values.transform_keys(&:to_s).each_with_object({}) do |(key, value), replay_env|
+          env_key = REQUEST_REPLAY_ENV_KEYS[key]
+          replay_env[env_key] = replay_env_scalar_value(value) if env_key && !value.nil?
+        end
       end
 
       def collect_response_body(body)
