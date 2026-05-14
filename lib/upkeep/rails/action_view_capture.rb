@@ -108,7 +108,8 @@ module Upkeep
 
       def collection_capture_pair(collection)
         if active_record_relation?(collection)
-          [collection, collection.to_a]
+          rendered_collection = Runtime::RelationObserver.suppress_dependency_tracking { collection.to_a }
+          [collection, rendered_collection]
         else
           [collection, collection]
         end
@@ -186,7 +187,9 @@ module Upkeep
             env: serializable_replay_env(controller.request.env, path_parameters: controller.request.path_parameters)
           }
         ) do
-          _status, _headers, body = controller_class.action(action_name).call(replay_env(env))
+          _status, _headers, body = ControllerRuntime.suppress do
+            controller_class.action(action_name).call(Replay.rack_env(env))
+          end
           collect_response_body(body)
         end
       end
@@ -242,7 +245,7 @@ module Upkeep
 
       def replay_env(env, path_parameters: nil)
         copy = env.each_with_object({}) do |(key, value), replay|
-          replay[key] = replay_env_value(value) if replay_env_key?(key)
+          replay[key] = replay_env_value(key, value) if replay_env_key?(key)
         end
 
         copy["rack.input"] = StringIO.new
@@ -255,6 +258,7 @@ module Upkeep
         return false if key == "HTTP_COOKIE"
 
         REPLAY_HTTP_ENV_KEYS.include?(key) ||
+          key == "rack.session" ||
           key.start_with?("REQUEST_") ||
           key.start_with?("SERVER_") ||
           key.start_with?("REMOTE_") ||
@@ -270,15 +274,51 @@ module Upkeep
           ].include?(key)
       end
 
-      def replay_env_value(value)
+      def replay_env_value(key, value)
+        return session_replay_snapshot(value) if key == "rack.session"
+
         case value
         when Hash
-          value.dup
+          value.transform_values { |nested_value| replay_env_scalar_value(nested_value) }
         when Array
-          value.dup
+          value.map { |nested_value| replay_env_scalar_value(nested_value) }
+        else
+          replay_env_scalar_value(value)
+        end
+      end
+
+      def replay_env_scalar_value(value)
+        case value
+        when Hash
+          value.transform_values { |nested_value| replay_env_scalar_value(nested_value) }
+        when Array
+          value.map { |nested_value| replay_env_scalar_value(nested_value) }
         else
           value
         end
+      end
+
+      def session_replay_snapshot(session)
+        values = if session.respond_to?(:to_hash)
+          session.to_hash
+        elsif session.respond_to?(:to_h)
+          session.to_h
+        else
+          {}
+        end
+
+        session_id = session.id if session.respond_to?(:id)
+        values = values.merge("session_id" => session_id.to_s) if session_id && !session_id.to_s.empty?
+
+        {
+          "__upkeep_replay_type" => "rack_session",
+          "values" => replay_env_scalar_value(values)
+        }
+      rescue StandardError
+        {
+          "__upkeep_replay_type" => "rack_session",
+          "values" => {}
+        }
       end
 
       def collect_response_body(body)

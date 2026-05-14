@@ -1,0 +1,39 @@
+source "https://rubygems.org"
+
+gem "bcrypt", "~> 3.1.7"
+gem "bootsnap", require: false
+gem "cgi"
+gem "importmap-rails"
+gem "propshaft"
+gem "puma", ">= 5.0"
+gem "rails", "~> 8.1.3"
+gem "redis", ">= 4.0.1"
+gem "rexml"
+gem "sqlite3", ">= 2.1"
+gem "stimulus-rails"
+gem "turbo-rails"
+
+gem "actionpack-page_caching"
+gem "activerecord-typedstore"
+gem "htmlentities"
+gem "json"
+gem "mail"
+gem "markly"
+gem "nokogiri"
+gem "oauth"
+gem "pdf-reader"
+gem "rqrcode"
+gem "rqrcode_core"
+gem "scenic"
+gem "sitemap_generator"
+gem "svg-graph", require: "SVG/Graph/TimeSeries"
+
+gem "herb", ">= 0.10.1", "< 1.0.0"
+gem "reactionview"
+gem "upkeep-rails", path: "../..", require: "upkeep"
+
+group :development do
+  gem "foreman"
+  gem "ostruct"
+  gem "web-console"
+end

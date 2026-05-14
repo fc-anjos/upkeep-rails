@@ -204,6 +204,24 @@ module Upkeep
         }
       end
 
+      def active_record_update_columns(record, changed_attributes:, new_values: {})
+        changed_attributes = Array(changed_attributes).map(&:to_s).sort
+        new_values = new_values.transform_keys(&:to_s)
+
+        {
+          type: "update",
+          table: record.class.table_name,
+          model: record.class.name,
+          id: record.class.primary_key && record.public_send(record.class.primary_key),
+          changed_attributes: changed_attributes,
+          old_values: {},
+          new_values: new_values,
+          attribute_changes: changed_attributes.to_h do |attribute|
+            [attribute, { old: nil, new: new_values[attribute] }]
+          end
+        }
+      end
+
       def bulk_update(table:, model:, changed_attributes:, predicate_sql:, predicate_coverage:, predicate_table_columns:, new_values: {})
         changed_attributes = Array(changed_attributes).map(&:to_s).sort
         new_values = new_values.transform_keys(&:to_s)
@@ -569,7 +587,58 @@ module Upkeep
       end
     end
 
+    module PersistenceObserver
+      def update_columns(attributes)
+        new_values = upkeep_update_column_values(attributes)
+        changed_attributes = new_values.keys
+
+        super.tap do |result|
+          if result
+            ChangeLog.record(
+              ChangeEvents.active_record_update_columns(
+                self,
+                changed_attributes: changed_attributes,
+                new_values: new_values
+              )
+            )
+          end
+        end
+      end
+
+      private
+
+      def upkeep_update_column_values(attributes)
+        attributes.to_h.reject { |attribute, _value| attribute.to_s == "touch" }.transform_keys do |attribute|
+          self.class.attribute_aliases.fetch(attribute.to_s, attribute.to_s)
+        end
+      end
+    end
+
     module RelationObserver
+      SUPPRESS_DEPENDENCY_KEY = :upkeep_runtime_relation_dependency_suppressed
+
+      def self.suppress_dependency_tracking
+        previous = Thread.current[SUPPRESS_DEPENDENCY_KEY]
+        Thread.current[SUPPRESS_DEPENDENCY_KEY] = true
+        yield
+      ensure
+        Thread.current[SUPPRESS_DEPENDENCY_KEY] = previous
+      end
+
+      def self.dependency_tracking_suppressed?
+        Thread.current[SUPPRESS_DEPENDENCY_KEY]
+      end
+
+      def exec_queries(...)
+        record_collection_dependency
+        super
+      end
+
+      def pluck(...)
+        record_collection_dependency
+        super
+      end
+
       def update_all(updates)
         analysis = ActiveRecordQuery.analyze(self, opaque_table_policy: :allow_table)
         event = ChangeEvents.bulk_update(
@@ -601,6 +670,24 @@ module Upkeep
 
       private
 
+      def record_collection_dependency
+        return unless Observation.recorder
+        return if RelationObserver.dependency_tracking_suppressed?
+
+        analysis = ActiveRecordQuery.analyze(self)
+        Observation.record_dependency(
+          Dependencies::ActiveRecordCollection.new(
+            primary_table: analysis.primary_table,
+            table_columns: analysis.table_columns,
+            coverage: analysis.coverage,
+            sql: analysis.sql,
+            predicates: analysis.predicates
+          )
+        )
+      rescue ActiveRecordQuery::OpaqueRelationError
+        nil
+      end
+
       def update_columns(updates)
         case updates
         when Hash
@@ -628,6 +715,7 @@ module Upkeep
         install_action_dispatch_observers
 
         ActiveRecord::AttributeMethods::Read.prepend(AttributeObserver)
+        ActiveRecord::Base.prepend(PersistenceObserver) unless ActiveRecord::Base < PersistenceObserver
         ActiveRecord::Relation.prepend(RelationObserver)
 
         ActiveRecord::Base.after_commit do |record|

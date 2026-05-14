@@ -1,12 +1,23 @@
 # frozen_string_literal: true
 
 require "action_controller"
+require "active_support/hash_with_indifferent_access"
 require "stringio"
 
 module Upkeep
   module Rails
     module Replay
       module_function
+
+      class RackSession < ActiveSupport::HashWithIndifferentAccess
+        def enabled? = true
+
+        def loaded? = true
+
+        def id = self[:session_id]
+
+        def id_was = id
+      end
 
       def render(recipe)
         replay = symbolize_keys(recipe.replay)
@@ -29,7 +40,9 @@ module Upkeep
 
       def render_controller_page(replay)
         controller = constantize(replay.fetch(:controller_class))
-        _status, _headers, body = controller.action(replay.fetch(:action)).call(rack_env(replay.fetch(:env)))
+        _status, _headers, body = ControllerRuntime.suppress do
+          controller.action(replay.fetch(:action)).call(rack_env(replay.fetch(:env)))
+        end
         collect_response_body(body)
       end
 
@@ -114,6 +127,8 @@ module Upkeep
       end
 
       def revive_env_value(value)
+        return revive_replay_session(value) if replay_session_snapshot?(value)
+
         case value
         when Hash
           value.transform_values { |nested_value| revive_env_value(nested_value) }
@@ -122,6 +137,18 @@ module Upkeep
         else
           value
         end
+      end
+
+      def replay_session_snapshot?(value)
+        return false unless value.is_a?(Hash)
+
+        type = value["__upkeep_replay_type"] || value[:__upkeep_replay_type]
+        type == "rack_session"
+      end
+
+      def revive_replay_session(snapshot)
+        values = snapshot["values"] || snapshot[:values] || {}
+        RackSession.new(revive_env_value(values))
       end
 
       def partial_path(template)

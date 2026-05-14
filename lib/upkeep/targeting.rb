@@ -46,7 +46,7 @@ module Upkeep
 
     class Patcher
       def initialize(html)
-        @fragment = Nokogiri::HTML5.fragment(html)
+        @fragment = Extraction.parse_html(html)
       end
 
       def apply(patches)
@@ -62,23 +62,19 @@ module Upkeep
         node = node_for(patch.target)
         raise "target not found in current DOM: #{patch.target.inspect}" unless node
 
-        replacement = Nokogiri::HTML5.fragment(patch.html).children.find { |child| child.element? }
+        replacement = replacement_for(patch)
         node.replace(replacement)
       end
 
       def node_for(target)
-        case target.kind
-        when "page"
-          fragment.at_css(%([data-upkeep-page-frame="#{css_escape(target.id)}"]))
-        when "fragment"
-          fragment.at_css(%([data-upkeep-frame="#{css_escape(target.id)}"]))
-        when "render_site"
-          fragment.at_css(%(upkeep-render-site[data-upkeep-render-site="#{css_escape(target.id)}"]))
-        end
+        Extraction.node_for(fragment, target)
       end
 
-      def css_escape(value)
-        value.to_s.gsub("\\", "\\\\\\").gsub('"', '\"')
+      def replacement_for(patch)
+        parsed = Extraction.parse_html(patch.html)
+        Extraction.node_for(parsed, patch.target) ||
+          parsed.children.find { |child| child.element? } ||
+          parsed.at_css("body > *")
       end
     end
 
@@ -90,8 +86,16 @@ module Upkeep
       end
 
       def extract_target_html(html, target)
-        fragment = Nokogiri::HTML5.fragment(html)
-        node = case target.kind
+        fragment = parse_html(html)
+        node = node_for(fragment, target)
+
+        raise "target not found in full rerender: #{target.inspect}" unless node
+
+        node.to_html
+      end
+
+      def node_for(fragment, target)
+        case target.kind
         when "page"
           fragment.at_css(%([data-upkeep-page-frame="#{css_escape(target.id)}"]))
         when "fragment"
@@ -99,14 +103,10 @@ module Upkeep
         when "render_site"
           fragment.at_css(%(upkeep-render-site[data-upkeep-render-site="#{css_escape(target.id)}"]))
         end
-
-        raise "target not found in full rerender: #{target.inspect}" unless node
-
-        node.to_html
       end
 
       def normalize_html(html)
-        Nokogiri::HTML5.fragment(html).to_html
+        parse_html(html).to_html
       end
 
       def digest_html(html)
@@ -119,6 +119,16 @@ module Upkeep
 
       def css_escape(value)
         value.to_s.gsub("\\", "\\\\\\").gsub('"', '\"')
+      end
+
+      def parse_html(html)
+        source = html.to_s
+
+        if source.match?(/\A\s*(?:<!doctype\b[^>]*>\s*)?<html[\s>]/i)
+          Nokogiri::HTML5.parse(source)
+        else
+          Nokogiri::HTML5.fragment(source)
+        end
       end
     end
   end

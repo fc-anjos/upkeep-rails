@@ -1,0 +1,27 @@
+#!/bin/sh
+set -e
+
+if ! gem list foreman -i > /dev/null; then
+  echo "Foreman gem not installed. Installing..."
+  bundle install
+fi
+
+export BENCH="${BENCH:-1}"
+export PORT="${PORT:-3000}"
+export SECRET_KEY_BASE="${SECRET_KEY_BASE:-benchmark-key-base-not-for-production-use-only}"
+export UPKEEP_LOBSTERS_DATABASE="${UPKEEP_LOBSTERS_DATABASE:-$PWD/storage/benchmark.sqlite3}"
+export UPKEEP_BROKER_SOCKET_PATH="${UPKEEP_BROKER_SOCKET_PATH:-/tmp/sr_lobsters_upkeep_broker.sock}"
+export UPKEEP_METRICS_BIND_ADDRESS="${UPKEEP_METRICS_BIND_ADDRESS:-127.0.0.1}"
+export UPKEEP_METRICS_PORT="${UPKEEP_METRICS_PORT:-9394}"
+export UPKEEP_WS_BIND="${UPKEEP_WS_BIND:-127.0.0.1}"
+export UPKEEP_WS_PORT="${UPKEEP_WS_PORT:-9393}"
+export UPKEEP_SIGNED_STREAM_VERIFIER_KEY="${UPKEEP_SIGNED_STREAM_VERIFIER_KEY:-benchmark-key-base-not-for-production-use-only}"
+
+echo "Preparing benchmark database..."
+ruby ../shared/prepare_lobsters_database.rb upkeep
+
+echo "Preparing benchmark assets..."
+bundle exec rails assets:precompile RAILS_ENV=benchmark
+
+echo "Starting application with Foreman..."
+bundle exec foreman start -f Procfile.dev "$@"

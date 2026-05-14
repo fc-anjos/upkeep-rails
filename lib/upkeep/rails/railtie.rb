@@ -9,6 +9,8 @@ module Upkeep
         Upkeep::Rails.configure do |config|
           config.enabled = app.config.upkeep.fetch(:enabled, true)
           config.subscription_store = app.config.upkeep.fetch(:subscription_store, config.subscription_store)
+          config.refused_boundary_behavior =
+            app.config.upkeep.fetch(:refused_boundary_behavior, config.refused_boundary_behavior)
         end
       end
 

@@ -306,6 +306,7 @@ module Upkeep
 
         def insignificant_document_child?(node)
           return true if html_text?(node) && token_value(node.content).to_s.strip.empty?
+          return true if html_doctype?(node)
           return true if erb_comment?(node)
 
           false
@@ -320,6 +321,10 @@ module Upkeep
             "Herb::AST::HTMLElementNode",
             "Herb::AST::HTMLConditionalElementNode"
           ].include?(node.class.name)
+        end
+
+        def html_doctype?(node)
+          node.class.name == "Herb::AST::HTMLDoctypeNode"
         end
 
         def erb_comment?(node)

@@ -40,7 +40,8 @@ module Upkeep
       end
 
       def register_controller_subscription(controller, recorder)
-        return unless subscription_response?(controller, recorder)
+        html = response_body_html(controller.response.body)
+        return unless subscription_response?(controller, recorder, html)
         return unless recorder.reactive?
 
         identity = Cable::SubscriberIdentity.derive_from_request(controller.request, recorder: recorder)
@@ -55,7 +56,7 @@ module Upkeep
         )
 
         controller.response.body = ClientSubscription.inject(
-          controller.response.body,
+          html,
           identity: identity,
           subscription: subscription
         )
@@ -111,12 +112,31 @@ module Upkeep
         @subscriptions = nil
       end
 
-      def subscription_response?(controller, recorder)
+      def subscription_response?(controller, recorder, html)
         controller.request.get? &&
           controller.response.successful? &&
-          controller.response.media_type == "text/html" &&
-          controller.response.body.to_s.include?("</") &&
+          html_response?(controller) &&
+          html.include?("</") &&
           recorder.graph.frame_nodes.any?
+      end
+
+      def html_response?(controller)
+        controller.response.media_type == "text/html" ||
+          controller.response.content_type.to_s.start_with?("text/html")
+      end
+
+      def response_body_html(body)
+        case body
+        when String
+          body
+        when Array
+          body.join
+        else
+          return body.body.join if body.respond_to?(:body) && body.body.respond_to?(:join)
+          return body.to_a.join if body.respond_to?(:to_a)
+
+          body.to_s
+        end
       end
 
       def build_subscription_store

@@ -1,0 +1,20 @@
+default: &default
+  adapter: sqlite3
+  # Puma request threads AND the dispatch reactor's render threads
+  # both check connections out of this same pool. Sizing has to cover
+  # both populations or render threads block on connection waits and
+  # surface as RenderCheckout::RenderTimeout.
+  pool: <%= ENV.fetch("RAILS_MAX_THREADS", 5).to_i + ENV.fetch("UPKEEP_RENDER_CONCURRENCY", 4).to_i %>
+  timeout: 5000
+
+development:
+  <<: *default
+  database: storage/development.sqlite3
+
+test:
+  <<: *default
+  database: storage/test.sqlite3
+
+benchmark:
+  <<: *default
+  database: <%= ENV.fetch("UPKEEP_LOBSTERS_DATABASE") { Rails.root.join("storage/benchmark.sqlite3") } %>

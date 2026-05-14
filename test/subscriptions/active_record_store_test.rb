@@ -140,6 +140,22 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     assert_equal 1, Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.count
   end
 
+  def test_persistent_lookup_digest_is_stable_after_marshal_round_trip
+    lookup_key = [
+      :active_record_attribute,
+      "persistent_subscription_cards",
+      1,
+      "title"
+    ]
+    rehydrated_lookup_key = Marshal.load(Marshal.dump(lookup_key))
+
+    assert_equal lookup_key, rehydrated_lookup_key
+    assert_equal(
+      Upkeep::Subscriptions::ActiveRecordStore::PersistentReverseIndex.digest(lookup_key),
+      Upkeep::Subscriptions::ActiveRecordStore::PersistentReverseIndex.digest(rehydrated_lookup_key)
+    )
+  end
+
   def test_persistent_reverse_index_reports_lookup_mode_and_counts
     card = PersistentSubscriptionCard.create!(title: "Plan", status: "open")
 

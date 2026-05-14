@@ -2,6 +2,7 @@
 
 require "digest"
 require "json"
+require "securerandom"
 
 module Upkeep
   module Rails
@@ -33,7 +34,7 @@ module Upkeep
 
         def derive_from_request(request, recorder:)
           components = request_components(request) + recorder_components(recorder)
-          raise UnidentifiedSubscriber, "request has no canonical subscriber identity" if components.empty?
+          components = anonymous_components if components.empty?
 
           for_components(components)
         end
@@ -71,6 +72,10 @@ module Upkeep
             .select(&:identity?)
             .filter_map { |dependency| component_for_dependency(dependency) }
             .uniq
+        end
+
+        def anonymous_components
+          [ scalar_component(:anonymous_subscription, SecureRandom.uuid) ]
         end
 
         def component_for_dependency(dependency)

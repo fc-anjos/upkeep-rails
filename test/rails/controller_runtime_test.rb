@@ -32,6 +32,11 @@ class RuntimeDeliveryCardsController < ActionController::Base
     RuntimeDeliveryCard.find(params.fetch(:id)).update!(title: params.fetch(:title))
     head :ok
   end
+
+  def anonymous
+    @cards = RuntimeDeliveryCard.order(:id)
+    render template: "runtime_delivery_cards/anonymous"
+  end
 end
 
 class ControllerRuntimeTest < Minitest::Test
@@ -93,6 +98,19 @@ class ControllerRuntimeTest < Minitest::Test
     assert_includes html, Upkeep::Rails::Cable::SubscriberIdentity.for_identifiers(current_user: user).stream_name
   end
 
+  def test_anonymous_get_registers_subscription_and_injects_client_marker
+    RuntimeDeliveryCard.create!(title: "Plan")
+
+    _status, _headers, body = RuntimeDeliveryCardsController.action(:anonymous).call(env_for("/cards"))
+    html = collect_body(body)
+    subscription = Upkeep::Rails.subscriptions.subscriptions.first
+
+    assert subscription
+    assert_includes html, "data-upkeep-subscription"
+    assert_includes html, subscription.id
+    assert_includes html, subscription.metadata.fetch(:stream_name)
+  end
+
   def test_warn_policy_refuses_subscription_registration_for_opaque_collection
     previous_behavior = Upkeep::Rails.configuration.refused_boundary_behavior
     Upkeep::Rails.configuration.refused_boundary_behavior = :warn
@@ -134,6 +152,22 @@ class ControllerRuntimeTest < Minitest::Test
     assert_includes adapter.bodies.first, "Plan v2"
   end
 
+  def test_controller_page_replay_does_not_register_another_subscription
+    user = RuntimeDeliveryUser.create!(name: "Alice")
+    RuntimeDeliveryCard.create!(title: "Plan")
+    RuntimeDeliveryCurrent.user = user
+
+    _status, _headers, body = RuntimeDeliveryCardsController.action(:index).call(env_for("/cards"))
+    collect_body(body)
+    subscription = Upkeep::Rails.subscriptions.subscriptions.first
+    recipe = subscription.replay_recipe("page:rails:runtime_delivery_cards/index")
+
+    html = recipe.render
+
+    assert_includes html, "Plan"
+    assert_equal 1, Upkeep::Rails.subscriptions.subscriptions.size
+  end
+
   def test_change_log_capture_keeps_request_events_out_of_the_global_journal
     event = { table: "runtime_delivery_cards", changed_attributes: ["title"] }
 
@@ -164,6 +198,13 @@ class ControllerRuntimeTest < Minitest::Test
       "runtime_delivery_cards/index.html.erb" => <<~ERB,
         <main>
           <p><%= RuntimeDeliveryCurrent.user.name %></p>
+          <ul>
+            <%= render partial: "runtime_delivery_cards/card", collection: @cards, as: :card %>
+          </ul>
+        </main>
+      ERB
+      "runtime_delivery_cards/anonymous.html.erb" => <<~ERB,
+        <main>
           <ul>
             <%= render partial: "runtime_delivery_cards/card", collection: @cards, as: :card %>
           </ul>
