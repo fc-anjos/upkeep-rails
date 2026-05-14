@@ -33,6 +33,11 @@ class RuntimeDeliveryCardsController < ActionController::Base
     head :ok
   end
 
+  def raw_probe
+    RuntimeDeliveryCard.where("title IS NOT NULL").to_a
+    head :ok
+  end
+
   def anonymous
     @cards = RuntimeDeliveryCard.order(:id)
     render template: "runtime_delivery_cards/anonymous"
@@ -126,6 +131,17 @@ class ControllerRuntimeTest < Minitest::Test
     refute_includes html, "data-upkeep-subscription"
   ensure
     Upkeep::Rails.configuration.refused_boundary_behavior = previous_behavior if previous_behavior
+  end
+
+  def test_non_get_request_does_not_register_subscription_or_observe_queries
+    RuntimeDeliveryCard.create!(title: "Plan")
+
+    _status, _headers, body = RuntimeDeliveryCardsController.action(:raw_probe).call(
+      env_for("/cards/raw-probe", method: "POST")
+    )
+    collect_body(body)
+
+    assert_empty Upkeep::Rails.subscriptions.subscriptions
   end
 
   def test_mutation_request_delivers_planned_streams_to_connected_subscriber

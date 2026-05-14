@@ -13,11 +13,11 @@ class StoryRepository
   def hottest
     hottest = Story.base(@user).positive_ranked.not_hidden_by(@user)
     hottest = hottest.filter_tags(@params[:exclude_tags] || [])
-    hottest.order('hotness')
+    hottest.order(:hotness)
   end
 
   def hidden
-    Story.base(@user).hidden_by(@user).filter_tags(@params[:exclude_tags] || []).order("hotness")
+    Story.base(@user).hidden_by(@user).filter_tags(@params[:exclude_tags] || []).order(:hotness)
   end
 
   def newest
@@ -33,7 +33,7 @@ class StoryRepository
         from comments
         where comments.story_id = stories.id
       ) as latest_comment_id')
-      .where('created_at >= ?', 3.days.ago)
+      .where(Story.arel_table[:created_at].gteq(3.days.ago))
       .order('latest_comment_id desc')
   end
 
@@ -45,7 +45,7 @@ class StoryRepository
 
       unmerged.or(merged_into_others).order(id: :desc)
     else
-      Story.base(@user).where(user_id: user.id).order("stories.id DESC")
+      Story.base(@user).where(user_id: user.id).order(id: :desc)
     end
   end
 
@@ -66,6 +66,6 @@ class StoryRepository
   def top(length)
     top = Story.base(@user).where("created_at >= (DATETIME('now', '- " <<
       "#{length[:dur]} #{length[:intv].upcase}'))")
-    top.order("score DESC")
+    top.order(score: :desc)
   end
 end
