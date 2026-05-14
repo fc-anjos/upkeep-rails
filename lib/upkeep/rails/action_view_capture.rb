@@ -99,6 +99,8 @@ module Upkeep
       end
 
       def collection_analysis(collection)
+        provenance = Runtime::Observation.relation_provenance_for(collection)
+        return provenance if provenance
         return unless active_record_relation?(collection)
 
         ActiveRecordQuery.analyze(collection)
@@ -221,7 +223,7 @@ module Upkeep
         ) do
           replay_options = replay_render_options(options)
           replay_options[:partial] = partial unless partial == :derived
-          replay_options[:collection] = replay_value(collection)
+          replay_options[:collection] = replay_collection_value(collection, collection_analysis)
           context.render(replay_options, &block)
         end
       end
@@ -443,10 +445,12 @@ module Upkeep
       end
 
       def record_collection_dependency(collection, collection_analysis: nil)
-        return unless active_record_relation?(collection)
         return if refused_collection_analysis?(collection_analysis)
 
-        analysis = collection_analysis || ActiveRecordQuery.analyze(collection)
+        analysis = collection_analysis
+        analysis ||= ActiveRecordQuery.analyze(collection) if active_record_relation?(collection)
+        return unless analysis
+
         dependency = Dependencies::ActiveRecordCollection.new(
           primary_table: analysis.primary_table,
           table_columns: analysis.table_columns,
@@ -536,7 +540,18 @@ module Upkeep
             appendable: analysis.appendable?,
             predicates: analysis.predicates
           }
-          snapshot[:member_ids] = relation_member_ids(value, rendered_collection) if rendered_collection
+          snapshot[:member_ids] = relation_member_ids(analysis.primary_key, rendered_collection) if rendered_collection
+          snapshot
+        elsif value.is_a?(Array) && relation_provenance_analysis?(relation_analysis)
+          snapshot = {
+            type: "active_record_relation",
+            model: relation_analysis.model_name,
+            sql: relation_analysis.sql,
+            primary_key: relation_analysis.primary_key,
+            appendable: relation_analysis.appendable?,
+            predicates: relation_analysis.predicates
+          }
+          snapshot[:member_ids] = relation_member_ids(relation_analysis.primary_key, rendered_collection) if rendered_collection
           snapshot
         elsif value.is_a?(Array)
           { type: "array", items: value.map { |item| snapshot_value(item) } }
@@ -549,8 +564,7 @@ module Upkeep
         end
       end
 
-      def relation_member_ids(relation, rendered_collection)
-        primary_key = relation.klass.primary_key
+      def relation_member_ids(primary_key, rendered_collection)
         return [] unless primary_key
 
         if rendered_collection.respond_to?(:to_ary)
@@ -599,6 +613,10 @@ module Upkeep
         value.is_a?(RefusedCollection)
       end
 
+      def relation_provenance_analysis?(value)
+        value.is_a?(Runtime::RelationProvenance)
+      end
+
       def refused_relation_snapshot(value, refused)
         {
           type: "refused_active_record_relation",
@@ -629,8 +647,23 @@ module Upkeep
         end
       end
 
+      def replay_collection_value(collection, collection_analysis)
+        if collection.is_a?(Array) && relation_provenance_analysis?(collection_analysis)
+          return constantize(collection_analysis.model_name).find_by_sql(collection_analysis.sql)
+        end
+
+        replay_value(collection)
+      end
+
       def collection_key(collection)
-        if collection.respond_to?(:klass) && collection.respond_to?(:to_sql)
+        provenance = Runtime::Observation.relation_provenance_for(collection)
+        if provenance
+          {
+            table: provenance.primary_table,
+            predicate_digest: Digest::SHA256.hexdigest(provenance.sql)[0, 16],
+            materialized: true
+          }
+        elsif collection.respond_to?(:klass) && collection.respond_to?(:to_sql)
           {
             table: collection.klass.table_name,
             predicate_digest: Digest::SHA256.hexdigest(collection.to_sql)[0, 16]
@@ -640,6 +673,10 @@ module Upkeep
         else
           { class: collection.class.name }
         end
+      end
+
+      def constantize(name)
+        name.to_s.split("::").reject(&:empty?).reduce(Object) { |scope, const_name| scope.const_get(const_name) }
       end
 
       def partial_template?(template)

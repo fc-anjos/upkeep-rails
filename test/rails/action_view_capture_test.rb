@@ -16,6 +16,11 @@ class RailsCaptureCardsController < ActionController::Base
     render template: "controller_cards/index"
   end
 
+  def materialized_index
+    @cards = RailsCaptureCard.where(status: params.fetch(:status)).order(:id).to_a
+    render template: "controller_cards/index"
+  end
+
   def show
     @card = RailsCaptureCard.find(params.fetch(:id))
     render template: "controller_cards/show"
@@ -303,6 +308,35 @@ class ActionViewCaptureTest < Minitest::Test
     assert_equal render_site.payload.fetch(:manifest_path), recipe.manifest_reference.fetch(:path)
     assert_includes html, %(upkeep-render-site data-upkeep-render-site="#{render_site.payload.fetch(:site_id)}")
     assert_includes html, %(data-upkeep-frame="fragment:rails:cards/_card:rails_capture_cards:#{plan.id}")
+  end
+
+  def test_controller_materialized_relation_records_render_site_collection_dependency
+    plan = create_card!("Plan", status: "open")
+    build = create_card!("Build", status: "open")
+    create_card!("Archived", status: "closed")
+
+    html, recorder = capture_controller_request(:materialized_index, "/cards/materialized?status=open")
+
+    assert_includes html, "Plan"
+    refute_includes html, "Archived"
+
+    Upkeep::Runtime::ChangeLog.reset
+    create_card!("Review", status: "open")
+
+    targets = Upkeep::Targeting::Selector.new.select(recorder, Upkeep::Runtime::ChangeLog.events)
+    recipe = recorder.graph.node(Upkeep::Targeting::Extraction.frame_id_for(targets.first)).payload.fetch(:recipe)
+    replayed_html = recipe.render
+    collection_snapshot = recipe.replay.fetch(:collection)
+    render_site = recorder.graph.frame_nodes.find { |frame| frame.payload.fetch(:kind) == "render_site" }
+    render_site_dependencies = recorder.graph.dependencies_for(render_site.id).map(&:source)
+    request_dependencies = recorder.graph.dependencies_for(Upkeep::Runtime::Recorder::REQUEST_NODE_ID).map(&:source)
+
+    assert_equal ["render_site"], targets.map(&:kind).uniq
+    assert_includes replayed_html, "Review"
+    assert_equal "active_record_relation", collection_snapshot.fetch(:type)
+    assert_equal [plan.id.to_s, build.id.to_s], collection_snapshot.fetch(:member_ids)
+    assert_includes render_site_dependencies, :active_record_collection
+    refute_includes request_dependencies, :active_record_collection
   end
 
   def test_collection_snapshot_uses_the_rendered_relation_records

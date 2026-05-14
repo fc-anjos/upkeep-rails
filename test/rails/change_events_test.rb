@@ -127,20 +127,20 @@ class ChangeEventsTest < Minitest::Test
     assert_includes event.fetch(:predicate_table_columns).fetch("change_event_cards"), "status"
   end
 
-  def test_relation_materialization_records_collection_dependency
+  def test_relation_materialization_records_provenance_without_collection_dependency
     ChangeEventCard.create!(title: "Plan", status: "open", position: 1)
 
-    _result, recorder = Upkeep::Runtime::Observation.capture_request do
+    result, recorder = Upkeep::Runtime::Observation.capture_request do
       ChangeEventCard.where(status: "missing").to_a
     end
 
-    dependency = recorder.graph.dependency_nodes.map(&:payload).find do |candidate|
-      candidate.source == :active_record_collection
-    end
+    provenance = recorder.relation_provenance_for(result)
 
-    assert dependency
-    assert_equal "change_event_cards", dependency.key.fetch(:table)
-    assert_includes dependency.metadata.fetch(:table_columns).fetch("change_event_cards"), "status"
+    assert provenance
+    assert_equal "ChangeEventCard", provenance.model_name
+    assert_equal "change_event_cards", provenance.primary_table
+    assert_includes provenance.table_columns.fetch("change_event_cards"), "status"
+    refute_includes recorder.graph.summary.fetch(:dependency_sources), "active_record_collection"
   end
 
   def test_opaque_relation_materialization_raises_before_querying
