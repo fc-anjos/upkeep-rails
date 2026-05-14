@@ -26,6 +26,12 @@ class RailsCaptureCardsController < ActionController::Base
     @cards = RailsCaptureCard.order(:id)
     render template: "controller_cards/session_index"
   end
+
+  def cookie_index
+    @viewer = cookies[:viewer]
+    @cards = RailsCaptureCard.order(:id)
+    render template: "controller_cards/session_index"
+  end
 end
 
 class ActionViewCaptureTest < Minitest::Test
@@ -220,6 +226,31 @@ class ActionViewCaptureTest < Minitest::Test
     assert_equal ["upkeep:shared:"], Upkeep::SharedStreams.names_for_recorder(recorder).map { |name| name[0, 14] }.uniq
   end
 
+  def test_controller_page_recipe_preserves_observed_cookies_only
+    create_card!("Plan")
+
+    html, recorder = capture_controller_request(
+      :cookie_index,
+      "/cards/cookie",
+      cookies: {
+        viewer: "Alice",
+        oauth_state: "unread-secret"
+      }
+    )
+
+    assert_includes html, "Alice"
+
+    page_frame = recorder.graph.node("page:rails:controller_cards/session_index")
+    recipe_snapshot = page_frame.payload.fetch(:recipe).to_h
+    recipe = Upkeep::Replay::Recipe.from_h(recipe_snapshot)
+    replayed_html = recipe.render
+    cookie_header = recipe_snapshot.fetch(:replay).fetch(:env).fetch("HTTP_COOKIE")
+
+    assert_includes replayed_html, "Alice"
+    assert_includes cookie_header, "viewer=Alice"
+    refute_includes cookie_header, "oauth_state"
+  end
+
 
   def test_collection_render_records_render_site_and_replays_membership_change
     plan = create_card!("Plan")
@@ -367,7 +398,7 @@ class ActionViewCaptureTest < Minitest::Test
     result || [nil, recorder]
   end
 
-  def capture_controller_request(action_or_path, path = nil, path_parameters: {}, session: nil)
+  def capture_controller_request(action_or_path, path = nil, path_parameters: {}, session: nil, cookies: nil)
     action = path ? action_or_path : :index
     path ||= action_or_path
 
@@ -375,11 +406,16 @@ class ActionViewCaptureTest < Minitest::Test
       env = Rack::MockRequest.env_for(path)
       env["action_dispatch.request.path_parameters"] = path_parameters if path_parameters.any?
       env["rack.session"] = TestRackSession.new(session) if session
+      env["HTTP_COOKIE"] = cookie_header(cookies) if cookies
       _status, _headers, body = RailsCaptureCardsController.action(action).call(env)
       [collect_body(body), Upkeep::Runtime::Observation.recorder]
     end
 
     result || [nil, recorder]
+  end
+
+  def cookie_header(cookies)
+    cookies.map { |key, value| "#{CGI.escape(key.to_s)}=#{CGI.escape(value.to_s)}" }.join("; ")
   end
 
   def controller_page_recipe_env(recorder, frame_id)
