@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "json"
 require "test_helper"
 
 class RailsCaptureCard < ActiveRecord::Base
@@ -222,6 +223,50 @@ class ActionViewCaptureTest < Minitest::Test
     assert_equal first_env.fetch("rack.session"), second_env.fetch("rack.session")
     assert_equal Upkeep::SharedStreams.names_for_recorder(first_recorder), Upkeep::SharedStreams.names_for_recorder(second_recorder)
     refute_includes first_env.fetch("rack.session").fetch("values"), "oauth_state"
+  end
+
+  def test_controller_page_recipe_excludes_unread_security_session_values
+    create_card!("Plan")
+    secrets = {
+      oauth_state: "oauth-secret-value",
+      totp_secret: "totp-secret-value",
+      csrf_token: "csrf-secret-value",
+      redirect_state: "redirect-secret-value"
+    }
+
+    _html, recorder = capture_controller_request(
+      :session_index,
+      "/cards/session",
+      session: secrets.merge(viewer: "Alice")
+    )
+
+    recipe_snapshot = recorder.graph.node("page:rails:controller_cards/session_index").payload.fetch(:recipe).to_h
+    recipe_json = JSON.generate(recipe_snapshot)
+    session_values = recipe_snapshot.fetch(:replay).fetch(:env).fetch("rack.session").fetch("values")
+
+    assert_includes recipe_json, "Alice"
+    assert_operator JSON.generate(recipe_snapshot.fetch(:replay)).bytesize, :<, 2_500
+    secrets.each_value { |secret| refute_includes recipe_json, secret }
+    secrets.each_key { |key| refute_includes session_values, key.to_s }
+  end
+
+  def test_graph_report_redacts_replay_values
+    create_card!("Plan")
+
+    _html, recorder = capture_controller_request(
+      :session_index,
+      "/cards/session",
+      session: { viewer: "Alice", oauth_state: "oauth-secret-value" }
+    )
+
+    report_json = JSON.generate(recorder.graph.report)
+
+    assert_includes report_json, "viewer"
+    assert_includes report_json, "String"
+    assert_includes report_json, "digest"
+    assert_includes report_json, "bytes"
+    refute_includes report_json, "Alice"
+    refute_includes report_json, "oauth-secret-value"
   end
 
   def test_page_identity_inherits_request_ambient_reads_without_poisoning_render_site_sharing

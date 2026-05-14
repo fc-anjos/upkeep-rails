@@ -1,5 +1,8 @@
 # frozen_string_literal: true
 
+require "digest"
+require "json"
+
 module Upkeep
   module DAG
     Node = Data.define(:id, :kind, :payload)
@@ -207,9 +210,30 @@ module Upkeep
             locals: node.payload[:locals],
             contains: outgoing_edges(node.id, reason: :contains).map(&:to),
             dependencies: dependencies_for(node.id).map(&:to_h),
-            replay_recipe: node.payload[:recipe]&.to_h
+            replay_recipe: recipe_report(node.payload[:recipe])
           }.compact
         end
+      end
+
+      def recipe_report(recipe)
+        return unless recipe
+
+        snapshot = recipe.to_h
+        replay = snapshot[:replay] || snapshot["replay"] || {}
+        replay_json = JSON.generate(replay)
+        {
+          kind: recipe.kind.to_s,
+          target_kind: recipe.target_kind,
+          target_id: recipe.target_id,
+          runtime: recipe.runtime,
+          template: recipe.template,
+          replay: {
+            type: replay[:type] || replay["type"],
+            keys: replay.keys.map(&:to_s).sort,
+            bytes: replay_json.bytesize,
+            digest: Digest::SHA256.hexdigest(replay_json)
+          }.compact
+        }.compact
       end
 
       def dependency_reports
