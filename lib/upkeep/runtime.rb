@@ -2,6 +2,7 @@
 
 require "active_record"
 require "active_support/current_attributes"
+require "active_support/notifications"
 require "digest"
 require_relative "active_record_query"
 
@@ -726,8 +727,41 @@ module Upkeep
             predicates: analysis.predicates
           )
         )
-      rescue ActiveRecordQuery::OpaqueRelationError
-        nil
+      rescue ActiveRecordQuery::OpaqueRelationError => error
+        handle_opaque_collection_dependency(error)
+      end
+
+      def handle_opaque_collection_dependency(error)
+        raise error if refused_boundary_behavior == :raise
+
+        payload = {
+          reason: "opaque_active_record_relation",
+          message: error.message,
+          suggestions: error.suggestions,
+          source: "active_record_relation"
+        }
+
+        if Observation.refuse_boundary(payload)
+          ActiveSupport::Notifications.instrument("refused_boundary.upkeep", payload)
+          warn_refused_boundary(payload)
+        end
+      end
+
+      def refused_boundary_behavior
+        if defined?(Upkeep::Rails) && Upkeep::Rails.respond_to?(:configuration)
+          Upkeep::Rails.configuration.refused_boundary_behavior
+        else
+          :raise
+        end
+      end
+
+      def warn_refused_boundary(payload)
+        return unless defined?(::Rails) && ::Rails.respond_to?(:logger) && ::Rails.logger
+
+        ::Rails.logger.warn(
+          "Upkeep refused #{payload.fetch(:source)}: #{payload.fetch(:reason)}. " \
+          "#{payload.fetch(:suggestions).join(" ")}"
+        )
       end
 
       def update_columns(updates)
