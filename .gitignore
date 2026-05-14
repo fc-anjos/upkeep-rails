@@ -2,6 +2,7 @@
 /coverage/
 /Gemfile.lock
 /log/
+/test/tmp/
 /tmp/
 /benchmark/results/
 /benchmark/**/.bundle/
