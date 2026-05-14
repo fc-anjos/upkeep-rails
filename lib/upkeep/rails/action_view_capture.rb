@@ -170,7 +170,12 @@ module Upkeep
       def controller_page_recipe(frame_id:, controller:, metadata:)
         controller_class = controller.class
         action_name = controller.action_name
-        env = replay_env(controller.request.env, path_parameters: controller.request.path_parameters)
+        ambient_inputs = request_ambient_replay_inputs
+        env = replay_env(
+          controller.request.env,
+          path_parameters: controller.request.path_parameters,
+          ambient_inputs: ambient_inputs
+        )
 
         ::Upkeep::Replay::Recipe.new(
           kind: :page,
@@ -184,7 +189,11 @@ module Upkeep
             type: "controller_page",
             controller_class: controller_class.name,
             action: action_name,
-            env: serializable_replay_env(controller.request.env, path_parameters: controller.request.path_parameters)
+            env: serializable_replay_env(
+              controller.request.env,
+              path_parameters: controller.request.path_parameters,
+              ambient_inputs: ambient_inputs
+            )
           }
         ) do
           _status, _headers, body = ControllerRuntime.suppress do
@@ -237,17 +246,22 @@ module Upkeep
         }
       end
 
-      def serializable_replay_env(env, path_parameters: nil)
-        replay_env(env, path_parameters: path_parameters).reject do |key, _value|
+      def serializable_replay_env(env, path_parameters: nil, ambient_inputs: {})
+        replay_env(env, path_parameters: path_parameters, ambient_inputs: ambient_inputs).reject do |key, _value|
           key == "rack.input" || key == "rack.errors"
         end
       end
 
-      def replay_env(env, path_parameters: nil)
+      def replay_env(env, path_parameters: nil, ambient_inputs: {})
         copy = env.each_with_object({}) do |(key, value), replay|
-          replay[key] = replay_env_value(key, value) if replay_env_key?(key)
+          replay[key] = replay_env_value(value) if replay_env_key?(key)
         end
 
+        session_snapshot = session_replay_snapshot(
+          env["rack.session"],
+          observed_values: ambient_inputs.fetch(:session, {})
+        )
+        copy["rack.session"] = session_snapshot if session_snapshot
         copy["rack.input"] = StringIO.new
         copy["rack.errors"] ||= StringIO.new
         copy["action_dispatch.request.path_parameters"] = path_parameters if path_parameters
@@ -258,7 +272,6 @@ module Upkeep
         return false if key == "HTTP_COOKIE"
 
         REPLAY_HTTP_ENV_KEYS.include?(key) ||
-          key == "rack.session" ||
           key.start_with?("REQUEST_") ||
           key.start_with?("SERVER_") ||
           key.start_with?("REMOTE_") ||
@@ -274,9 +287,7 @@ module Upkeep
           ].include?(key)
       end
 
-      def replay_env_value(key, value)
-        return session_replay_snapshot(value) if key == "rack.session"
-
+      def replay_env_value(value)
         case value
         when Hash
           value.transform_values { |nested_value| replay_env_scalar_value(nested_value) }
@@ -298,27 +309,27 @@ module Upkeep
         end
       end
 
-      def session_replay_snapshot(session)
-        values = if session.respond_to?(:to_hash)
-          session.to_hash
-        elsif session.respond_to?(:to_h)
-          session.to_h
-        else
-          {}
-        end
+      def request_ambient_replay_inputs
+        Runtime::Observation.recorder&.ambient_replay_inputs_for(Runtime::Recorder::REQUEST_NODE_ID) || {}
+      end
 
-        session_id = session.id if session.respond_to?(:id)
+      def session_replay_snapshot(session, observed_values:)
+        values = observed_values.transform_keys(&:to_s)
+        return if values.empty?
+
+        session_id = session_id_for_replay(session)
         values = values.merge("session_id" => session_id.to_s) if session_id && !session_id.to_s.empty?
 
         {
           "__upkeep_replay_type" => "rack_session",
           "values" => replay_env_scalar_value(values)
         }
+      end
+
+      def session_id_for_replay(session)
+        session.id if session.respond_to?(:id)
       rescue StandardError
-        {
-          "__upkeep_replay_type" => "rack_session",
-          "values" => {}
-        }
+        nil
       end
 
       def collect_response_body(body)

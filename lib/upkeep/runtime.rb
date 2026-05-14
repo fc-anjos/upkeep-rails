@@ -34,6 +34,10 @@ module Upkeep
         Thread.current[THREAD_KEY]&.record_dependency(dependency)
       end
 
+      def record_ambient_replay_input(source, key, value)
+        Thread.current[THREAD_KEY]&.record_ambient_replay_input(source, key, value)
+      end
+
       def refuse_boundary(boundary)
         Thread.current[THREAD_KEY]&.refuse_boundary(**boundary)
       end
@@ -54,6 +58,9 @@ module Upkeep
         @frame_stack = []
         @graph = graph || DAG::Graph.new
         @refused_boundaries = []
+        @ambient_replay_inputs_by_owner = Hash.new do |owners, owner_id|
+          owners[owner_id] = Hash.new { |sources, source| sources[source] = {} }
+        end
         @graph.add_node(REQUEST_NODE_ID, kind: :request, payload: {}) unless @graph.node?(REQUEST_NODE_ID)
       end
 
@@ -77,6 +84,16 @@ module Upkeep
 
       def record_dependency(dependency)
         @graph.add_dependency(current_owner, dependency)
+      end
+
+      def record_ambient_replay_input(source, key, value)
+        @ambient_replay_inputs_by_owner[current_owner][source.to_sym][key.to_s] = value
+      end
+
+      def ambient_replay_inputs_for(owner_id)
+        @ambient_replay_inputs_by_owner.fetch(owner_id, {}).each_with_object({}) do |(source, values), inputs|
+          inputs[source] = values.dup
+        end
       end
 
       def refuse_boundary(reason:, message:, suggestions:, source:)
@@ -285,16 +302,19 @@ module Upkeep
       def record_session(key, value)
         dependency = Dependencies::SessionValue.new(key: key, value: value)
         Observation.record_dependency(dependency)
+        Observation.record_ambient_replay_input(:session, key, value)
       end
 
       def record_cookie(key, value)
         dependency = Dependencies::CookieValue.new(key: key, value: value)
         Observation.record_dependency(dependency)
+        Observation.record_ambient_replay_input(:cookie, key, value)
       end
 
       def record_request(key, value)
         dependency = Dependencies::RequestValue.new(key: key, value: value)
         Observation.record_dependency(dependency)
+        Observation.record_ambient_replay_input(:request, key, value)
       end
 
       def record_warden_user(scope, user)
