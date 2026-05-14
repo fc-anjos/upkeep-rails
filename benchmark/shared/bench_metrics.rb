@@ -21,6 +21,7 @@ module BenchMetrics
   UPKEEP_SUBSCRIPTION_STORE_FIND_OR_CREATE = "upkeep.subscription_store_find_or_create"
   UPKEEP_SUBSCRIPTION_STORE_CREATE_ENDPOINT = "upkeep.subscription_store_create_endpoint"
   UPKEEP_SUBSCRIPTION_STORE_REGISTER = "register_subscription_store.upkeep"
+  UPKEEP_SUBSCRIPTION_STORE_PERSIST = "persist_subscription_store.upkeep"
   UPKEEP_SUBSCRIPTION_INDEX_LOOKUP = "lookup_subscription_index.upkeep"
   UPKEEP_BROKER_REQUEST = "upkeep.broker_request"
   UPKEEP_BROKER_SERVER_REQUEST = "upkeep.broker_server_request"
@@ -525,6 +526,20 @@ module BenchMetrics
         extra: {
           store: event.payload[:store],
           subscription_id: event.payload[:subscription_id],
+          dependency_entries: event.payload[:dependency_entries],
+          mode: event.payload[:mode],
+          durability: event.payload[:durability]
+        }
+      )
+    end
+
+    ActiveSupport::Notifications.subscribe(UPKEEP_SUBSCRIPTION_STORE_PERSIST) do |event|
+      emit(
+        event: "upkeep_subscription_store_persist",
+        duration_ms: event.duration,
+        extra: {
+          store: event.payload[:store],
+          subscriptions: event.payload[:subscriptions],
           dependency_entries: event.payload[:dependency_entries],
           index_rows: event.payload[:index_rows]
         }

@@ -60,7 +60,7 @@ class CreateBenchmarkSchema < ActiveRecord::Migration[8.1]
       t.string :subscription_id, null: false
       t.string :lookup_key_digest, null: false
       t.json :lookup_key_snapshot, null: false
-      t.json :owner_id_snapshot, null: false
+      t.json :owner_ids_snapshot, null: false
       t.json :dependency_cache_key_snapshot, null: false
       t.json :dependency_snapshot, null: false
       t.timestamps

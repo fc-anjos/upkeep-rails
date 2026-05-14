@@ -1,0 +1,90 @@
+# frozen_string_literal: true
+
+require_relative "reverse_index"
+require_relative "store"
+
+module Upkeep
+  module Subscriptions
+    class ActiveRegistry
+      def initialize
+        @mutex = Mutex.new
+        @subscriptions = {}
+        @reverse_index = ReverseIndex.new
+      end
+
+      def register(subscription, entries: nil)
+        @mutex.synchronize do
+          @subscriptions[subscription.id] = subscription
+          if entries
+            @reverse_index.index_entries(entries)
+          else
+            @reverse_index.index(subscription)
+          end
+        end
+      end
+
+      def fetch(id)
+        @mutex.synchronize { @subscriptions[id] }
+      end
+
+      def subscriptions
+        @mutex.synchronize { @subscriptions.values }
+      end
+
+      def unregister(ids)
+        ids = Array(ids)
+        @mutex.synchronize do
+          ids.each { |id| @subscriptions.delete(id) }
+          rebuild_reverse_index!
+        end
+      end
+
+      def touch(id, metadata:)
+        @mutex.synchronize do
+          subscription = @subscriptions[id]
+          return unless subscription
+
+          @subscriptions[id] = Subscription.new(
+            subscription.id,
+            subscription.subscriber_id,
+            subscription.recorder,
+            subscription.graph,
+            subscription.metadata.merge(metadata)
+          )
+        end
+      end
+
+      def entries_for(changes)
+        @mutex.synchronize { @reverse_index.entries_for(changes) }
+      end
+
+      def reset
+        @mutex.synchronize do
+          @subscriptions = {}
+          @reverse_index = ReverseIndex.new
+        end
+      end
+
+      def covers?(persistent_count)
+        count >= persistent_count
+      end
+
+      def count
+        @mutex.synchronize { @subscriptions.size }
+      end
+
+      def summary
+        @mutex.synchronize do
+          @reverse_index.summary.merge(subscriptions: @subscriptions.size)
+        end
+      end
+
+      private
+
+      def rebuild_reverse_index!
+        @reverse_index = ReverseIndex.new
+        @subscriptions.each_value { |subscription| @reverse_index.index(subscription) }
+      end
+    end
+  end
+end

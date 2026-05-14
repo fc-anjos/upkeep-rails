@@ -333,7 +333,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_14_082331) do
     t.string "subscription_id", null: false
     t.string "lookup_key_digest", null: false
     t.json "lookup_key_snapshot", null: false
-    t.json "owner_id_snapshot", null: false
+    t.json "owner_ids_snapshot", null: false
     t.json "dependency_cache_key_snapshot", null: false
     t.json "dependency_snapshot", null: false
     t.datetime "created_at", null: false

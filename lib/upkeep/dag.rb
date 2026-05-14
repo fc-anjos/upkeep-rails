@@ -14,9 +14,7 @@ module Upkeep
       def initialize
         @nodes = {}
         @edges = []
-        @edge_keys = {}
-        @dependencies_by_node = Hash.new { |hash, key| hash[key] = [] }
-        @dependency_cache_keys_by_node = Hash.new { |hash, key| hash[key] = {} }
+        reset_indexes!
       end
 
       def add_node(id, kind:, payload: {})
@@ -25,10 +23,15 @@ module Upkeep
 
       def add_edge(from, to, reason:)
         key = edge_key(from, to, reason)
-        return if @edge_keys[key]
+        return false if @edge_keys[key]
 
         @edge_keys[key] = true
-        edges << Edge.new(from, to, reason)
+        edge = Edge.new(from, to, reason)
+        edges << edge
+        @outgoing_edges_by_from[from] << edge
+        @incoming_edges_by_to[to] << edge
+        @dependency_owner_ids_by_node[to] << from if reason == :depends_on
+        true
       end
 
       def add_dependency(owner_id, dependency)
@@ -56,15 +59,21 @@ module Upkeep
       end
 
       def outgoing_edges(from, reason: nil)
-        edges.select { |edge| edge.from == from && (reason.nil? || edge.reason == reason) }
+        indexed_edges = @outgoing_edges_by_from.fetch(from, [])
+        return indexed_edges.dup unless reason
+
+        indexed_edges.select { |edge| edge.reason == reason }
       end
 
       def incoming_edges(to, reason: nil)
-        edges.select { |edge| edge.to == to && (reason.nil? || edge.reason == reason) }
+        indexed_edges = @incoming_edges_by_to.fetch(to, [])
+        return indexed_edges.dup unless reason
+
+        indexed_edges.select { |edge| edge.reason == reason }
       end
 
       def dependency_owner_ids(dependency_node_id)
-        incoming_edges(dependency_node_id, reason: :depends_on).map(&:from)
+        @dependency_owner_ids_by_node.fetch(dependency_node_id, []).dup
       end
 
       def dependency_node_ids_matching(changes)
@@ -162,10 +171,13 @@ module Upkeep
         }
       end
 
-      def to_h
+      def to_h(dependencies: :all)
+        serialized_nodes = serializable_nodes(dependencies: dependencies)
+        node_ids = serialized_nodes.to_h { |node| [node.id, true] }
+
         {
-          nodes: nodes.values.map { |node| serialize_node(node) },
-          edges: edges.map(&:to_h)
+          nodes: serialized_nodes.map { |node| serialize_node(node) },
+          edges: edges.select { |edge| node_ids[edge.from] && node_ids[edge.to] }.map(&:to_h)
         }
       end
 
@@ -174,6 +186,7 @@ module Upkeep
         graph = new
         graph.nodes.clear
         graph.edges.clear
+        graph.send(:reset_indexes!)
 
         snapshot.fetch(:nodes).each do |node_snapshot|
           node_snapshot = symbolize_keys(node_snapshot)
@@ -247,6 +260,26 @@ module Upkeep
       end
 
       private
+
+      def serializable_nodes(dependencies:)
+        case dependencies
+        when :all
+          nodes.values
+        when :identity
+          nodes.values.select { |node| node.kind != :dependency || node.payload.identity? }
+        else
+          raise ArgumentError, "unsupported graph dependency serialization mode: #{dependencies.inspect}"
+        end
+      end
+
+      def reset_indexes!
+        @edge_keys = {}
+        @outgoing_edges_by_from = Hash.new { |hash, key| hash[key] = [] }
+        @incoming_edges_by_to = Hash.new { |hash, key| hash[key] = [] }
+        @dependency_owner_ids_by_node = Hash.new { |hash, key| hash[key] = [] }
+        @dependencies_by_node = Hash.new { |hash, key| hash[key] = [] }
+        @dependency_cache_keys_by_node = Hash.new { |hash, key| hash[key] = {} }
+      end
 
       def rebuild_dependency_index
         @dependencies_by_node = Hash.new { |hash, key| hash[key] = [] }

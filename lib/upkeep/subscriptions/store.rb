@@ -23,6 +23,15 @@ module Upkeep
         }
       end
 
+      def to_persistent_h
+        {
+          id: id,
+          subscriber_id: subscriber_id,
+          recorder: recorder.to_persistent_h,
+          metadata: metadata
+        }
+      end
+
       def self.from_h(snapshot)
         snapshot = Dependencies.symbolize_keys(snapshot)
         recorder = Runtime::Recorder.from_h(snapshot.fetch(:recorder))

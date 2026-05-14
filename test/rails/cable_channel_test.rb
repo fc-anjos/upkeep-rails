@@ -24,7 +24,7 @@ class CableChannelTest < ActionCable::Channel::TestCase
     refute Upkeep::Rails.transport.connected?("attacker")
   end
 
-  def test_subscribe_touches_subscription_without_deleting_state
+  def test_subscribe_does_not_write_liveness_metadata
     subscription_record = registered_subscription(stream_name: "upkeep:test:user-1")
     Upkeep::Rails.subscriptions.touch(subscription_record.id, now: Time.utc(2026, 1, 1))
     stub_connection(current_user: "user-1")
@@ -32,7 +32,7 @@ class CableChannelTest < ActionCable::Channel::TestCase
     subscribe subscription_id: subscription_record.id
 
     assert subscription.confirmed?
-    refute_equal "2026-01-01T00:00:00Z",
+    assert_equal "2026-01-01T00:00:00Z",
       Upkeep::Rails.subscriptions.fetch(subscription_record.id).metadata.fetch("last_seen_at")
   end
 

@@ -55,6 +55,10 @@ module Upkeep
         Thread.current[THREAD_KEY]
       end
 
+      def recording?
+        !!Thread.current[THREAD_KEY]
+      end
+
     end
 
     RelationProvenance = Data.define(:model_name, :analysis) do
@@ -89,8 +93,12 @@ module Upkeep
         new(graph: DAG::Graph.from_h(snapshot.fetch(:graph)))
       end
 
-      def to_h
-        { graph: graph.to_h }
+      def to_h(dependencies: :all)
+        { graph: graph.to_h(dependencies: dependencies) }
+      end
+
+      def to_persistent_h
+        to_h(dependencies: :identity)
       end
 
       def with_frame(frame_id, metadata)
@@ -348,29 +356,39 @@ module Upkeep
       module_function
 
       def record_current_attribute(owner, name, value)
+        return unless Observation.recording?
+
         dependency = Dependencies::CurrentAttribute.new(owner: owner, name: name, value: value)
         Observation.record_dependency(dependency)
       end
 
       def record_session(key, value)
+        return unless Observation.recording?
+
         dependency = Dependencies::SessionValue.new(key: key, value: value)
         Observation.record_dependency(dependency)
         Observation.record_ambient_replay_input(:session, key, value)
       end
 
       def record_cookie(key, value)
+        return unless Observation.recording?
+
         dependency = Dependencies::CookieValue.new(key: key, value: value)
         Observation.record_dependency(dependency)
         Observation.record_ambient_replay_input(:cookie, key, value)
       end
 
       def record_request(key, value)
+        return unless Observation.recording?
+
         dependency = Dependencies::RequestValue.new(key: key, value: value)
         Observation.record_dependency(dependency)
         Observation.record_ambient_replay_input(:request, key, value)
       end
 
       def record_warden_user(scope, user)
+        return unless Observation.recording?
+
         dependency = Dependencies::WardenUser.new(scope: scope, user: user)
         Observation.record_dependency(dependency)
       end
@@ -614,6 +632,8 @@ module Upkeep
 
         def user
           user = Thread.current[THREAD_KEY]
+          return user unless Observation.recording?
+
           dependency = Dependencies::Identity.new(
             source: "Current.user",
             key: "id",
@@ -634,6 +654,7 @@ module Upkeep
     module AttributeObserver
       def _read_attribute(attr_name, &block)
         value = super
+        return value unless Observation.recording?
 
         dependency = Dependencies::ActiveRecordAttribute.new(
           table: self.class.table_name,
