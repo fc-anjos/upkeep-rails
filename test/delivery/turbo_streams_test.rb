@@ -65,6 +65,26 @@ class TurboStreamsDeliveryTest < Minitest::Test
     assert_equal stream.to_html, batch.envelope_for("subscriber-b").body
   end
 
+  def test_public_fragment_payload_reports_one_render_when_bytes_match
+    card = create_delivery_card!("Plan")
+
+    store = Upkeep::Subscriptions::Store.new
+    register_controller_subscription(store, subscriber_id: "subscriber-a")
+    register_controller_subscription(store, subscriber_id: "subscriber-b")
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.update!(title: "Plan v2")
+
+    events = []
+    subscriber = ActiveSupport::Notifications.subscribe("build_turbo_streams.upkeep") { |event| events << event }
+
+    delivery.build(plan_for(store))
+
+    assert_equal 1, events.first.payload.fetch(:renders)
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
+  end
+
   def test_collection_create_appends_to_upkeep_collection_wrapper
     create_delivery_card!("Plan")
     create_delivery_card!("Build")
