@@ -22,6 +22,7 @@ against the in-repo benchmark apps and exposes a small integration contract:
 - `bin/rails generate upkeep:install`
 - `config.upkeep.enabled`
 - `config.upkeep.subscription_store = :active_record`
+- `config.upkeep.refused_boundary_behavior`
 - the `Upkeep::Rails::Cable::Channel` ActionCable channel
 - the `upkeep_subscriptions` and `upkeep_subscription_index_entries` tables
 - the generated browser subscription bootstrap
@@ -82,6 +83,9 @@ Data dependencies:
 - Active Record callback writes and bulk `update_all` / `delete_all` writes.
 - Relation table/column coverage derived from Arel where Rails exposes a
   structural query shape.
+- Collection dependencies are accepted only with proven column coverage.
+  Opaque predicates or table sources are refused instead of widening into
+  broad invalidation.
 
 Identity dependencies:
 
@@ -116,6 +120,15 @@ Puma workers. `:memory` is available only as an explicit development/test
 choice. Delivery still flows through ActionCable, so multi-worker deployments
 also need a shared ActionCable adapter such as Redis or Solid Cable.
 
+The reverse index stores dependencies that lifecycle events can select. Active
+Record collection entries are keyed by proven table and column pairs. Identity,
+request, session, and cookie reads stay in the graph for replay and sharing
+decisions, but they do not create invalidation lookup rows.
+
+Opaque reactive boundaries raise in development/test by default and warn while
+refusing subscription registration in production by default. Apps can set
+`config.upkeep.refused_boundary_behavior = :raise` or `:warn` explicitly.
+
 ## Delivery Boundary
 
 The runtime injects a `<script data-upkeep-subscription>` marker into successful
@@ -123,6 +136,12 @@ HTML GET responses and registers an `Upkeep::Rails::Cable::Channel`
 subscription record. The generated browser bootstrap reads those markers,
 subscribes over ActionCable, and appends received Turbo Stream payloads to the
 document.
+
+During delivery, equivalent planned targets are grouped before replay. Public
+fragments and shared render-site targets with the same action, target, identity
+signature, sharing signature, replay recipe, and deoptimization reason render
+once for all matching subscribers. Identity-bound targets remain partitioned by
+their observed identity signatures.
 
 ## Run
 
