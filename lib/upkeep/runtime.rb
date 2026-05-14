@@ -39,6 +39,14 @@ module Upkeep
         Thread.current[THREAD_KEY]&.record_ambient_replay_input(source, key, value)
       end
 
+      def record_relation_provenance(collection, model_name:, analysis:)
+        Thread.current[THREAD_KEY]&.record_relation_provenance(collection, model_name: model_name, analysis: analysis)
+      end
+
+      def relation_provenance_for(collection)
+        Thread.current[THREAD_KEY]&.relation_provenance_for(collection)
+      end
+
       def refuse_boundary(boundary)
         Thread.current[THREAD_KEY]&.refuse_boundary(**boundary)
       end
@@ -47,6 +55,16 @@ module Upkeep
         Thread.current[THREAD_KEY]
       end
 
+    end
+
+    RelationProvenance = Data.define(:model_name, :analysis) do
+      def primary_table = analysis.primary_table
+      def table_columns = analysis.table_columns
+      def coverage = analysis.coverage
+      def sql = analysis.sql
+      def primary_key = analysis.primary_key
+      def predicates = analysis.predicates
+      def appendable? = analysis.appendable?
     end
 
     class Recorder
@@ -62,6 +80,7 @@ module Upkeep
         @ambient_replay_inputs_by_owner = Hash.new do |owners, owner_id|
           owners[owner_id] = Hash.new { |sources, source| sources[source] = {} }
         end
+        @relation_provenance_by_collection_id = {}
         @graph.add_node(REQUEST_NODE_ID, kind: :request, payload: {}) unless @graph.node?(REQUEST_NODE_ID)
       end
 
@@ -95,6 +114,17 @@ module Upkeep
         @ambient_replay_inputs_by_owner.fetch(owner_id, {}).each_with_object({}) do |(source, values), inputs|
           inputs[source] = values.dup
         end
+      end
+
+      def record_relation_provenance(collection, model_name:, analysis:)
+        return unless collection && analysis
+
+        @relation_provenance_by_collection_id[collection.object_id] =
+          RelationProvenance.new(model_name.to_s, analysis)
+      end
+
+      def relation_provenance_for(collection)
+        @relation_provenance_by_collection_id[collection.object_id] if collection
       end
 
       def refuse_boundary(reason:, message:, suggestions:, source:)
@@ -673,8 +703,16 @@ module Upkeep
       end
 
       def exec_queries(...)
-        record_collection_dependency
-        super
+        analysis = relation_analysis_for_observation
+        super.tap { |records| record_relation_provenance(records, analysis) }
+      end
+
+      def to_ary
+        super.tap { |records| record_relation_provenance(records, relation_analysis_for_observation) }
+      end
+
+      def to_a
+        to_ary
       end
 
       def pluck(...)
@@ -712,6 +750,22 @@ module Upkeep
       end
 
       private
+
+      def relation_analysis_for_observation
+        return unless Observation.recorder
+        return if RelationObserver.dependency_tracking_suppressed?
+        return @upkeep_relation_analysis if instance_variable_defined?(:@upkeep_relation_analysis)
+
+        @upkeep_relation_analysis = ActiveRecordQuery.analyze(self)
+      rescue ActiveRecordQuery::OpaqueRelationError => error
+        @upkeep_relation_analysis = nil
+        handle_opaque_collection_dependency(error)
+        nil
+      end
+
+      def record_relation_provenance(records, analysis)
+        Observation.record_relation_provenance(records, model_name: klass.name, analysis: analysis) if analysis
+      end
 
       def record_collection_dependency
         return unless Observation.recorder
