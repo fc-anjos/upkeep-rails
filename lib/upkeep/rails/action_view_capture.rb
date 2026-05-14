@@ -261,7 +261,9 @@ module Upkeep
           env["rack.session"],
           observed_values: ambient_inputs.fetch(:session, {})
         )
+        cookie_header = cookie_replay_header(ambient_inputs.fetch(:cookie, {}))
         copy["rack.session"] = session_snapshot if session_snapshot
+        copy["HTTP_COOKIE"] = cookie_header if cookie_header
         copy["rack.input"] = StringIO.new
         copy["rack.errors"] ||= StringIO.new
         copy["action_dispatch.request.path_parameters"] = path_parameters if path_parameters
@@ -330,6 +332,15 @@ module Upkeep
         session.id if session.respond_to?(:id)
       rescue StandardError
         nil
+      end
+
+      def cookie_replay_header(observed_values)
+        values = observed_values.transform_keys(&:to_s).reject { |_key, value| value.nil? }
+        return if values.empty?
+
+        values.map do |key, value|
+          "#{CGI.escape(key)}=#{CGI.escape(value.to_s)}"
+        end.join("; ")
       end
 
       def collect_response_body(body)
