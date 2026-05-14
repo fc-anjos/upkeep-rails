@@ -269,6 +269,36 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     assert_equal 1, store.summary.fetch(:active_subscriptions)
   end
 
+  def test_unregister_cancels_pending_durable_write
+    create_subscription_card!("Plan")
+
+    _html, recorder = capture_controller_request("/cards?status=open")
+    store = active_record_store
+    subscription = store.register(subscriber_id: "subscriber-a", recorder: recorder, metadata: { stream_name: "stream-a" })
+
+    assert_equal 1, store.unregister(subscription.id)
+    store.drain
+
+    assert_equal 0, Upkeep::Subscriptions::ActiveRecordStore::SubscriptionRecord.count
+    assert_equal 0, Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.count
+    assert_raises(ActiveRecord::RecordNotFound) { store.fetch(subscription.id) }
+  end
+
+  def test_unregister_deletes_persisted_subscription_and_index_rows
+    create_subscription_card!("Plan")
+
+    _html, recorder = capture_controller_request("/cards?status=open")
+    store = active_record_store
+    subscription = store.register(subscriber_id: "subscriber-a", recorder: recorder, metadata: { stream_name: "stream-a" })
+    store.drain
+
+    assert_equal 1, store.unregister(subscription.id)
+
+    assert_equal 0, Upkeep::Subscriptions::ActiveRecordStore::SubscriptionRecord.count
+    assert_equal 0, Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.count
+    assert_raises(ActiveRecord::RecordNotFound) { store.fetch(subscription.id) }
+  end
+
   def test_active_registry_covers_planning_when_it_matches_persistent_subscription_count
     card = PersistentSubscriptionCard.create!(title: "Plan", status: "open")
 

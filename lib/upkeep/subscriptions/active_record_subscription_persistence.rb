@@ -47,15 +47,21 @@ module Upkeep
         stale_ids = subscription_record.where(subscription_record.arel_table[:updated_at].lt(older_than)).pluck(:id)
         return [] if stale_ids.empty?
 
+        delete(stale_ids)
+        stale_ids
+      end
+
+      def delete(ids)
+        ids = Array(ids)
+        return if ids.empty?
+
         ActiveRecord::Base.connection_pool.with_connection do
           ActiveRecord::Base.transaction do
-            index_record.where(subscription_id: stale_ids).delete_all
-            subscription_record.where(id: stale_ids).delete_all
+            index_record.where(subscription_id: ids).delete_all
+            deleted = subscription_record.where(id: ids).delete_all
+            decrement_count_cache(deleted)
           end
         end
-
-        decrement_count_cache(stale_ids.size)
-        stale_ids
       end
 
       def fetch(id)

@@ -86,9 +86,18 @@ module Upkeep
           id if last_seen_at(subscription) && last_seen_at(subscription) < older_than
         end
 
-        stale_ids.each { |id| @subscriptions.delete(id) }
-        rebuild_reverse_index!
+        unregister(stale_ids)
         stale_ids.size
+      end
+
+      def unregister(ids)
+        ids = Array(ids)
+        ids.each do |id|
+          next unless @subscriptions.delete(id)
+
+          reverse_index.delete_subscription(id)
+        end
+        ids.size
       end
 
       def fetch(id)

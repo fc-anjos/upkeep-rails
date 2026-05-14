@@ -34,8 +34,11 @@ module Upkeep
       def unregister(ids)
         ids = Array(ids)
         @mutex.synchronize do
-          ids.each { |id| @subscriptions.delete(id) }
-          rebuild_reverse_index!
+          ids.each do |id|
+            next unless @subscriptions.delete(id)
+
+            @reverse_index.delete_subscription(id)
+          end
         end
       end
 

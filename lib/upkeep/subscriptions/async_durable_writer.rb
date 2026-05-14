@@ -16,6 +16,7 @@ module Upkeep
         @drained = ConditionVariable.new
         @queue = []
         @pending = 0
+        @inflight_ids = Hash.new(0)
         @closed = false
         @flush_now = false
         @errors = []
@@ -30,6 +31,32 @@ module Upkeep
           @queue << Job.new(subscription, entries)
           @pending += 1
           @available.signal
+        end
+      end
+
+      def cancel(ids)
+        ids = Array(ids)
+        return [] if ids.empty?
+
+        requested_ids = ids.to_h { |id| [id, true] }
+
+        @mutex.synchronize do
+          queued_ids = {}
+          removed = 0
+          @queue.delete_if do |job|
+            id = job.subscription.id
+            requested_ids.key?(id).tap do |matched|
+              if matched
+                queued_ids[id] = true
+                removed += 1
+              end
+            end
+          end
+          @pending -= removed
+          @drained.broadcast if @pending.zero?
+          persisted_ids = ids.reject { |id| queued_ids[id] }
+          @drained.wait(@mutex) while persisted_ids.any? { |id| @inflight_ids.fetch(id, 0).positive? }
+          persisted_ids
         end
       end
 
@@ -70,6 +97,11 @@ module Upkeep
             @mutex.synchronize { @errors << error }
           ensure
             @mutex.synchronize do
+              batch.each do |job|
+                id = job.subscription.id
+                @inflight_ids[id] -= 1
+                @inflight_ids.delete(id) unless @inflight_ids[id].positive?
+              end
               @pending -= batch.size
               @drained.broadcast if @pending.zero?
             end
@@ -84,7 +116,9 @@ module Upkeep
 
           wait_for_batch_fill
           @flush_now = false
-          @queue.shift(@batch_size)
+          @queue.shift(@batch_size).tap do |batch|
+            batch.each { |job| @inflight_ids[job.subscription.id] += 1 }
+          end
         end
       end
 
