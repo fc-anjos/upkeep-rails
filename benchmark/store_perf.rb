@@ -71,7 +71,7 @@ Dir.mktmpdir("upkeep-store-perf") do |dir|
   ActiveRecord::Schema.define do
     create_table :upkeep_subscriptions, id: :string, force: true do |table|
       table.string :subscriber_id, null: false
-      table.binary :recorder_snapshot, null: false
+      table.json :recorder_snapshot, null: false
       table.json :metadata
       table.timestamps
     end
@@ -79,10 +79,10 @@ Dir.mktmpdir("upkeep-store-perf") do |dir|
     create_table :upkeep_subscription_index_entries, force: true do |table|
       table.string :subscription_id, null: false
       table.string :lookup_key_digest, null: false
-      table.binary :lookup_key_snapshot, null: false
-      table.binary :owner_id_snapshot, null: false
-      table.binary :dependency_cache_key_snapshot, null: false
-      table.binary :dependency_snapshot, null: false
+      table.json :lookup_key_snapshot, null: false
+      table.json :owner_id_snapshot, null: false
+      table.json :dependency_cache_key_snapshot, null: false
+      table.json :dependency_snapshot, null: false
       table.timestamps
     end
 

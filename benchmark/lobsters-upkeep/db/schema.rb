@@ -322,7 +322,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_14_082331) do
 
   create_table "upkeep_subscriptions", id: :string, force: :cascade do |t|
     t.string "subscriber_id", null: false
-    t.binary "recorder_snapshot", null: false
+    t.json "recorder_snapshot", null: false
     t.json "metadata"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
@@ -332,10 +332,10 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_14_082331) do
   create_table "upkeep_subscription_index_entries", force: :cascade do |t|
     t.string "subscription_id", null: false
     t.string "lookup_key_digest", null: false
-    t.binary "lookup_key_snapshot", null: false
-    t.binary "owner_id_snapshot", null: false
-    t.binary "dependency_cache_key_snapshot", null: false
-    t.binary "dependency_snapshot", null: false
+    t.json "lookup_key_snapshot", null: false
+    t.json "owner_id_snapshot", null: false
+    t.json "dependency_cache_key_snapshot", null: false
+    t.json "dependency_snapshot", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index [ "lookup_key_digest" ], name: "index_upkeep_subscription_index_entries_on_lookup_key_digest"

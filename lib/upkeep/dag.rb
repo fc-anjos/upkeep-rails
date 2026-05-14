@@ -228,7 +228,7 @@ module Upkeep
           runtime: recipe.runtime,
           template: recipe.template,
           replay: {
-            type: replay[:type] || replay["type"],
+            type: recipe.replay.respond_to?(:type) ? recipe.replay.type : nil,
             keys: replay.keys.map(&:to_s).sort,
             bytes: replay_json.bytesize,
             digest: Digest::SHA256.hexdigest(replay_json)

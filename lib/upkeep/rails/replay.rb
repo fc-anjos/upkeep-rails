@@ -20,75 +20,75 @@ module Upkeep
       end
 
       def render(recipe)
-        replay = symbolize_keys(recipe.replay)
+        replay = recipe.replay
 
-        case replay.fetch(:type)
-        when "controller_page"
+        case replay
+        when ::Upkeep::Replay::ControllerPage
           render_controller_page(replay)
-        when "template"
+        when ::Upkeep::Replay::Template
           render_template(replay)
-        when "fragment"
+        when ::Upkeep::Replay::Fragment
           render_fragment(replay)
-        when "collection"
+        when ::Upkeep::Replay::Collection
           render_collection(replay)
-        when "collection_member"
+        when ::Upkeep::Replay::CollectionMember
           render_collection_member(replay)
         else
-          raise "unknown Rails replay recipe type: #{replay.fetch(:type).inspect}"
+          raise "unknown Rails replay recipe type: #{replay.class.name}"
         end
       end
 
       def render_controller_page(replay)
-        controller = constantize(replay.fetch(:controller_class))
+        controller = constantize(replay.controller_class)
         _status, _headers, body = ControllerRuntime.suppress do
-          controller.action(replay.fetch(:action)).call(rack_env(replay.fetch(:env)))
+          controller.action(replay.action).call(rack_env(replay.env))
         end
         collect_response_body(body)
       end
 
       def render_template(replay)
         renderer_for(replay).render(
-          template: replay.fetch(:template),
-          locals: revive_hash(replay.fetch(:locals, {}))
+          template: replay.template,
+          locals: revive_hash(replay.locals)
         )
       end
 
       def render_fragment(replay)
         renderer_for(replay).render(
-          partial: partial_path(replay.fetch(:template)),
-          locals: revive_hash(replay.fetch(:locals, {}))
+          partial: partial_path(replay.template),
+          locals: revive_hash(replay.locals)
         )
       end
 
       def render_collection(replay)
-        options = revive_hash(replay.fetch(:options, {}))
-        collection = revive_value(replay.fetch(:collection))
+        options = revive_hash(replay.options)
+        collection = revive_value(replay.collection)
 
-        if replay.fetch(:partial) == "derived"
+        if replay.derived_partial?
           renderer_for(replay).render(collection)
         else
           renderer_for(replay).render(options.merge(
-            partial: replay.fetch(:partial),
+            partial: replay.partial,
             collection: collection
           ))
         end
       end
 
       def render_collection_member(replay)
-        options = revive_hash(replay.fetch(:options, {}))
-        record = revive_value(replay.fetch(:record))
+        options = revive_hash(replay.options)
+        record = revive_value(replay.record)
         locals = options.fetch(:locals, {})
-        local_name = (options[:as] || inferred_local_name(replay.fetch(:partial))).to_sym
+        local_name = (options[:as] || inferred_local_name(replay.partial)).to_sym
 
         renderer_for(replay).render(
-          partial: replay.fetch(:partial),
+          partial: replay.partial,
           locals: locals.merge(local_name => record)
         )
       end
 
       def renderer_for(replay)
-        if replay[:controller_class]
-          constantize(replay.fetch(:controller_class)).renderer
+        if replay.controller_class
+          constantize(replay.controller_class).renderer
         else
           ::ActionController::Base.renderer
         end
@@ -102,27 +102,29 @@ module Upkeep
       end
 
       def revive_hash(values)
+        values = values.entries if values.is_a?(::Upkeep::Replay::HashValue)
+
         values.each_with_object({}) do |(key, value), revived|
           revived[key.to_sym] = revive_value(value)
         end
       end
 
       def revive_value(snapshot)
-        snapshot = symbolize_keys(snapshot)
+        snapshot = ::Upkeep::Replay.value(snapshot)
 
-        case snapshot.fetch(:type)
-        when "active_record"
-          constantize(snapshot.fetch(:model)).find(snapshot.fetch(:id))
-        when "active_record_relation"
-          constantize(snapshot.fetch(:model)).find_by_sql(snapshot.fetch(:sql))
-        when "array"
-          snapshot.fetch(:items).map { |item| revive_value(item) }
-        when "hash"
-          revive_hash(snapshot.fetch(:entries))
-        when "literal"
-          snapshot[:value]
+        case snapshot
+        when ::Upkeep::Replay::ActiveRecordValue
+          constantize(snapshot.model).find(snapshot.id)
+        when ::Upkeep::Replay::ActiveRecordRelationValue
+          constantize(snapshot.model).find_by_sql(snapshot.sql)
+        when ::Upkeep::Replay::ArrayValue
+          snapshot.items.map { |item| revive_value(item) }
+        when ::Upkeep::Replay::HashValue
+          revive_hash(snapshot.entries)
+        when ::Upkeep::Replay::LiteralValue
+          snapshot.value
         else
-          raise "unknown Rails replay value type: #{snapshot.fetch(:type).inspect}"
+          raise "unsupported Rails replay value type: #{snapshot.class.name}"
         end
       end
 
@@ -169,19 +171,6 @@ module Upkeep
         body.close if body.respond_to?(:close)
       end
 
-      def symbolize_keys(value)
-        case value
-        when Hash
-          value.each_with_object({}) do |(key, nested_value), result|
-            normalized_key = key.respond_to?(:to_sym) ? key.to_sym : key
-            result[normalized_key] = symbolize_keys(nested_value)
-          end
-        when Array
-          value.map { |nested_value| symbolize_keys(nested_value) }
-        else
-          value
-        end
-      end
     end
   end
 end

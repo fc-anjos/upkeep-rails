@@ -29,6 +29,72 @@ module Upkeep
           foreign_key: "subscription_id"
       end
 
+      module JsonSnapshot
+        VERSION = 1
+        VERSION_KEY = "__upkeep_snapshot_version"
+        VALUE_KEY = "value"
+        TYPE_KEY = "__upkeep_type"
+
+        module_function
+
+        def dump(value)
+          {
+            VERSION_KEY => VERSION,
+            VALUE_KEY => encode(value)
+          }
+        end
+
+        def load(snapshot)
+          snapshot = JSON.parse(snapshot) if snapshot.is_a?(String)
+          version = snapshot[VERSION_KEY] || snapshot[VERSION_KEY.to_sym]
+          unless version.to_i == VERSION
+            raise ArgumentError, "unsupported Upkeep JSON snapshot version: #{version.inspect}"
+          end
+
+          decode(snapshot[VALUE_KEY] || snapshot[VALUE_KEY.to_sym])
+        end
+
+        def encode(value)
+          case value
+          when Symbol
+            { TYPE_KEY => "symbol", VALUE_KEY => value.to_s }
+          when Hash
+            {
+              TYPE_KEY => "hash",
+              "entries" => value.map { |key, nested_value| [encode(key), encode(nested_value)] }
+            }
+          when Array
+            value.map { |nested_value| encode(nested_value) }
+          when nil, true, false, Numeric, String
+            value
+          else
+            raise TypeError, "cannot persist #{value.class.name} in an Upkeep JSON snapshot"
+          end
+        end
+
+        def decode(value)
+          case value
+          when Hash
+            type = value[TYPE_KEY] || value[TYPE_KEY.to_sym]
+            case type
+            when "symbol"
+              (value[VALUE_KEY] || value[VALUE_KEY.to_sym]).to_sym
+            when "hash"
+              entries = value["entries"] || value[:entries] || []
+              entries.each_with_object({}) do |(key, nested_value), decoded|
+                decoded[decode(key)] = decode(nested_value)
+              end
+            else
+              value.transform_values { |nested_value| decode(nested_value) }
+            end
+          when Array
+            value.map { |nested_value| decode(nested_value) }
+          else
+            value
+          end
+        end
+      end
+
       class ActiveRegistry
         def initialize
           @mutex = Mutex.new
@@ -185,10 +251,6 @@ module Upkeep
           Digest::SHA256.hexdigest(JSON.generate(canonical_lookup_value(value)))
         end
 
-        def self.digest_snapshot(snapshot)
-          digest(Marshal.load(snapshot))
-        end
-
         def self.canonical_lookup_value(value)
           case value
           when Array
@@ -256,12 +318,12 @@ module Upkeep
             subscription_id,
             load(owner_id_snapshot),
             load(dependency_cache_key_snapshot),
-            load(dependency_snapshot)
+            Dependencies.from_h(load(dependency_snapshot))
           )
         end
 
         def load(snapshot)
-          Marshal.load(snapshot)
+          JsonSnapshot.load(snapshot)
         end
       end
 
@@ -419,13 +481,13 @@ module Upkeep
         rows = entries.flat_map do |entry|
           owner_id_snapshot = dump(entry.owner_id)
           dependency_cache_key_snapshot = dump(entry.dependency_cache_key)
-          dependency_snapshot = dump(entry.dependency)
+          dependency_snapshot = dump(entry.dependency.to_h)
 
           index_builder.lookup_keys_for_dependency(entry.dependency).map do |lookup_key|
             lookup_key_snapshot = dump(lookup_key)
             {
               subscription_id: subscription.id,
-              lookup_key_digest: PersistentReverseIndex.digest_snapshot(lookup_key_snapshot),
+              lookup_key_digest: PersistentReverseIndex.digest(lookup_key),
               lookup_key_snapshot: lookup_key_snapshot,
               owner_id_snapshot: owner_id_snapshot,
               dependency_cache_key_snapshot: dependency_cache_key_snapshot,
@@ -445,11 +507,11 @@ module Upkeep
       end
 
       def dump(value)
-        Marshal.dump(value)
+        JsonSnapshot.dump(value)
       end
 
       def load(snapshot)
-        Marshal.load(snapshot)
+        JsonSnapshot.load(snapshot)
       end
     end
   end
