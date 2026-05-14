@@ -122,14 +122,36 @@ module Upkeep
       end
 
       def identity_profile(frame_id)
-        @graph.dependencies_for(frame_id).select(&:identity?).map(&:to_h)
+        identity_dependencies_for(frame_id).map(&:to_h)
       end
 
       def identity_signature(frame_id)
-        identity_dependencies = @graph.dependencies_for(frame_id).select(&:identity?)
+        identity_dependencies = identity_dependencies_for(frame_id)
         return "public" if identity_dependencies.empty?
 
         Digest::SHA256.hexdigest(identity_dependencies.map(&:identity_key).sort_by(&:inspect).inspect)[0, 16]
+      end
+
+      private
+
+      def identity_dependencies_for(frame_id)
+        identity_dependency_owner_ids(frame_id)
+          .flat_map { |owner_id| @graph.dependencies_for(owner_id) }
+          .select(&:identity?)
+          .uniq(&:cache_key)
+      end
+
+      def identity_dependency_owner_ids(frame_id)
+        owner_ids = [frame_id]
+        frame = @graph.node(frame_id)
+
+        if frame.kind == :frame && frame.payload[:kind] == "page"
+          owner_ids.concat(@graph.ancestor_node_ids(frame_id))
+        end
+
+        owner_ids
+      rescue KeyError
+        owner_ids
       end
     end
 
