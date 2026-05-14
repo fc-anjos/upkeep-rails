@@ -61,7 +61,13 @@ upkeep_k6 = load_json(File.join(results_dir, "render-dedup-mixed-region-feed-iva
 turbo_k6 = load_json(File.join(results_dir, "render-dedup-mixed-region-feed-ivar-turbo.json"))
 
 upkeep_before = metric_data(upkeep_entries, "before")
-upkeep_after = metric_data(upkeep_entries, "after-featured-item-upkeep")
+upkeep_after = metric_data(upkeep_entries, "after-render-dedup-featured-item-compare-upkeep")
+upkeep_reactivity = upkeep_after["upkeep_reactivity"] || {}
+upkeep_graph = upkeep_reactivity["subscription_graphs"] || {}
+upkeep_ambient = upkeep_graph["ambient_replay_inputs"] || {}
+upkeep_refused = upkeep_reactivity["refused_boundaries"] || {}
+upkeep_delivery = upkeep_reactivity["delivery"] || {}
+upkeep_live_deopts = upkeep_delivery["live_deoptimizations"] || {}
 
 report = {
   "timestamp" => timestamp,
@@ -74,7 +80,22 @@ report = {
     "client_frames_sent" => counter_delta(upkeep_before, upkeep_after, "client_frames_sent_total"),
     "rtt_p95_ms" => k6_metric(upkeep_k6, "rtt", "p(95)"),
     "writes" => k6_metric(upkeep_k6, "writes_issued", "count"),
-    "deliveries" => k6_metric(upkeep_k6, "deliveries_observed", "count")
+    "deliveries" => k6_metric(upkeep_k6, "deliveries_observed", "count"),
+    "reactivity" => {
+      "subscriptions" => upkeep_graph["subscriptions"],
+      "frames" => upkeep_graph["frames"],
+      "dependencies" => upkeep_graph["dependencies"],
+      "replay_recipes" => upkeep_graph["replay_recipes"],
+      "replay_recipe_bytes_total" => upkeep_graph["replay_recipe_bytes_total"],
+      "ambient_replay_inputs" => upkeep_ambient["total"],
+      "ambient_replay_inputs_by_source" => upkeep_ambient["by_source"],
+      "refused_boundaries" => upkeep_refused["total"],
+      "refused_boundaries_by_reason" => upkeep_refused["by_reason"],
+      "live_deoptimizations" => upkeep_live_deopts["total"],
+      "live_deoptimizations_by_reason" => upkeep_live_deopts["by_reason"],
+      "render_groups" => upkeep_delivery["render_groups"],
+      "render_count" => upkeep_delivery["render_count"]
+    }
   },
   "turbo" => {
     "refreshes_observed" => k6_metric(turbo_k6, "refreshes_observed", "count"),
@@ -109,6 +130,21 @@ File.write(md_path, <<~MARKDOWN)
   | Delivery bytes packed (relay → client) | #{fmt(upkeep["delivery_bytes"])} | n/a |
   | Refresh GET p95 ms | n/a | #{fmt(turbo["refresh_get_p95_ms"])} |
   | Update→delivery RTT p95 ms | #{fmt(upkeep["rtt_p95_ms"])} | #{fmt(turbo["rtt_p95_ms"])} |
+
+  ## Upkeep Reactivity Surface
+
+  | Metric | Value |
+  | --- | ---: |
+  | Stored subscription graphs | #{fmt(upkeep.dig("reactivity", "subscriptions"))} |
+  | Frames | #{fmt(upkeep.dig("reactivity", "frames"))} |
+  | Dependencies | #{fmt(upkeep.dig("reactivity", "dependencies"))} |
+  | Replay recipes | #{fmt(upkeep.dig("reactivity", "replay_recipes"))} |
+  | Replay recipe bytes (total) | #{fmt(upkeep.dig("reactivity", "replay_recipe_bytes_total"))} |
+  | Ambient replay inputs | #{fmt(upkeep.dig("reactivity", "ambient_replay_inputs"))} |
+  | Refused boundaries | #{fmt(upkeep.dig("reactivity", "refused_boundaries"))} |
+  | Live deoptimizations | #{fmt(upkeep.dig("reactivity", "live_deoptimizations"))} |
+  | Runtime render groups | #{fmt(upkeep.dig("reactivity", "render_groups"))} |
+  | Runtime render count | #{fmt(upkeep.dig("reactivity", "render_count"))} |
 
   ## Reading the comparison
 

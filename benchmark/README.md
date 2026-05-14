@@ -26,3 +26,9 @@ drives: authenticated boards, shared feeds, rooms, authorization boundaries, and
 the Upkeep app's helper-hidden render idioms. The Upkeep app suite also covers
 the Rails cable subscriber boundary, automatic subscription registration, and
 streamed delivery through the canonical subscriber stream.
+
+Upkeep benchmark metrics include an `upkeep_reactivity` block in
+`metrics-upkeep-<timestamp>.jsonl`. It summarizes stored subscription graphs,
+ambient replay input counts, replay recipe bytes, refused-boundary reasons,
+live deoptimization reasons, render groups, and render counts without exposing
+raw replay values.

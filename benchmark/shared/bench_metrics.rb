@@ -24,10 +24,14 @@ module BenchMetrics
   UPKEEP_SUBSCRIPTION_INDEX_LOOKUP = "lookup_subscription_index.upkeep"
   UPKEEP_BROKER_REQUEST = "upkeep.broker_request"
   UPKEEP_BROKER_SERVER_REQUEST = "upkeep.broker_server_request"
+  UPKEEP_PLAN = "plan.upkeep"
+  UPKEEP_BUILD_TURBO_STREAMS = "build_turbo_streams.upkeep"
+  UPKEEP_REFUSED_BOUNDARY = "refused_boundary.upkeep"
   UPKEEP_RELAY_PUBLISH = "upkeep.relay_publish"
   UPKEEP_PUBLISHER_DRAIN_STARTED = "upkeep.publisher_drain_started"
   UPKEEP_MEMORY_SNAPSHOT = "upkeep.memory_snapshot"
   UPKEEP_INVALIDATION = "upkeep.invalidation"
+  AMBIENT_REPLAY_SOURCES = %w[session cookie request].freeze
 
   def self.enabled?
     ENV["BENCH"] == "1"
@@ -204,6 +208,16 @@ module BenchMetrics
   @broadcast_count = Concurrent::AtomicFixnum.new(0)
   @transmit_count = Concurrent::AtomicFixnum.new(0)
   @last_rss_kb = Concurrent::AtomicFixnum.new(0)
+  @plan_count = Concurrent::AtomicFixnum.new(0)
+  @planned_target_count = Concurrent::AtomicFixnum.new(0)
+  @turbo_stream_batch_count = Concurrent::AtomicFixnum.new(0)
+  @turbo_stream_group_count = Concurrent::AtomicFixnum.new(0)
+  @turbo_stream_render_count = Concurrent::AtomicFixnum.new(0)
+  @turbo_stream_payload_bytes = Concurrent::AtomicFixnum.new(0)
+  @reactivity_mutex = Mutex.new
+  @refused_boundaries_by_reason = Hash.new(0)
+  @live_deoptimizations_by_reason = Hash.new(0)
+  @turbo_stream_actions = Hash.new(0)
 
   class << self
     attr_reader :render_count, :invalidation_count, :broadcast_count, :transmit_count, :last_rss_kb
@@ -232,6 +246,7 @@ module BenchMetrics
       region_outcomes: region_outcomes_snapshot,
       flags: flags_snapshot,
       diagnostics: diagnostics_snapshot,
+      upkeep_reactivity: upkeep_reactivity_snapshot,
       subscription_count: subscription_count,
       timestamp: Time.now.iso8601(3)
     }
@@ -270,7 +285,14 @@ module BenchMetrics
     @invalidation_count = Concurrent::AtomicFixnum.new(0)
     @broadcast_count = Concurrent::AtomicFixnum.new(0)
     @transmit_count = Concurrent::AtomicFixnum.new(0)
+    @plan_count = Concurrent::AtomicFixnum.new(0)
+    @planned_target_count = Concurrent::AtomicFixnum.new(0)
+    @turbo_stream_batch_count = Concurrent::AtomicFixnum.new(0)
+    @turbo_stream_group_count = Concurrent::AtomicFixnum.new(0)
+    @turbo_stream_render_count = Concurrent::AtomicFixnum.new(0)
+    @turbo_stream_payload_bytes = Concurrent::AtomicFixnum.new(0)
     setup_region_outcomes
+    setup_reactivity_counters
   end
 
   # ── Rack endpoint ────────────────────────────────────────────────────
@@ -309,6 +331,7 @@ module BenchMetrics
   def self.setup_counters
     GC::Profiler.enable
     setup_region_outcomes
+    setup_reactivity_counters
   end
 
   def self.setup_region_outcomes
@@ -523,6 +546,61 @@ module BenchMetrics
       )
     end
 
+    ActiveSupport::Notifications.subscribe(UPKEEP_REFUSED_BOUNDARY) do |event|
+      increment_reactivity_tally(:refused_boundaries_by_reason, event.payload[:reason])
+      emit(
+        event: "upkeep_refused_boundary",
+        duration_ms: event.duration,
+        extra: {
+          reason: event.payload[:reason],
+          source: event.payload[:source],
+          suggestions: event.payload[:suggestions]
+        }
+      )
+    end
+
+    ActiveSupport::Notifications.subscribe(UPKEEP_PLAN) do |event|
+      @plan_count.increment
+      @planned_target_count.increment(event.payload[:targets].to_i)
+      increment_reactivity_tally(:live_deoptimizations_by_reason, event.payload[:deoptimizations])
+      emit(
+        event: "upkeep_plan",
+        duration_ms: event.duration,
+        extra: {
+          change_count: event.payload[:change_count],
+          candidate_entries: event.payload[:candidate_entries],
+          matched_entries: event.payload[:matched_entries],
+          targets: event.payload[:targets],
+          target_kinds: event.payload[:target_kinds],
+          actions: event.payload[:actions],
+          deoptimizations: event.payload[:deoptimizations]
+        }
+      )
+    end
+
+    ActiveSupport::Notifications.subscribe(UPKEEP_BUILD_TURBO_STREAMS) do |event|
+      @turbo_stream_batch_count.increment
+      @turbo_stream_group_count.increment(event.payload[:streams].to_i)
+      @turbo_stream_render_count.increment(event.payload[:renders].to_i)
+      @turbo_stream_payload_bytes.increment(event.payload[:payload_bytes].to_i)
+      increment_reactivity_tally(:turbo_stream_actions, event.payload[:actions])
+      emit(
+        event: "upkeep_build_turbo_streams",
+        duration_ms: event.duration,
+        extra: {
+          plans: event.payload[:plans],
+          planned_targets: event.payload[:planned_targets],
+          streams: event.payload[:streams],
+          envelopes: event.payload[:envelopes],
+          actions: event.payload[:actions],
+          deoptimizations: event.payload[:deoptimizations],
+          renders: event.payload[:renders],
+          render_duration_ms: event.payload[:render_duration_ms],
+          payload_bytes: event.payload[:payload_bytes]
+        }
+      )
+    end
+
     ActiveSupport::Notifications.subscribe(UPKEEP_BROKER_REQUEST) do |event|
       emit(
         event: "upkeep_broker_request",
@@ -655,6 +733,181 @@ module BenchMetrics
     return {} unless @region_outcomes_mutex && @region_outcomes
 
     @region_outcomes_mutex.synchronize { @region_outcomes.dup }
+  end
+
+  def self.setup_reactivity_counters
+    @reactivity_mutex ||= Mutex.new
+    @reactivity_mutex.synchronize do
+      @refused_boundaries_by_reason = Hash.new(0)
+      @live_deoptimizations_by_reason = Hash.new(0)
+      @turbo_stream_actions = Hash.new(0)
+    end
+  end
+
+  def self.upkeep_reactivity_snapshot
+    {
+      subscription_graphs: subscription_graphs_snapshot,
+      refused_boundaries: refused_boundaries_snapshot,
+      delivery: upkeep_delivery_snapshot
+    }
+  end
+
+  def self.subscription_graphs_snapshot
+    store = current_subscription_store
+    return {} unless store&.respond_to?(:subscriptions)
+
+    started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    subscriptions = store.subscriptions
+    summary = empty_subscription_graph_summary
+    summary[:subscriptions] = subscriptions.size
+
+    subscriptions.each do |subscription|
+      accumulate_subscription_graph_summary(summary, subscription)
+    end
+
+    finish_subscription_graph_summary(summary, started_at)
+  rescue StandardError => e
+    { error: "#{e.class}: #{e.message}" }
+  end
+
+  def self.empty_subscription_graph_summary
+    {
+      subscriptions: 0,
+      frames: 0,
+      dependencies: 0,
+      replay_recipes: 0,
+      replay_recipe_bytes_total: 0,
+      replay_recipe_bytes_max: 0,
+      shared_stream_names: 0,
+      frame_kinds: Hash.new(0),
+      target_kinds: Hash.new(0),
+      replay_recipe_kinds: Hash.new(0),
+      dependency_sources: Hash.new(0),
+      ambient_replay_inputs: {
+        total: 0,
+        by_source: Hash.new(0)
+      }
+    }
+  end
+
+  def self.accumulate_subscription_graph_summary(summary, subscription)
+    graph = subscription.graph
+    summary[:shared_stream_names] += shared_stream_names_count(subscription)
+
+    graph.frame_nodes.each do |frame|
+      summary[:frames] += 1
+      summary[:frame_kinds][frame.payload.fetch(:kind, "unknown").to_s] += 1
+
+      recipe = frame.payload[:recipe]
+      next unless recipe
+
+      summary[:replay_recipes] += 1
+      summary[:replay_recipe_kinds][recipe.kind.to_s] += 1
+      summary[:target_kinds][recipe.target_kind.to_s] += 1
+      bytes = replay_recipe_bytes(recipe)
+      summary[:replay_recipe_bytes_total] += bytes
+      summary[:replay_recipe_bytes_max] = [summary[:replay_recipe_bytes_max], bytes].max
+    end
+
+    graph.dependency_nodes.each do |dependency_node|
+      source = dependency_node.payload.source.to_s
+      summary[:dependencies] += 1
+      summary[:dependency_sources][source] += 1
+
+      next unless AMBIENT_REPLAY_SOURCES.include?(source)
+
+      summary[:ambient_replay_inputs][:total] += 1
+      summary[:ambient_replay_inputs][:by_source][source] += 1
+    end
+  end
+
+  def self.finish_subscription_graph_summary(summary, started_at)
+    summary[:frame_kinds] = sorted_hash(summary[:frame_kinds])
+    summary[:target_kinds] = sorted_hash(summary[:target_kinds])
+    summary[:replay_recipe_kinds] = sorted_hash(summary[:replay_recipe_kinds])
+    summary[:dependency_sources] = sorted_hash(summary[:dependency_sources])
+    summary[:ambient_replay_inputs] = {
+      total: summary[:ambient_replay_inputs][:total],
+      by_source: sorted_hash(summary[:ambient_replay_inputs][:by_source])
+    }
+    summary[:replay_recipe_bytes_avg] =
+      if summary[:replay_recipes].positive?
+        (summary[:replay_recipe_bytes_total].to_f / summary[:replay_recipes]).round(1)
+      end
+    summary[:collection_ms] = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at) * 1000.0).round(3)
+    summary
+  end
+
+  def self.replay_recipe_bytes(recipe)
+    JSON.generate(recipe.replay || {}).bytesize
+  rescue StandardError
+    0
+  end
+
+  def self.shared_stream_names_count(subscription)
+    metadata = subscription.metadata || {}
+    Array(metadata["shared_stream_names"] || metadata[:shared_stream_names]).size
+  end
+
+  def self.refused_boundaries_snapshot
+    by_reason = reactivity_tally_snapshot(:refused_boundaries_by_reason)
+    {
+      total: by_reason.values.sum,
+      by_reason: by_reason
+    }
+  end
+
+  def self.upkeep_delivery_snapshot
+    deoptimizations = reactivity_tally_snapshot(:live_deoptimizations_by_reason)
+    {
+      plans: @plan_count.value,
+      planned_targets: @planned_target_count.value,
+      stream_batches: @turbo_stream_batch_count.value,
+      render_groups: @turbo_stream_group_count.value,
+      render_count: @turbo_stream_render_count.value,
+      payload_bytes: @turbo_stream_payload_bytes.value,
+      actions: reactivity_tally_snapshot(:turbo_stream_actions),
+      live_deoptimizations: {
+        total: deoptimizations.values.sum,
+        by_reason: deoptimizations
+      }
+    }
+  end
+
+  def self.increment_reactivity_tally(name, values)
+    pairs = case values
+    when Hash
+      values
+    when nil
+      {}
+    else
+      { values => 1 }
+    end
+    return if pairs.empty?
+
+    @reactivity_mutex ||= Mutex.new
+    @reactivity_mutex.synchronize do
+      tally = instance_variable_get(:"@#{name}") || Hash.new(0)
+      pairs.each do |key, count|
+        next if key.nil?
+
+        tally[key.to_s] += count.to_i
+      end
+      instance_variable_set(:"@#{name}", tally)
+    end
+  end
+
+  def self.reactivity_tally_snapshot(name)
+    @reactivity_mutex ||= Mutex.new
+    @reactivity_mutex.synchronize do
+      sorted_hash(instance_variable_get(:"@#{name}") || {})
+    end
+  end
+
+  def self.sorted_hash(hash)
+    hash.keys.map(&:to_s).sort.each_with_object({}) do |key, out|
+      out[key] = hash.fetch(key, hash.fetch(key.to_sym, 0)).to_i
+    end
   end
 
   def self.install_action_cable_hooks
@@ -955,12 +1208,21 @@ module BenchMetrics
   end
 
   def self.subscription_count
-    return unless defined?(Upkeep::Runtime) && Upkeep::Runtime.respond_to?(:subscription_store)
-      store = Upkeep::Runtime.subscription_store
-      store.respond_to?(:size) ? store.size : nil
+    store = current_subscription_store
+    return unless store
+
+    if store.respond_to?(:summary)
+      store.summary.fetch(:subscriptions, nil)
+    elsif store.respond_to?(:size)
+      store.size
+    end
   end
 
   def self.current_subscription_store
+    if defined?(Upkeep::Rails) && Upkeep::Rails.respond_to?(:subscriptions)
+      return Upkeep::Rails.subscriptions
+    end
+
     return unless defined?(Upkeep::Runtime) && Upkeep::Runtime.respond_to?(:subscription_store)
 
     Upkeep::Runtime.subscription_store
@@ -1034,7 +1296,13 @@ module BenchMetrics
                        :start_memory_sampler, :sample_rss!, :subscription_count, :install_endpoint,
                        :emit_notification, :request_params_hash, :parse_json, :request_fullpath,
                        :action_dispatch_request, :install_action_cable_hooks, :current_subscription_store,
-                       :memory_phase_from_env,
+                       :memory_phase_from_env, :upkeep_reactivity_snapshot,
+                       :subscription_graphs_snapshot, :empty_subscription_graph_summary,
+                       :accumulate_subscription_graph_summary, :finish_subscription_graph_summary,
+                       :replay_recipe_bytes, :shared_stream_names_count,
+                       :refused_boundaries_snapshot, :upkeep_delivery_snapshot,
+                       :setup_reactivity_counters, :increment_reactivity_tally,
+                       :reactivity_tally_snapshot, :sorted_hash,
                        :action_cable_counts, :action_cable_stream_entries,
                        :allocation_delta, :class_retention_bytes, :deep_retention_enabled?,
                        :start_allocation_trace!, :allocation_sites, :shorten_path

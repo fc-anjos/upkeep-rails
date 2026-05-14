@@ -38,6 +38,12 @@ final = records.find { |r| r["label"] == "final" } or
 
 before_relay = before.dig("data", "relay") || {}
 final_relay = final.dig("data", "relay") || {}
+reactivity = final.dig("data", "upkeep_reactivity") || {}
+graph = reactivity["subscription_graphs"] || {}
+ambient = graph["ambient_replay_inputs"] || {}
+refused = reactivity["refused_boundaries"] || {}
+delivery = reactivity["delivery"] || {}
+live_deopts = delivery["live_deoptimizations"] || {}
 
 # Only dispatch-wide counters are delta-safe. Per-worker counters
 # (`renders`, `invalidations`) come from `/bench/metrics`, which hits
@@ -144,6 +150,26 @@ summary = <<~MD
   | Render calls (mode=page_replay) | #{render_call_page_replay} |
   | Replay-forced groups | #{replay_forced} |
   | Classification downgrades | #{downgrades} |
+
+  ## Reactivity Surface
+
+  | Metric | Value |
+  |--------|-------|
+  | Stored subscription graphs | #{graph["subscriptions"] || "—"} |
+  | Frames | #{graph["frames"] || "—"} |
+  | Dependencies | #{graph["dependencies"] || "—"} |
+  | Replay recipes | #{graph["replay_recipes"] || "—"} |
+  | Replay recipe bytes (total) | #{graph["replay_recipe_bytes_total"] || "—"} |
+  | Replay recipe bytes (max) | #{graph["replay_recipe_bytes_max"] || "—"} |
+  | Ambient replay inputs | #{ambient["total"] || "—"} |
+  | Ambient replay inputs by source | #{ambient["by_source"] || "—"} |
+  | Dependency sources | #{graph["dependency_sources"] || "—"} |
+  | Refused boundaries | #{refused["total"] || "—"} |
+  | Refused boundaries by reason | #{refused["by_reason"] || "—"} |
+  | Live deoptimizations | #{live_deopts["total"] || "—"} |
+  | Live deoptimizations by reason | #{live_deopts["by_reason"] || "—"} |
+  | Runtime render groups | #{delivery["render_groups"] || "—"} |
+  | Runtime render count | #{delivery["render_count"] || "—"} |
 
   ## De-Opt Reasons
 
