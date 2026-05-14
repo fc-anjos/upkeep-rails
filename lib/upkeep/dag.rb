@@ -110,6 +110,23 @@ module Upkeep
         ancestor_node_ids(descendant_id).include?(ancestor_id)
       end
 
+      def contained_node_ids(node_id)
+        ids = []
+        queue = [node_id]
+        visited = {}
+
+        until queue.empty?
+          id = queue.shift
+          next if visited[id]
+
+          visited[id] = true
+          ids << id
+          queue.concat(outgoing_edges(id, reason: :contains).map(&:to))
+        end
+
+        ids
+      end
+
       def frame_nodes
         nodes.values.select { |node| node.kind == :frame }
       end
