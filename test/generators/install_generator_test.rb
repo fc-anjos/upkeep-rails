@@ -27,9 +27,13 @@ class InstallGeneratorTest < Rails::Generators::TestCase
     assert_file migration, /create_table :upkeep_subscriptions, id: :string/
     assert_file migration, /t\.json :recorder_snapshot, null: false/
     assert_file migration, /create_table :upkeep_subscription_index_entries/
-    assert_file migration, /t\.json :lookup_key_snapshot, null: false/
+    assert_file migration, /t\.string :dependency_source, null: false/
+    assert_file migration, /t\.string :lookup_table, null: false/
+    assert_file migration, /t\.json :lookup_record_id_snapshot/
+    assert_file migration, /t\.string :lookup_attribute, null: false/
+    assert_file migration, /t\.string :dependency_table, null: false/
+    assert_file migration, /t\.json :dependency_metadata_snapshot/
     assert_file migration, /t\.json :owner_ids_snapshot, null: false/
-    assert_file migration, /t\.json :dependency_snapshot, null: false/
     assert_file "config/initializers/upkeep.rb", /config\.upkeep\.enabled = true/
     assert_file "config/initializers/upkeep.rb", /config\.upkeep\.subscription_store = :active_record/
     assert_file "app/javascript/upkeep/subscription.js", /data-upkeep-subscription/

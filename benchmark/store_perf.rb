@@ -79,10 +79,14 @@ Dir.mktmpdir("upkeep-store-perf") do |dir|
     create_table :upkeep_subscription_index_entries, force: true do |table|
       table.string :subscription_id, null: false
       table.string :lookup_key_digest, null: false
-      table.json :lookup_key_snapshot, null: false
+      table.string :dependency_source, null: false
+      table.string :lookup_table, null: false
+      table.json :lookup_record_id_snapshot
+      table.string :lookup_attribute, null: false
+      table.string :dependency_table, null: false
+      table.string :dependency_predicate_digest
+      table.json :dependency_metadata_snapshot
       table.json :owner_ids_snapshot, null: false
-      table.json :dependency_cache_key_snapshot, null: false
-      table.json :dependency_snapshot, null: false
       table.timestamps
     end
 

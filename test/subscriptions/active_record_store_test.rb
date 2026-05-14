@@ -46,10 +46,14 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
       create_table :upkeep_subscription_index_entries, force: true do |table|
         table.string :subscription_id, null: false
         table.string :lookup_key_digest, null: false
-        table.json :lookup_key_snapshot, null: false
+        table.string :dependency_source, null: false
+        table.string :lookup_table, null: false
+        table.json :lookup_record_id_snapshot
+        table.string :lookup_attribute, null: false
+        table.string :dependency_table, null: false
+        table.string :dependency_predicate_digest
+        table.json :dependency_metadata_snapshot
         table.json :owner_ids_snapshot, null: false
-        table.json :dependency_cache_key_snapshot, null: false
-        table.json :dependency_snapshot, null: false
         table.timestamps
       end
 
@@ -112,7 +116,7 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     assert_operator Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.count, :>, 0
     assert_equal 1, Upkeep::Subscriptions::ActiveRecordStore::SubscriptionRecord.count
     assert_equal 2, Upkeep::Subscriptions::ActiveRecordStore::SubscriptionRecord.first.recorder_snapshot.fetch("__upkeep_snapshot_version")
-    assert_equal 2, Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.first.dependency_snapshot.fetch("__upkeep_snapshot_version")
+    assert_equal "active_record_attribute", Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.first.dependency_source
   end
 
   def test_persisted_subscription_snapshot_keeps_replay_and_identity_without_lifecycle_dependencies
