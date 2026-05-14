@@ -56,6 +56,24 @@ class ChangeEventsTest < Minitest::Test
     assert_equal({ old: "open", new: "done" }, event.fetch(:attribute_changes).fetch("status"))
   end
 
+  def test_update_column_records_record_scoped_update_event
+    card = ChangeEventCard.create!(title: "Plan", status: "open", position: 1)
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.update_column(:position, 2)
+
+    event = Upkeep::Runtime::ChangeLog.events.fetch(0)
+
+    assert_equal "update", event.fetch(:type)
+    assert_equal "change_event_cards", event.fetch(:table)
+    assert_equal "ChangeEventCard", event.fetch(:model)
+    assert_equal card.id, event.fetch(:id)
+    assert_equal ["position"], event.fetch(:changed_attributes)
+    assert_empty event.fetch(:old_values)
+    assert_equal 2, event.fetch(:new_values).fetch("position")
+    assert_equal({ old: nil, new: 2 }, event.fetch(:attribute_changes).fetch("position"))
+  end
+
   def test_destroy_event_records_old_values_for_deleted_record
     card = ChangeEventCard.create!(title: "Plan", status: "open", position: 1)
 
@@ -107,5 +125,21 @@ class ChangeEventsTest < Minitest::Test
     assert_equal({ old: nil, new: nil }, event.fetch(:attribute_changes).fetch("id"))
     assert_equal :columns, event.fetch(:predicate_coverage).to_sym
     assert_includes event.fetch(:predicate_table_columns).fetch("change_event_cards"), "status"
+  end
+
+  def test_relation_materialization_records_collection_dependency
+    ChangeEventCard.create!(title: "Plan", status: "open", position: 1)
+
+    _result, recorder = Upkeep::Runtime::Observation.capture_request do
+      ChangeEventCard.where(status: "missing").to_a
+    end
+
+    dependency = recorder.graph.dependency_nodes.map(&:payload).find do |candidate|
+      candidate.source == :active_record_collection
+    end
+
+    assert dependency
+    assert_equal "change_event_cards", dependency.key.fetch(:table)
+    assert_includes dependency.metadata.fetch(:table_columns).fetch("change_event_cards"), "status"
   end
 end

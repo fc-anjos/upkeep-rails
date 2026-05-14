@@ -49,6 +49,23 @@ class HerbTemplateManifestTest < Minitest::Test
     assert_match(/\A[0-9a-f]{16}\z/, render_node.fetch(:site_id))
   end
 
+  def test_html_doctype_does_not_prevent_page_root_tag
+    manifest = build_manifest(
+      path: "app/views/layouts/application.html.erb",
+      source: <<~ERB
+        <!doctype html>
+        <html>
+          <body>Launch</body>
+        </html>
+      ERB
+    )
+
+    assert manifest.parse.fetch(:ok)
+    assert manifest.root_shape.fetch(:single_root)
+    assert_equal ["page_root"], manifest.frontend_tag_plan.map { |tag| tag.fetch(:kind) }
+    assert_equal "html", manifest.frontend_tag_plan.first.fetch(:tag_name)
+  end
+
   def test_summary_reports_phase_one_gate_metrics
     manifests = [
       build_manifest(path: "app/views/cards/_card.html.erb", source: "<li><%= card.title %></li>"),

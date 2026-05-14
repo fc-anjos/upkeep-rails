@@ -7,6 +7,8 @@ module Upkeep
     module ControllerRuntime
       extend ActiveSupport::Concern
 
+      SUPPRESS_KEY = :upkeep_rails_controller_runtime_suppressed
+
       included do
         prepend_around_action :upkeep_capture_request
       end
@@ -29,9 +31,22 @@ module Upkeep
         @installed = false
       end
 
+      def suppress
+        previous = Thread.current[SUPPRESS_KEY]
+        Thread.current[SUPPRESS_KEY] = true
+        yield
+      ensure
+        Thread.current[SUPPRESS_KEY] = previous
+      end
+
+      def suppressed?
+        Thread.current[SUPPRESS_KEY]
+      end
+
       private
 
       def upkeep_capture_request(&action)
+        return action.call if ControllerRuntime.suppressed?
         return action.call if Upkeep::Runtime::Observation.recorder
 
         Upkeep::Rails.deliver_changes_now!

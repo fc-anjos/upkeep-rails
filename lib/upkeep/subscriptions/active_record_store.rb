@@ -2,6 +2,7 @@
 
 require "active_record"
 require "digest"
+require "json"
 require "securerandom"
 
 module Upkeep
@@ -181,11 +182,28 @@ module Upkeep
         end
 
         def self.digest(value)
-          digest_snapshot(Marshal.dump(value))
+          Digest::SHA256.hexdigest(JSON.generate(canonical_lookup_value(value)))
         end
 
         def self.digest_snapshot(snapshot)
-          Digest::SHA256.hexdigest(snapshot)
+          digest(Marshal.load(snapshot))
+        end
+
+        def self.canonical_lookup_value(value)
+          case value
+          when Array
+            value.map { |item| canonical_lookup_value(item) }
+          when Hash
+            value.keys.sort_by(&:to_s).map do |key|
+              [canonical_lookup_value(key), canonical_lookup_value(value.fetch(key))]
+            end
+          when Symbol
+            ["symbol", value.to_s]
+          when String
+            ["string", value.encode(Encoding::UTF_8)]
+          else
+            value
+          end
         end
 
         private

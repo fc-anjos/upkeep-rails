@@ -20,9 +20,23 @@ class RailsCaptureCardsController < ActionController::Base
     @card = RailsCaptureCard.find(params.fetch(:id))
     render template: "controller_cards/show"
   end
+
+  def session_index
+    @viewer = session[:viewer]
+    @cards = RailsCaptureCard.order(:id)
+    render template: "controller_cards/session_index"
+  end
 end
 
 class ActionViewCaptureTest < Minitest::Test
+  class TestRackSession < ActiveSupport::HashWithIndifferentAccess
+    def enabled? = true
+
+    def loaded? = true
+
+    def id = self[:session_id]
+  end
+
   def setup
     Upkeep::Rails::Install.call
     RailsCaptureCardsController.view_paths = [resolver]
@@ -125,6 +139,21 @@ class ActionViewCaptureTest < Minitest::Test
     assert_includes replayed_html, "Plan v2"
     refute_includes replayed_html, ">Plan<"
     assert_equal ["id"], page_frame.payload.fetch(:controller).fetch(:path_parameters)
+  end
+
+  def test_controller_page_recipe_preserves_rack_session
+    create_card!("Plan")
+
+    html, recorder = capture_controller_request(:session_index, "/cards/session", session: { viewer: "Alice" })
+
+    assert_includes html, "Alice"
+
+    page_frame = recorder.graph.node("page:rails:controller_cards/session_index")
+    recipe = Upkeep::Replay::Recipe.from_h(page_frame.payload.fetch(:recipe).to_h)
+    replayed_html = recipe.render
+
+    assert_includes replayed_html, "Alice"
+    assert_includes replayed_html, "Plan"
   end
 
 
@@ -274,13 +303,14 @@ class ActionViewCaptureTest < Minitest::Test
     result || [nil, recorder]
   end
 
-  def capture_controller_request(action_or_path, path = nil, path_parameters: {})
+  def capture_controller_request(action_or_path, path = nil, path_parameters: {}, session: nil)
     action = path ? action_or_path : :index
     path ||= action_or_path
 
     result, recorder = Upkeep::Runtime::Observation.capture_request do
       env = Rack::MockRequest.env_for(path)
       env["action_dispatch.request.path_parameters"] = path_parameters if path_parameters.any?
+      env["rack.session"] = TestRackSession.new(session) if session
       _status, _headers, body = RailsCaptureCardsController.action(action).call(env)
       [collect_body(body), Upkeep::Runtime::Observation.recorder]
     end
@@ -327,6 +357,14 @@ class ActionViewCaptureTest < Minitest::Test
       "controller_cards/show.html.erb" => <<~ERB,
         <main>
           <%= render partial: "cards/card", locals: { card: @card } %>
+        </main>
+      ERB
+      "controller_cards/session_index.html.erb" => <<~ERB,
+        <main>
+          <p><%= @viewer %></p>
+          <ul>
+            <%= render partial: "cards/card", collection: @cards, as: :card %>
+          </ul>
         </main>
       ERB
       "cards/_card.html.erb" => <<~ERB
