@@ -6,9 +6,11 @@ require "time"
 
 results_dir = ARGV[0] || File.expand_path("results", __dir__)
 timestamp = ARGV[1] || Time.now.strftime("%Y%m%d%H%M%S")
+run_started_at = Time.strptime(timestamp, "%Y%m%d%H%M%S")
 
-def load_k6(path)
+def load_k6(path, run_started_at:)
   return nil unless File.exist?(path)
+  return nil if File.mtime(path) < run_started_at
 
   JSON.parse(File.read(path))
 rescue JSON::ParserError => e
@@ -34,9 +36,9 @@ def extract_trend(data, metric_name)
 end
 
 def extract_counter(data, metric_name)
-  return 0 unless data
+  return nil unless data
 
-  data.dig("metrics", metric_name, "values", "count") || 0
+  data.dig("metrics", metric_name, "values", "count")
 end
 
 def summarize(values)
@@ -58,15 +60,18 @@ def summarize(values)
   }
 end
 
-def load_server_events(results_dir, app_name)
-  files = Dir.glob(File.join(results_dir, "server-#{app_name}-*.jsonl"))
+def load_server_events(results_dir, app_name, run_timestamp)
+  files = Dir.glob(File.join(results_dir, "server-#{app_name}-*.jsonl")).select do |path|
+    suffix = File.basename(path)[/server-#{app_name}-(\d{14})\.jsonl\z/, 1]
+    suffix && suffix >= run_timestamp
+  end
   return [] if files.empty?
 
-  File.readlines(files.last).filter_map { |line| begin
-                                            JSON.parse(line)
-                                          rescue
-                                            nil
-                                          end }
+  File.readlines(files.min).filter_map { |line| begin
+                                           JSON.parse(line)
+                                         rescue
+                                           nil
+                                         end }
 end
 
 def load_server_metrics(events)
@@ -150,8 +155,9 @@ def polled_summary(entries)
   }
 end
 
-def label_timestamp(entries, label)
-  entry = entries.find { |candidate| candidate["label"] == label }
+def label_timestamp(entries, labels)
+  labels = Array(labels)
+  entry = entries.find { |candidate| labels.include?(candidate["label"]) }
   return nil unless entry
 
   timestamp = entry.dig("data", "timestamp")
@@ -166,8 +172,8 @@ rescue ArgumentError
   nil
 end
 
-def window_events(events, label_entries, end_label:, start_labels:)
-  finish = label_timestamp(label_entries, end_label)
+def window_events(events, label_entries, end_labels:, start_labels:)
+  finish = label_timestamp(label_entries, end_labels)
   return [] unless finish
 
   start = start_labels.filter_map { |label| label_timestamp(label_entries, label) }.compact.max || 0
@@ -200,17 +206,17 @@ def fmt(value)
 end
 
 scenarios = {
-  "chat-warm-upkeep" => load_k6(File.join(results_dir, "matrix-chat-warm-upkeep.json")),
-  "chat-warm-turbo" => load_k6(File.join(results_dir, "matrix-chat-warm-turbo.json")),
-  "chat-cold-upkeep" => load_k6(File.join(results_dir, "matrix-chat-cold-upkeep.json")),
-  "chat-cold-turbo" => load_k6(File.join(results_dir, "matrix-chat-cold-turbo.json")),
-  "board-upkeep" => load_k6(File.join(results_dir, "matrix-board-upkeep.json")),
-  "board-turbo" => load_k6(File.join(results_dir, "matrix-board-turbo.json"))
+  "chat-warm-upkeep" => load_k6(File.join(results_dir, "matrix-chat-warm-upkeep.json"), run_started_at: run_started_at),
+  "chat-warm-turbo" => load_k6(File.join(results_dir, "matrix-chat-warm-turbo.json"), run_started_at: run_started_at),
+  "chat-cold-upkeep" => load_k6(File.join(results_dir, "matrix-chat-cold-upkeep.json"), run_started_at: run_started_at),
+  "chat-cold-turbo" => load_k6(File.join(results_dir, "matrix-chat-cold-turbo.json"), run_started_at: run_started_at),
+  "board-upkeep" => load_k6(File.join(results_dir, "matrix-board-upkeep.json"), run_started_at: run_started_at),
+  "board-turbo" => load_k6(File.join(results_dir, "matrix-board-turbo.json"), run_started_at: run_started_at)
 }
 
 server_events = {
-  "upkeep" => load_server_events(results_dir, "upkeep"),
-  "turbo" => load_server_events(results_dir, "turbo")
+  "upkeep" => load_server_events(results_dir, "upkeep", timestamp),
+  "turbo" => load_server_events(results_dir, "turbo", timestamp)
 }
 
 server = {
@@ -232,14 +238,14 @@ cold_phase_windows = {
   "upkeep" => window_events(
     server_events["upkeep"],
     polled_entries["upkeep"],
-    end_label: "after-chat-cold",
-    start_labels: [ "after-chat-warm", "before" ]
+    end_labels: [ "after-chat-cold", "after-matrix-cold-connect-churn-chat-upkeep" ],
+    start_labels: [ "after-chat-warm", "after-matrix-warm-steady-chat-upkeep", "before" ]
   ),
   "turbo" => window_events(
     server_events["turbo"],
     polled_entries["turbo"],
-    end_label: "after-chat-cold",
-    start_labels: [ "after-chat-warm", "before" ]
+    end_labels: [ "after-chat-cold", "after-matrix-cold-connect-churn-chat-turbo" ],
+    start_labels: [ "after-chat-warm", "after-matrix-warm-steady-chat-turbo", "before" ]
   )
 }
 
