@@ -61,7 +61,7 @@ module Upkeep
         when :active_record_collection
           active_record_collection_lookup_keys(dependency)
         else
-          [[:dependency_cache_key, dependency.cache_key]]
+          []
         end
       end
 

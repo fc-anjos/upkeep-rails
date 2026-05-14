@@ -50,6 +50,16 @@ class SubscriptionStoreTest < Minitest::Test
     assert_empty title_entries
   end
 
+  def test_identity_dependencies_do_not_create_invalidation_index_entries
+    store = Upkeep::Subscriptions::Store.new
+    store.register(subscriber_id: "subscriber-a", recorder: recorder_with_identity_dependency)
+
+    summary = store.summary.fetch(:reverse_index)
+
+    assert_equal 0, summary.fetch(:lookup_keys)
+    assert_equal 0, summary.fetch(:entries)
+  end
+
   private
 
   def recorder_with_dependency
@@ -87,6 +97,14 @@ class SubscriptionStoreTest < Minitest::Test
         id: nil,
         attribute: "title"
       )
+    )
+    recorder
+  end
+
+  def recorder_with_identity_dependency
+    recorder = Upkeep::Runtime::Recorder.new
+    recorder.record_dependency(
+      Upkeep::Dependencies::RequestValue.new(key: :path, value: "/cards")
     )
     recorder
   end
