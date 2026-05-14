@@ -715,8 +715,8 @@ module Upkeep
         to_ary
       end
 
-      def pluck(...)
-        record_collection_dependency
+      def pluck(*column_names)
+        record_query_dependency(column_names)
         super
       end
 
@@ -759,7 +759,7 @@ module Upkeep
         @upkeep_relation_analysis = ActiveRecordQuery.analyze(self)
       rescue ActiveRecordQuery::OpaqueRelationError => error
         @upkeep_relation_analysis = nil
-        handle_opaque_collection_dependency(error)
+        handle_opaque_relation_dependency(error)
         nil
       end
 
@@ -767,25 +767,60 @@ module Upkeep
         Observation.record_relation_provenance(records, model_name: klass.name, analysis: analysis) if analysis
       end
 
-      def record_collection_dependency
-        return unless Observation.recorder
-        return if RelationObserver.dependency_tracking_suppressed?
+      def record_query_dependency(column_names)
+        analysis = relation_analysis_for_observation
+        return unless analysis
 
-        analysis = ActiveRecordQuery.analyze(self)
         Observation.record_dependency(
-          Dependencies::ActiveRecordCollection.new(
+          Dependencies::ActiveRecordQuery.new(
             primary_table: analysis.primary_table,
-            table_columns: analysis.table_columns,
+            table_columns: relation_table_columns(analysis, pluck_dependency_columns(column_names)),
             coverage: analysis.coverage,
             sql: analysis.sql,
             predicates: analysis.predicates
           )
         )
       rescue ActiveRecordQuery::OpaqueRelationError => error
-        handle_opaque_collection_dependency(error)
+        handle_opaque_relation_dependency(error)
       end
 
-      def handle_opaque_collection_dependency(error)
+      def relation_table_columns(analysis, extra_columns)
+        analysis.table_columns.merge(
+          klass.table_name => (analysis.table_columns.fetch(klass.table_name, []) + extra_columns).uniq.sort
+        )
+      end
+
+      def pluck_dependency_columns(column_names)
+        column_names.flatten.map do |column_name|
+          pluck_dependency_column(column_name)
+        end
+      end
+
+      def pluck_dependency_column(column_name)
+        case column_name
+        when Symbol
+          return column_name.to_s
+        when String
+          return column_name if klass.column_names.include?(column_name)
+        else
+          if column_name.respond_to?(:to_sym)
+            name = column_name.to_sym.to_s
+            return name if klass.column_names.include?(name)
+          end
+
+          if column_name.respond_to?(:name) && column_name.respond_to?(:relation)
+            name = column_name.name.to_s
+            return name if klass.column_names.include?(name)
+          end
+        end
+
+        raise ActiveRecordQuery::OpaqueRelationError.new(
+          self,
+          reasons: ["opaque pluck column #{column_name.inspect}"]
+        )
+      end
+
+      def handle_opaque_relation_dependency(error)
         raise error if refused_boundary_behavior == :raise
 
         payload = {

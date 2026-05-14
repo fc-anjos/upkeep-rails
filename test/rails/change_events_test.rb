@@ -189,4 +189,44 @@ class ChangeEventsTest < Minitest::Test
     ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
     Upkeep::Rails.configuration.refused_boundary_behavior = previous_behavior if previous_behavior
   end
+
+  def test_relation_pluck_records_query_dependency_without_collection_dependency
+    ChangeEventCard.create!(title: "Plan", status: "open", position: 1)
+
+    result, recorder = Upkeep::Runtime::Observation.capture_request do
+      ChangeEventCard.where(status: "open").pluck(:title)
+    end
+
+    dependency_sources = recorder.graph.summary.fetch(:dependency_sources)
+    dependency = recorder.graph.dependency_nodes.map(&:payload).find do |candidate|
+      candidate.source == :active_record_query
+    end
+
+    assert_equal ["Plan"], result
+    assert dependency
+    assert_includes dependency.metadata.fetch(:table_columns).fetch("change_event_cards"), "status"
+    assert_includes dependency.metadata.fetch(:table_columns).fetch("change_event_cards"), "title"
+    assert_includes dependency_sources, "active_record_query"
+    refute_includes dependency_sources, "active_record_collection"
+  end
+
+  def test_opaque_pluck_column_raises_before_querying
+    ChangeEventCard.create!(title: "Plan", status: "open", position: 1)
+    select_sql = []
+    subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |_name, _started, _finished, _id, payload|
+      sql = payload[:sql].to_s
+      select_sql << sql if sql.start_with?("SELECT") && sql.include?('"change_event_cards"')
+    end
+
+    error = assert_raises(Upkeep::ActiveRecordQuery::OpaqueRelationError) do
+      Upkeep::Runtime::Observation.capture_request do
+        ChangeEventCard.where(status: "open").pluck("LOWER(title)")
+      end
+    end
+
+    assert_includes error.message, "opaque pluck column"
+    assert_empty select_sql
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
+  end
 end
