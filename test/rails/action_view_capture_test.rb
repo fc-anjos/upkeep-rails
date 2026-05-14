@@ -21,6 +21,12 @@ class RailsCaptureCardsController < ActionController::Base
     render template: "controller_cards/index"
   end
 
+  def hidden_lookup_index
+    RailsCaptureCard.where(status: "closed").order(:id).to_a
+    @cards = RailsCaptureCard.where(status: "open").order(:id)
+    render template: "controller_cards/index"
+  end
+
   def show
     @card = RailsCaptureCard.find(params.fetch(:id))
     render template: "controller_cards/show"
@@ -337,6 +343,25 @@ class ActionViewCaptureTest < Minitest::Test
     assert_equal [plan.id.to_s, build.id.to_s], collection_snapshot.fetch(:member_ids)
     assert_includes render_site_dependencies, :active_record_collection
     refute_includes request_dependencies, :active_record_collection
+  end
+
+  def test_unrendered_controller_relation_does_not_create_collection_dependency
+    create_card!("Plan", status: "open")
+    create_card!("Archived", status: "closed")
+
+    html, recorder = capture_controller_request(:hidden_lookup_index, "/cards/hidden")
+    request_dependencies = recorder.graph.dependencies_for(Upkeep::Runtime::Recorder::REQUEST_NODE_ID).map(&:source)
+
+    assert_includes html, "Plan"
+    refute_includes html, "Archived"
+    refute_includes request_dependencies, :active_record_collection
+
+    Upkeep::Runtime::ChangeLog.reset
+    create_card!("Still archived", status: "closed")
+
+    targets = Upkeep::Targeting::Selector.new.select(recorder, Upkeep::Runtime::ChangeLog.events)
+
+    assert_empty targets
   end
 
   def test_collection_snapshot_uses_the_rendered_relation_records
