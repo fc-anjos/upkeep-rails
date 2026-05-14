@@ -85,12 +85,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_29_000004) do
   end
 
   create_table "upkeep_subscription_index_entries", force: :cascade do |t|
-    t.binary "dependency_cache_key_snapshot", null: false
-    t.binary "dependency_snapshot", null: false
+    t.json "dependency_cache_key_snapshot", null: false
+    t.json "dependency_snapshot", null: false
     t.datetime "created_at", null: false
     t.string "lookup_key_digest", null: false
-    t.binary "lookup_key_snapshot", null: false
-    t.binary "owner_id_snapshot", null: false
+    t.json "lookup_key_snapshot", null: false
+    t.json "owner_id_snapshot", null: false
     t.string "subscription_id", null: false
     t.datetime "updated_at", null: false
     t.index ["lookup_key_digest"], name: "index_upkeep_subscription_index_entries_on_lookup_key_digest"
@@ -100,7 +100,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_29_000004) do
   create_table "upkeep_subscriptions", id: :string, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.json "metadata"
-    t.binary "recorder_snapshot", null: false
+    t.json "recorder_snapshot", null: false
     t.string "subscriber_id", null: false
     t.datetime "updated_at", null: false
     t.index ["subscriber_id"], name: "index_upkeep_subscriptions_on_subscriber_id"

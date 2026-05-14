@@ -402,11 +402,11 @@ class ActionViewCaptureTest < Minitest::Test
     targets = Upkeep::Targeting::Selector.new.select(recorder, Upkeep::Runtime::ChangeLog.events)
     recipe = recorder.graph.node(Upkeep::Targeting::Extraction.frame_id_for(targets.first)).payload.fetch(:recipe)
     replayed_html = recipe.render
-    collection_snapshot = recipe.replay.fetch(:collection)
+    collection_snapshot = recipe.replay.collection
 
     assert_equal ["render_site"], targets.map(&:kind).uniq
     assert_includes replayed_html, "Review"
-    assert_equal [plan.id.to_s, build.id.to_s], collection_snapshot.fetch(:member_ids)
+    assert_equal [plan.id.to_s, build.id.to_s], collection_snapshot.member_ids
     assert_includes recorder.graph.summary.fetch(:dependency_sources), "active_record_collection"
 
     render_site = recorder.graph.frame_nodes.find { |frame| frame.payload.fetch(:kind) == "render_site" }
@@ -437,15 +437,15 @@ class ActionViewCaptureTest < Minitest::Test
     targets = Upkeep::Targeting::Selector.new.select(recorder, Upkeep::Runtime::ChangeLog.events)
     recipe = recorder.graph.node(Upkeep::Targeting::Extraction.frame_id_for(targets.first)).payload.fetch(:recipe)
     replayed_html = recipe.render
-    collection_snapshot = recipe.replay.fetch(:collection)
+    collection_snapshot = recipe.replay.collection
     render_site = recorder.graph.frame_nodes.find { |frame| frame.payload.fetch(:kind) == "render_site" }
     render_site_dependencies = recorder.graph.dependencies_for(render_site.id).map(&:source)
     request_dependencies = recorder.graph.dependencies_for(Upkeep::Runtime::Recorder::REQUEST_NODE_ID).map(&:source)
 
     assert_equal ["render_site"], targets.map(&:kind).uniq
     assert_includes replayed_html, "Review"
-    assert_equal "active_record_relation", collection_snapshot.fetch(:type)
-    assert_equal [plan.id.to_s, build.id.to_s], collection_snapshot.fetch(:member_ids)
+    assert_equal "active_record_relation", collection_snapshot.type
+    assert_equal [plan.id.to_s, build.id.to_s], collection_snapshot.member_ids
     assert_includes render_site_dependencies, :active_record_collection
     refute_includes request_dependencies, :active_record_collection
   end

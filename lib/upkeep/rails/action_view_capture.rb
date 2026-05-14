@@ -158,12 +158,11 @@ module Upkeep
           template: metadata.fetch(:template),
           metadata: metadata,
           runtime: "rails",
-          replay: {
-            type: target_kind == "fragment" ? "fragment" : "template",
+          replay: (target_kind == "fragment" ? ::Upkeep::Replay::Fragment : ::Upkeep::Replay::Template).new(
             controller_class: controller&.class&.name,
             template: metadata.fetch(:template),
             locals: snapshot_hash(locals)
-          }.compact
+          )
         ) do
           template.render(
             view,
@@ -194,8 +193,7 @@ module Upkeep
           template: metadata.fetch(:template),
           metadata: metadata,
           runtime: "rails",
-          replay: {
-            type: "controller_page",
+          replay: ::Upkeep::Replay::ControllerPage.new(
             controller_class: controller_class.name,
             action: action_name,
             env: serializable_replay_env(
@@ -203,7 +201,7 @@ module Upkeep
               path_parameters: controller.request.path_parameters,
               ambient_inputs: ambient_inputs
             )
-          }
+          )
         ) do
           _status, _headers, body = ControllerRuntime.suppress do
             controller_class.action(action_name).call(Replay.rack_env(env))
@@ -220,13 +218,12 @@ module Upkeep
           target_id: metadata.fetch(:site_id),
           metadata: metadata,
           runtime: "rails",
-          replay: {
-            type: "collection",
+          replay: ::Upkeep::Replay::Collection.new(
             controller_class: controller&.class&.name,
             partial: partial == :derived ? "derived" : partial.to_s,
             collection: snapshot_value(collection, rendered_collection: rendered_collection, relation_analysis: collection_analysis),
             options: snapshot_render_options(options)
-          }.compact
+          )
         ) do
           replay_options = replay_render_options(options)
           replay_options[:partial] = partial unless partial == :derived
@@ -534,13 +531,13 @@ module Upkeep
 
       def snapshot_render_options(options)
         options.each_with_object({}) do |(key, value), snapshot|
-          snapshot[key.to_s] = key == :locals ? { type: "hash", entries: snapshot_hash(value || {}) } : snapshot_value(value)
+          snapshot[key.to_s] = key == :locals ? ::Upkeep::Replay::HashValue.new(entries: snapshot_hash(value || {})) : snapshot_value(value)
         end
       end
 
       def snapshot_value(value, rendered_collection: nil, relation_analysis: nil)
         if value.is_a?(ActiveRecord::Base)
-          { type: "active_record", model: value.class.name, id: value.id }
+          ::Upkeep::Replay.active_record_value(value)
         elsif active_record_relation?(value)
           if refused_collection_analysis?(relation_analysis)
             return refused_relation_snapshot(value, relation_analysis)
@@ -549,35 +546,31 @@ module Upkeep
           analysis = relation_analysis || analyze_relation_for_snapshot(value)
           return refused_relation_snapshot(value, analysis) if refused_collection_analysis?(analysis)
 
-          snapshot = {
-            type: "active_record_relation",
+          ::Upkeep::Replay::ActiveRecordRelationValue.new(
             model: value.klass.name,
             sql: analysis.sql,
             primary_key: analysis.primary_key,
             appendable: analysis.appendable?,
-            predicates: analysis.predicates
-          }
-          snapshot[:member_ids] = relation_member_ids(analysis.primary_key, rendered_collection) if rendered_collection
-          snapshot
+            predicates: analysis.predicates,
+            member_ids: rendered_collection ? relation_member_ids(analysis.primary_key, rendered_collection) : []
+          )
         elsif value.is_a?(Array) && relation_provenance_analysis?(relation_analysis)
-          snapshot = {
-            type: "active_record_relation",
+          ::Upkeep::Replay::ActiveRecordRelationValue.new(
             model: relation_analysis.model_name,
             sql: relation_analysis.sql,
             primary_key: relation_analysis.primary_key,
             appendable: relation_analysis.appendable?,
-            predicates: relation_analysis.predicates
-          }
-          snapshot[:member_ids] = relation_member_ids(relation_analysis.primary_key, rendered_collection) if rendered_collection
-          snapshot
+            predicates: relation_analysis.predicates,
+            member_ids: rendered_collection ? relation_member_ids(relation_analysis.primary_key, rendered_collection) : []
+          )
         elsif value.is_a?(Array)
-          { type: "array", items: value.map { |item| snapshot_value(item) } }
+          ::Upkeep::Replay::ArrayValue.new(items: value.map { |item| snapshot_value(item) })
         elsif value.is_a?(Hash)
-          { type: "hash", entries: snapshot_hash(value) }
+          ::Upkeep::Replay::HashValue.new(entries: snapshot_hash(value))
         elsif value.nil? || value.is_a?(String) || value.is_a?(Numeric) || value == true || value == false || value.is_a?(Symbol)
-          { type: "literal", value: value }
+          ::Upkeep::Replay::LiteralValue.new(value: value)
         else
-          { type: "unsupported", class: value.class.name }
+          ::Upkeep::Replay::UnsupportedValue.new(class_name: value.class.name)
         end
       end
 
@@ -635,12 +628,11 @@ module Upkeep
       end
 
       def refused_relation_snapshot(value, refused)
-        {
-          type: "refused_active_record_relation",
+        ::Upkeep::Replay::RefusedActiveRecordRelationValue.new(
           model: value.klass.name,
           sql_digest: Digest::SHA256.hexdigest(value.to_sql)[0, 16],
           reason: refused.reason
-        }
+        )
       end
 
       def warn_refused_boundary(payload)

@@ -38,7 +38,7 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
 
       create_table :upkeep_subscriptions, id: :string, force: true do |table|
         table.string :subscriber_id, null: false
-        table.binary :recorder_snapshot, null: false
+        table.json :recorder_snapshot, null: false
         table.json :metadata
         table.timestamps
       end
@@ -46,10 +46,10 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
       create_table :upkeep_subscription_index_entries, force: true do |table|
         table.string :subscription_id, null: false
         table.string :lookup_key_digest, null: false
-        table.binary :lookup_key_snapshot, null: false
-        table.binary :owner_id_snapshot, null: false
-        table.binary :dependency_cache_key_snapshot, null: false
-        table.binary :dependency_snapshot, null: false
+        table.json :lookup_key_snapshot, null: false
+        table.json :owner_id_snapshot, null: false
+        table.json :dependency_cache_key_snapshot, null: false
+        table.json :dependency_snapshot, null: false
         table.timestamps
       end
 
@@ -108,6 +108,8 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     assert_equal "stream-a", reloaded_store.fetch(subscription.id).metadata.fetch(:stream_name)
     assert_operator Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.count, :>, 0
     assert_equal 1, Upkeep::Subscriptions::ActiveRecordStore::SubscriptionRecord.count
+    assert_equal 1, Upkeep::Subscriptions::ActiveRecordStore::SubscriptionRecord.first.recorder_snapshot.fetch("__upkeep_snapshot_version")
+    assert_equal 1, Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.first.dependency_snapshot.fetch("__upkeep_snapshot_version")
   end
 
   def test_register_reports_store_timing_metadata
@@ -140,16 +142,18 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     assert_equal 1, Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.count
   end
 
-  def test_persistent_lookup_digest_is_stable_after_marshal_round_trip
+  def test_persistent_lookup_digest_is_stable_after_json_snapshot_round_trip
     lookup_key = [
       :active_record_attribute,
       "persistent_subscription_cards",
       1,
       "title"
     ]
-    rehydrated_lookup_key = Marshal.load(Marshal.dump(lookup_key))
+    snapshot = Upkeep::Subscriptions::ActiveRecordStore::JsonSnapshot.dump(lookup_key)
+    rehydrated_lookup_key = Upkeep::Subscriptions::ActiveRecordStore::JsonSnapshot.load(snapshot)
 
     assert_equal lookup_key, rehydrated_lookup_key
+    assert_equal 1, snapshot.fetch("__upkeep_snapshot_version")
     assert_equal(
       Upkeep::Subscriptions::ActiveRecordStore::PersistentReverseIndex.digest(lookup_key),
       Upkeep::Subscriptions::ActiveRecordStore::PersistentReverseIndex.digest(rehydrated_lookup_key)

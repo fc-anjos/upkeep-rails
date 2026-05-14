@@ -237,18 +237,19 @@ class ActiveRecordQueryTest < Minitest::Test
       target_id: "cards",
       template: "query_analysis_cards/card",
       runtime: "rails",
-      replay: {
-        type: "collection",
+      replay: Upkeep::Replay::Collection.new(
         partial: "query_analysis_cards/card",
-        collection: {
-          type: "active_record_relation",
+        controller_class: nil,
+        collection: Upkeep::Replay::ActiveRecordRelationValue.new(
           model: "QueryAnalysisCard",
           sql: QueryAnalysisCard.order(:id).to_sql,
           primary_key: QueryAnalysisCard.primary_key,
           appendable: true,
+          predicates: [],
           member_ids: [card.id.to_s]
-        }
-      }
+        ),
+        options: {}
+      )
     )
 
     append = Upkeep::Invalidation::CollectionAppend.build(

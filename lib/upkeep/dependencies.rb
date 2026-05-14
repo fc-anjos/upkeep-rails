@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "digest"
+require "json"
 
 module Upkeep
   module Dependencies
@@ -426,9 +427,26 @@ module Upkeep
     end
 
     def private_fingerprint(value)
-      Digest::SHA256.hexdigest(Marshal.dump(value))[0, 16]
-    rescue TypeError
-      Digest::SHA256.hexdigest(value.inspect)[0, 16]
+      Digest::SHA256.hexdigest(JSON.generate(private_fingerprint_payload(value)))[0, 16]
+    end
+
+    def private_fingerprint_payload(value)
+      case value
+      when nil, true, false, Numeric, String
+        [value.class.name, value]
+      when Symbol
+        ["Symbol", value.to_s]
+      when Array
+        ["Array", value.map { |item| private_fingerprint_payload(item) }]
+      when Hash
+        entries = value.keys.sort_by { |key| JSON.generate(private_fingerprint_payload(key)) }.map do |key|
+          [private_fingerprint_payload(key), private_fingerprint_payload(value.fetch(key))]
+        end
+        ["Hash", entries]
+      else
+        identity = model_identity(value)
+        identity ? ["Model", identity] : ["Object", value.class.name, value.inspect]
+      end
     end
 
     def symbolize_keys(value)

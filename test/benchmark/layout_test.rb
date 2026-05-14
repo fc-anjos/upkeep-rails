@@ -176,8 +176,9 @@ class BenchmarkLayoutTest < Minitest::Test
       target_kind: "page",
       target_id: "page:benchmark/test",
       runtime: "rails",
-      replay: {
-        type: "controller_page",
+      replay: Upkeep::Replay::ControllerPage.new(
+        controller_class: nil,
+        action: "index",
         env: {
           "rack.session" => {
             "__upkeep_replay_type" => "rack_session",
@@ -188,7 +189,7 @@ class BenchmarkLayoutTest < Minitest::Test
           },
           "HTTP_COOKIE" => "theme=secret-cookie-value"
         }
-      }
+      )
     )
 
     recorder.graph.add_node(

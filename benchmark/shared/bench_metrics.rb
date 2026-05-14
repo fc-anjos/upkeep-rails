@@ -839,7 +839,7 @@ module BenchMetrics
   end
 
   def self.replay_recipe_bytes(recipe)
-    JSON.generate(recipe.replay || {}).bytesize
+    JSON.generate(recipe.replay&.to_h || {}).bytesize
   rescue StandardError
     0
   end
