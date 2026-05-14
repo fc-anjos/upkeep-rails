@@ -103,7 +103,8 @@ class Comment < ApplicationRecord
     clear_replies_cache = false
 
     parents = self.order(
-      Arel.sql("comments.score < 0 ASC, comments.confidence DESC")
+      arel_table[:score].lt(0).asc,
+      arel_table[:confidence].desc
     )
       .group_by(&:parent_comment_id)
 

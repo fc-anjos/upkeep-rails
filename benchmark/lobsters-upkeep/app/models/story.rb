@@ -27,7 +27,7 @@ class Story < ApplicationRecord
   has_many :comments,
            inverse_of: :story,
            dependent: :destroy
-  has_many :tags, -> { order('tags.is_media desc, tags.tag') }, through: :taggings
+  has_many :tags, -> { order(is_media: :desc, tag: :asc) }, through: :taggings
   has_many :votes, -> { where(comment_id: nil) }, inverse_of: :story
   has_many :voters, -> { where('votes.comment_id' => nil) },
            through: :votes,
@@ -43,22 +43,22 @@ class Story < ApplicationRecord
   scope :deleted, -> { where(is_deleted: true) }
   scope :not_deleted, -> { where(is_deleted: false) }
   scope :unmerged, -> { where(merged_story_id: nil) }
-  scope :positive_ranked, -> { where("score >= 0") }
-  scope :low_scoring, ->(max = 5) { where("score < ?", max) }
+  scope :positive_ranked, -> { where(arel_table[:score].gteq(0)) }
+  scope :low_scoring, ->(max = 5) { where(arel_table[:score].lt(max)) }
   scope :front_page, -> { hottest.limit(StoriesPaginator::STORIES_PER_PAGE) }
   scope :hottest, ->(user = nil, exclude_tags = nil) {
     base(user).not_hidden_by(user)
         .filter_tags(exclude_tags || [])
         .positive_ranked
-        .order('hotness')
+        .order(:hotness)
   }
   scope :recent, ->(user = nil, exclude_tags = nil) {
     base(user).not_hidden_by(user)
         .filter_tags(exclude_tags || [])
         .low_scoring
-        .where("created_at >= ?", 10.days.ago)
+        .where(arel_table[:created_at].gteq(10.days.ago))
         .where.not(id: front_page.ids)
-        .order("stories.created_at DESC")
+        .order(created_at: :desc)
   }
   scope :filter_tags, ->(tags) {
     tags.empty? ? all : where(
@@ -94,8 +94,8 @@ class Story < ApplicationRecord
   scope :to_tweet, -> {
     hottest(nil, Tag.where(tag: 'meta').pluck(:id))
         .where(twitter_id: nil)
-        .where("score >= 2")
-        .where("created_at >= ?", 2.days.ago)
+        .where(arel_table[:score].gteq(2))
+        .where(arel_table[:created_at].gteq(2.days.ago))
         .limit(10)
   }
 
@@ -655,7 +655,7 @@ class Story < ApplicationRecord
   def merged_comments
     # TODO: make this a normal has_many?
     Comment.where(story_id: Story.select(:id).where(merged_story_id: self.id)
-      .where('merged_story_id is not null') + [ self.id ])
+      .where.not(merged_story_id: nil) + [ self.id ])
   end
 
   def merge_story_short_id=(sid)

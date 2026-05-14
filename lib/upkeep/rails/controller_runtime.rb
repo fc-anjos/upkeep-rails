@@ -51,14 +51,23 @@ module Upkeep
 
         Upkeep::Rails.deliver_changes_now!
 
-        captured, changes = Upkeep::Runtime::ChangeLog.capture do
-          Upkeep::Runtime::Observation.capture_request { action.call }
+        result = nil
+        recorder = nil
+        _captured, changes = Upkeep::Runtime::ChangeLog.capture do
+          if upkeep_subscription_request?
+            result, recorder = Upkeep::Runtime::Observation.capture_request { action.call }
+          else
+            result = action.call
+          end
         end
-        result, recorder = captured
-        Upkeep::Rails.register_controller_subscription(self, recorder)
+        Upkeep::Rails.register_controller_subscription(self, recorder) if recorder
         Upkeep::Rails.deliver_changes!(changes)
 
         result
+      end
+
+      def upkeep_subscription_request?
+        request.get? || request.head?
       end
     end
   end
