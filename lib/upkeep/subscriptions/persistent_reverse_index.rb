@@ -9,6 +9,19 @@ require_relative "reverse_index"
 module Upkeep
   module Subscriptions
     class PersistentReverseIndex
+      LOOKUP_COLUMNS = [
+        :subscription_id,
+        :lookup_key_digest,
+        :dependency_source,
+        :lookup_table,
+        :lookup_record_id_snapshot,
+        :lookup_attribute,
+        :dependency_table,
+        :dependency_predicate_digest,
+        :dependency_metadata_snapshot,
+        :owner_ids_snapshot
+      ].freeze
+
       def initialize(reverse_index:, index_record:)
         @reverse_index = reverse_index
         @index_record = index_record
@@ -60,30 +73,68 @@ module Upkeep
 
         index_record
           .where(lookup_key_digest: lookup_key_digests)
-            .pluck(
-              :subscription_id,
-              :lookup_key_digest,
-              :owner_ids_snapshot,
-              :dependency_cache_key_snapshot,
-              :dependency_snapshot
-            )
+            .pluck(*LOOKUP_COLUMNS)
             .flat_map { |row| entries_for_row(row, lookup_keys_by_digest) }
             .uniq { |entry| [entry.subscription_id, entry.owner_id, entry.dependency_cache_key] }
       end
 
       def entries_for_row(row, lookup_keys_by_digest)
-        subscription_id, lookup_key_digest, owner_ids_snapshot, dependency_cache_key_snapshot, dependency_snapshot = row
-        return [] unless lookup_keys_by_digest.key?(lookup_key_digest)
+        attributes = LOOKUP_COLUMNS.zip(row).to_h
+        lookup_keys = lookup_keys_by_digest.fetch(attributes.fetch(:lookup_key_digest)) { return [] }
+        return [] unless lookup_keys.any? { |lookup_key| lookup_key_matches_row?(lookup_key, attributes) }
 
-        dependency_cache_key = JsonSnapshot.load(dependency_cache_key_snapshot)
-        dependency = Dependencies.from_h(JsonSnapshot.load(dependency_snapshot))
-        JsonSnapshot.load(owner_ids_snapshot).map do |owner_id|
+        dependency = dependency_for_row(attributes)
+        dependency_cache_key = dependency.cache_key
+        JsonSnapshot.load(attributes.fetch(:owner_ids_snapshot)).map do |owner_id|
           ReverseIndex::Entry.new(
-            subscription_id,
+            attributes.fetch(:subscription_id),
             owner_id,
             dependency_cache_key,
             dependency
           )
+        end
+      end
+
+      def lookup_key_matches_row?(lookup_key, attributes)
+        case lookup_key.fetch(0)
+        when :active_record_attribute
+          lookup_key.fetch(1).to_s == attributes.fetch(:lookup_table).to_s &&
+            lookup_key.fetch(2) == JsonSnapshot.load(attributes.fetch(:lookup_record_id_snapshot)) &&
+            lookup_key.fetch(3).to_s == attributes.fetch(:lookup_attribute).to_s
+        when :active_record_attribute_any_id
+          lookup_key.fetch(1).to_s == attributes.fetch(:lookup_table).to_s &&
+            attributes.fetch(:lookup_record_id_snapshot).nil? &&
+            lookup_key.fetch(2).to_s == attributes.fetch(:lookup_attribute).to_s
+        when :active_record_collection_column
+          lookup_key.fetch(1).to_s == attributes.fetch(:lookup_table).to_s &&
+            attributes.fetch(:lookup_record_id_snapshot).nil? &&
+            lookup_key.fetch(2).to_s == attributes.fetch(:lookup_attribute).to_s
+        else
+          false
+        end
+      end
+
+      def dependency_for_row(attributes)
+        source = attributes.fetch(:dependency_source).to_sym
+        case source
+        when :active_record_attribute
+          Dependencies::ActiveRecordAttribute.new(
+            table: attributes.fetch(:dependency_table),
+            id: attributes[:lookup_record_id_snapshot] && JsonSnapshot.load(attributes.fetch(:lookup_record_id_snapshot)),
+            attribute: attributes.fetch(:lookup_attribute)
+          )
+        when :active_record_collection, :active_record_query
+          metadata = JsonSnapshot.load(attributes.fetch(:dependency_metadata_snapshot))
+          dependency_class = source == :active_record_query ? Dependencies::ActiveRecordQuery : Dependencies::ActiveRecordCollection
+          dependency_class.new(
+            primary_table: attributes.fetch(:dependency_table),
+            table_columns: metadata.fetch(:table_columns),
+            coverage: metadata.fetch(:coverage),
+            sql: metadata.fetch(:sql),
+            predicates: metadata.fetch(:predicates, [])
+          )
+        else
+          raise ArgumentError, "unsupported persistent dependency source: #{source.inspect}"
         end
       end
     end

@@ -117,21 +117,16 @@ module Upkeep
 
         jobs.each do |job|
           job.entries.each do |entry|
-            dependency_cache_key = entry.dependency_cache_key
-            dependency = entry.dependency.to_h
-
             index_builder.lookup_keys_for_dependency(entry.dependency).each do |lookup_key|
-              key = [job.subscription.id, lookup_key, dependency_cache_key, dependency]
+              lookup_attributes = typed_lookup_attributes(entry.dependency, lookup_key)
+              key = [job.subscription.id, lookup_attributes]
               row = grouped_rows[key] ||= {
                 subscription_id: job.subscription.id,
                 lookup_key_digest: PersistentReverseIndex.digest(lookup_key),
-                lookup_key_snapshot: dump(lookup_key),
                 owner_ids: [],
-                dependency_cache_key_snapshot: dump(dependency_cache_key),
-                dependency_snapshot: dump(dependency),
                 created_at: now,
                 updated_at: now
-              }
+              }.merge(lookup_attributes)
               row.fetch(:owner_ids) << entry.owner_id
             end
           end
@@ -143,6 +138,50 @@ module Upkeep
 
         index_record.insert_all!(rows) if rows.any?
         rows.size
+      end
+
+      def typed_lookup_attributes(dependency, lookup_key)
+        lookup_type = lookup_key.fetch(0)
+        source = dependency.source.to_s
+        dependency_key = dependency.key
+
+        case lookup_type
+        when :active_record_attribute
+          _type, table, record_id, attribute = lookup_key
+          {
+            dependency_source: source,
+            lookup_table: table.to_s,
+            lookup_record_id_snapshot: dump(record_id),
+            lookup_attribute: attribute.to_s,
+            dependency_table: dependency_key.fetch(:table).to_s,
+            dependency_predicate_digest: nil,
+            dependency_metadata_snapshot: nil
+          }
+        when :active_record_attribute_any_id
+          _type, table, attribute = lookup_key
+          {
+            dependency_source: source,
+            lookup_table: table.to_s,
+            lookup_record_id_snapshot: nil,
+            lookup_attribute: attribute.to_s,
+            dependency_table: dependency_key.fetch(:table).to_s,
+            dependency_predicate_digest: nil,
+            dependency_metadata_snapshot: nil
+          }
+        when :active_record_collection_column
+          _type, table, attribute = lookup_key
+          {
+            dependency_source: source,
+            lookup_table: table.to_s,
+            lookup_record_id_snapshot: nil,
+            lookup_attribute: attribute.to_s,
+            dependency_table: dependency_key.fetch(:table).to_s,
+            dependency_predicate_digest: dependency_key.fetch(:predicate_digest).to_s,
+            dependency_metadata_snapshot: dump(dependency.metadata)
+          }
+        else
+          raise ArgumentError, "unsupported persistent lookup key: #{lookup_key.inspect}"
+        end
       end
 
       def subscription_with_metadata(record)

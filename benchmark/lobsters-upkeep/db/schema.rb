@@ -332,10 +332,14 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_14_082331) do
   create_table "upkeep_subscription_index_entries", force: :cascade do |t|
     t.string "subscription_id", null: false
     t.string "lookup_key_digest", null: false
-    t.json "lookup_key_snapshot", null: false
+    t.string "dependency_source", null: false
+    t.string "lookup_table", null: false
+    t.json "lookup_record_id_snapshot"
+    t.string "lookup_attribute", null: false
+    t.string "dependency_table", null: false
+    t.string "dependency_predicate_digest"
+    t.json "dependency_metadata_snapshot"
     t.json "owner_ids_snapshot", null: false
-    t.json "dependency_cache_key_snapshot", null: false
-    t.json "dependency_snapshot", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index [ "lookup_key_digest" ], name: "index_upkeep_subscription_index_entries_on_lookup_key_digest"

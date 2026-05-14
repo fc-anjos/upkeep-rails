@@ -85,11 +85,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_29_000004) do
   end
 
   create_table "upkeep_subscription_index_entries", force: :cascade do |t|
-    t.json "dependency_cache_key_snapshot", null: false
-    t.json "dependency_snapshot", null: false
     t.datetime "created_at", null: false
+    t.json "dependency_metadata_snapshot"
+    t.string "dependency_predicate_digest"
+    t.string "dependency_source", null: false
+    t.string "dependency_table", null: false
+    t.string "lookup_attribute", null: false
     t.string "lookup_key_digest", null: false
-    t.json "lookup_key_snapshot", null: false
+    t.json "lookup_record_id_snapshot"
+    t.string "lookup_table", null: false
     t.json "owner_ids_snapshot", null: false
     t.string "subscription_id", null: false
     t.datetime "updated_at", null: false
