@@ -47,7 +47,10 @@ module Upkeep
     end
 
     def identity_signature_for(graph, frame_id)
-      identity_dependencies = graph.dependencies_for(frame_id).select(&:identity?)
+      identity_dependencies = graph.contained_node_ids(frame_id)
+        .flat_map { |owner_id| graph.dependencies_for(owner_id) }
+        .select(&:identity?)
+        .uniq(&:cache_key)
       return "public" if identity_dependencies.empty?
 
       Digest::SHA256.hexdigest(identity_dependencies.map(&:identity_key).sort_by(&:inspect).inspect)[0, 16]

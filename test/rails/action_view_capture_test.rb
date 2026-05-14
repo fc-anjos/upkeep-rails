@@ -32,6 +32,11 @@ class RailsCaptureCardsController < ActionController::Base
     @cards = RailsCaptureCard.order(:id)
     render template: "controller_cards/session_index"
   end
+
+  def session_members
+    @cards = RailsCaptureCard.order(:id)
+    render template: "controller_cards/session_members"
+  end
 end
 
 class ActionViewCaptureTest < Minitest::Test
@@ -249,6 +254,23 @@ class ActionViewCaptureTest < Minitest::Test
     assert_includes replayed_html, "Alice"
     assert_includes cookie_header, "viewer=Alice"
     refute_includes cookie_header, "oauth_state"
+  end
+
+  def test_render_site_identity_includes_descendant_ambient_reads
+    create_card!("Plan")
+
+    _html, recorder = capture_controller_request(
+      :session_members,
+      "/cards/session-members",
+      session: { viewer: "Alice" }
+    )
+
+    render_site = recorder.graph.frame_nodes.find { |frame| frame.payload.fetch(:kind) == "render_site" }
+
+    assert render_site
+    assert_includes recorder.identity_profile(render_site.id).map { |dependency| dependency.fetch(:source).to_s }, "session"
+    refute_equal "public", recorder.identity_signature(render_site.id)
+    assert_empty Upkeep::SharedStreams.names_for_recorder(recorder)
   end
 
 
@@ -471,10 +493,23 @@ class ActionViewCaptureTest < Minitest::Test
           </ul>
         </main>
       ERB
-      "cards/_card.html.erb" => <<~ERB
+      "controller_cards/session_members.html.erb" => <<~ERB,
+        <main>
+          <ul>
+            <%= render partial: "cards/session_card", collection: @cards, as: :card %>
+          </ul>
+        </main>
+      ERB
+      "cards/_card.html.erb" => <<~ERB,
         <li id="card_<%= card.id %>">
           <span class="title"><%= card.title %></span>
           <span class="status"><%= card.status %></span>
+        </li>
+      ERB
+      "cards/_session_card.html.erb" => <<~ERB
+        <li id="card_<%= card.id %>">
+          <span class="viewer"><%= session[:viewer] %></span>
+          <span class="title"><%= card.title %></span>
         </li>
       ERB
     )

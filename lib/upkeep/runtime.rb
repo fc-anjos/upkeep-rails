@@ -142,7 +142,7 @@ module Upkeep
       end
 
       def identity_dependency_owner_ids(frame_id)
-        owner_ids = [frame_id]
+        owner_ids = @graph.contained_node_ids(frame_id)
         frame = @graph.node(frame_id)
 
         if frame.kind == :frame && frame.payload[:kind] == "page"
