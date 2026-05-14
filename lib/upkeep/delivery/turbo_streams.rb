@@ -141,16 +141,13 @@ module Upkeep
       end
 
       def stream_targets(planned_targets)
-        shared_targets, direct_targets = planned_targets.partition(&:sharing_signature)
-
-        direct_targets.map { |planned_target| stream_for(planned_target) } +
-          shared_targets.group_by { |planned_target| shared_render_key(planned_target) }.map do |_key, targets|
-            stream_for(
-              targets.first,
-              subscriber_ids: targets.map(&:subscriber_id),
-              matched_dependency_keys: targets.flat_map(&:matched_dependency_keys)
-            )
-          end
+        planned_targets.group_by { |planned_target| render_group_key(planned_target) }.map do |_key, targets|
+          stream_for(
+            targets.first,
+            subscriber_ids: targets.map(&:subscriber_id),
+            matched_dependency_keys: targets.flat_map(&:matched_dependency_keys)
+          )
+        end
       end
 
       def stream_for(planned_target, subscriber_ids: [planned_target.subscriber_id], matched_dependency_keys: planned_target.matched_dependency_keys)
@@ -180,13 +177,14 @@ module Upkeep
         [html, ((finished_at - started_at) * 1000.0).round(3)]
       end
 
-      def shared_render_key(planned_target)
+      def render_group_key(planned_target)
         [
           planned_target.action,
           planned_target.target.kind,
           planned_target.target.id,
           planned_target.identity_signature,
           planned_target.sharing_signature,
+          SharedStreams.signature_for(planned_target.recipe),
           planned_target.deoptimization_reason
         ]
       end
