@@ -34,7 +34,19 @@ class ActionViewCaptureTest < Minitest::Test
 
     def loaded? = true
 
-    def id = self[:session_id]
+    def id = to_hash["session_id"]
+
+    def [](key)
+      value = super
+      Upkeep::Runtime::Ambient.record_session(key, value)
+      value
+    end
+
+    def fetch(key, *args, &block)
+      value = super
+      Upkeep::Runtime::Ambient.record_session(key, value)
+      value
+    end
   end
 
   def setup
@@ -144,16 +156,50 @@ class ActionViewCaptureTest < Minitest::Test
   def test_controller_page_recipe_preserves_rack_session
     create_card!("Plan")
 
-    html, recorder = capture_controller_request(:session_index, "/cards/session", session: { viewer: "Alice" })
+    html, recorder = capture_controller_request(
+      :session_index,
+      "/cards/session",
+      session: {
+        viewer: "Alice",
+        oauth_state: "unread-secret",
+        totp_secret: "also-unread"
+      }
+    )
 
     assert_includes html, "Alice"
 
     page_frame = recorder.graph.node("page:rails:controller_cards/session_index")
-    recipe = Upkeep::Replay::Recipe.from_h(page_frame.payload.fetch(:recipe).to_h)
+    recipe_snapshot = page_frame.payload.fetch(:recipe).to_h
+    recipe = Upkeep::Replay::Recipe.from_h(recipe_snapshot)
     replayed_html = recipe.render
+    session_snapshot = recipe_snapshot.fetch(:replay).fetch(:env).fetch("rack.session")
 
     assert_includes replayed_html, "Alice"
     assert_includes replayed_html, "Plan"
+    assert_equal "rack_session", session_snapshot.fetch("__upkeep_replay_type")
+    assert_equal({ "viewer" => "Alice" }, session_snapshot.fetch("values"))
+  end
+
+  def test_unread_rack_session_values_do_not_change_page_replay_env
+    create_card!("Plan")
+
+    _html, first_recorder = capture_controller_request(
+      :session_index,
+      "/cards/session",
+      session: { viewer: "Alice", oauth_state: "first" }
+    )
+    _html, second_recorder = capture_controller_request(
+      :session_index,
+      "/cards/session",
+      session: { viewer: "Alice", oauth_state: "second" }
+    )
+
+    first_env = controller_page_recipe_env(first_recorder, "page:rails:controller_cards/session_index")
+    second_env = controller_page_recipe_env(second_recorder, "page:rails:controller_cards/session_index")
+
+    assert_equal first_env.fetch("rack.session"), second_env.fetch("rack.session")
+    assert_equal Upkeep::SharedStreams.names_for_recorder(first_recorder), Upkeep::SharedStreams.names_for_recorder(second_recorder)
+    refute_includes first_env.fetch("rack.session").fetch("values"), "oauth_state"
   end
 
 
@@ -316,6 +362,10 @@ class ActionViewCaptureTest < Minitest::Test
     end
 
     result || [nil, recorder]
+  end
+
+  def controller_page_recipe_env(recorder, frame_id)
+    recorder.graph.node(frame_id).payload.fetch(:recipe).to_h.fetch(:replay).fetch(:env)
   end
 
   def collect_body(body)
