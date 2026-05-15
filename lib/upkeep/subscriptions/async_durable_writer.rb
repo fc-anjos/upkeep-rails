@@ -24,7 +24,7 @@ module Upkeep
         @worker.name = "upkeep-durable-writer" if @worker.respond_to?(:name=)
       end
 
-      def enqueue(subscription, entries:, operation: :persist)
+      def enqueue(subscription, entries:, operation:)
         @mutex.synchronize do
           raise IOError, "Upkeep durable writer is closed" if @closed
 

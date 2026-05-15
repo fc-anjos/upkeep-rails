@@ -99,7 +99,6 @@ module Upkeep
       def activate(id)
         subscription, entries = activation_index_write(id)
         return false unless subscription
-        return true unless entries
 
         durable_writer.enqueue(subscription, entries: entries, operation: :persist_index)
         true

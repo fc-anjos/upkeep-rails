@@ -149,28 +149,6 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     assert_equal index_rows, Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.count
   end
 
-  def test_activate_legacy_subscription_row_without_pending_index_snapshot_preserves_existing_index
-    create_subscription_card!("Plan")
-
-    _html, recorder = capture_controller_request("/cards?status=open")
-    store = active_record_store
-    subscription = store.register(subscriber_id: "subscriber-a", recorder: recorder, metadata: { stream_name: "stream-a" })
-    store.activate(subscription.id)
-    store.drain
-
-    index_rows = Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.count
-    persisted = Upkeep::Subscriptions::ActiveRecordStore::SubscriptionRecord.find(subscription.id)
-    snapshot = Upkeep::Subscriptions::JsonSnapshot.load(persisted.recorder_snapshot)
-    snapshot.delete("__upkeep_index_entries")
-    persisted.update_columns(recorder_snapshot: Upkeep::Subscriptions::JsonSnapshot.dump(snapshot))
-
-    reloaded_store = active_record_store
-    assert reloaded_store.activate(subscription.id)
-    reloaded_store.drain
-
-    assert_equal index_rows, Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.count
-  end
-
   def test_persisted_subscription_snapshot_keeps_replay_and_identity_without_lifecycle_dependencies
     card = PersistentSubscriptionCard.create!(title: "Plan", status: "open")
 

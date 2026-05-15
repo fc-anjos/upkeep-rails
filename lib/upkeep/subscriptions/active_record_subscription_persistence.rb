@@ -241,10 +241,7 @@ module Upkeep
 
       def index_entries_from_snapshot(recorder_snapshot)
         snapshot = load(recorder_snapshot)
-        key = snapshot.key?(INDEX_ENTRIES_SNAPSHOT_KEY) ? INDEX_ENTRIES_SNAPSHOT_KEY : INDEX_ENTRIES_SNAPSHOT_KEY.to_sym
-        return nil unless snapshot.key?(key)
-
-        Array(snapshot[key]).map do |entry_snapshot|
+        Array(snapshot.fetch(INDEX_ENTRIES_SNAPSHOT_KEY)).map do |entry_snapshot|
           entry_snapshot = Dependencies.symbolize_keys(entry_snapshot)
           dependency = Dependencies.from_h(entry_snapshot.fetch(:dependency))
           ReverseIndex::Entry.new(
@@ -277,11 +274,11 @@ module Upkeep
       end
 
       def persist_subscription?(job)
-        [:persist, :persist_subscription].include?(job.operation)
+        job.operation == :persist_subscription
       end
 
       def persist_index?(job)
-        [:persist, :persist_index].include?(job.operation)
+        job.operation == :persist_index
       end
 
       def operation_counts(jobs)
