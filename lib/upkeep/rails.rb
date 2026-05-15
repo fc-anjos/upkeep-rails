@@ -132,7 +132,7 @@ module Upkeep
       end
 
       def discard_subscription_store!
-        @subscriptions.shutdown if @subscriptions.respond_to?(:shutdown)
+        @subscriptions&.shutdown
         @subscriptions = nil
       end
 

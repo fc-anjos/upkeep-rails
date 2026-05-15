@@ -16,33 +16,33 @@ module Upkeep
           ControllerPage.new(
             controller_class: snapshot[:controller_class],
             action: snapshot.fetch(:action),
-            env: snapshot.fetch(:env, {})
+            env: snapshot.fetch(:env)
           )
         when "template"
           Template.new(
             controller_class: snapshot[:controller_class],
             template: snapshot.fetch(:template),
-            locals: Replay.value_hash_from_h(snapshot.fetch(:locals, {}))
+            locals: Replay.value_hash_from_h(snapshot.fetch(:locals))
           )
         when "fragment"
           Fragment.new(
             controller_class: snapshot[:controller_class],
             template: snapshot.fetch(:template),
-            locals: Replay.value_hash_from_h(snapshot.fetch(:locals, {}))
+            locals: Replay.value_hash_from_h(snapshot.fetch(:locals))
           )
         when "collection"
           Collection.new(
             controller_class: snapshot[:controller_class],
             partial: snapshot.fetch(:partial),
             collection: Value.from_h(snapshot.fetch(:collection)),
-            options: Replay.value_hash_from_h(snapshot.fetch(:options, {}))
+            options: Replay.value_hash_from_h(snapshot.fetch(:options))
           )
         when "collection_member"
           CollectionMember.new(
             controller_class: snapshot[:controller_class],
             partial: snapshot.fetch(:partial),
             record: Value.from_h(snapshot.fetch(:record)),
-            options: Replay.value_hash_from_h(snapshot.fetch(:options, {}))
+            options: Replay.value_hash_from_h(snapshot.fetch(:options))
           )
         else
           raise ArgumentError, "unknown replay payload type: #{snapshot.fetch(:type).inspect}"
@@ -74,14 +74,14 @@ module Upkeep
             model: snapshot.fetch(:model),
             sql: snapshot.fetch(:sql),
             primary_key: snapshot[:primary_key],
-            appendable: snapshot.fetch(:appendable, false),
-            predicates: snapshot.fetch(:predicates, []),
-            member_ids: snapshot.fetch(:member_ids, [])
+            appendable: snapshot.fetch(:appendable),
+            predicates: snapshot.fetch(:predicates),
+            member_ids: snapshot.fetch(:member_ids)
           )
         when "array"
-          ArrayValue.new(items: snapshot.fetch(:items, []).map { |item| from_h(item) })
+          ArrayValue.new(items: snapshot.fetch(:items).map { |item| from_h(item) })
         when "hash"
-          HashValue.new(entries: Replay.value_hash_from_h(snapshot.fetch(:entries, {})))
+          HashValue.new(entries: Replay.value_hash_from_h(snapshot.fetch(:entries)))
         when "literal"
           LiteralValue.new(value: snapshot[:value])
         when "unsupported"
@@ -370,7 +370,7 @@ module Upkeep
           target_kind: snapshot.fetch(:target_kind),
           target_id: snapshot.fetch(:target_id),
           template: snapshot[:template],
-          metadata: snapshot.fetch(:metadata, {}),
+          metadata: snapshot.fetch(:metadata),
           runtime: snapshot[:runtime],
           replay: snapshot.fetch(:replay, {})
         )

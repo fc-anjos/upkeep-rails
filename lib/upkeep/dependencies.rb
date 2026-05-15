@@ -196,7 +196,7 @@ module Upkeep
       end
 
       def predicates
-        metadata.fetch(:predicates, [])
+        metadata.fetch(:predicates)
       end
 
       def normalize_table_columns(value)
@@ -360,7 +360,7 @@ module Upkeep
       snapshot = symbolize_keys(snapshot)
       source = snapshot.fetch(:source)
       key = symbolize_keys(snapshot.fetch(:key))
-      metadata = symbolize_keys(snapshot.fetch(:metadata, {}))
+      metadata = symbolize_keys(snapshot.fetch(:metadata))
 
       case source.to_sym
       when :active_record_attribute
@@ -373,11 +373,11 @@ module Upkeep
       when :active_record_collection, :active_record_query
         dependency_class = source.to_sym == :active_record_query ? ActiveRecordQuery : ActiveRecordCollection
         dependency_class.new(
-          primary_table: metadata.fetch(:primary_table, key.fetch(:table)),
+          primary_table: metadata.fetch(:primary_table),
           table_columns: metadata.fetch(:table_columns),
           coverage: metadata.fetch(:coverage),
           sql: metadata.fetch(:sql),
-          predicates: metadata.fetch(:predicates, [])
+          predicates: metadata.fetch(:predicates)
         )
       else
         if snapshot.fetch(:visibility).to_sym == :identity_bound

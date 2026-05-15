@@ -10,7 +10,7 @@ module Upkeep
           subscription = Upkeep::Rails.subscriptions.fetch(subscription_id)
           return reject unless authorized_subscription?(subscription)
 
-          Upkeep::Rails.subscriptions.activate(subscription_id) if Upkeep::Rails.subscriptions.respond_to?(:activate)
+          Upkeep::Rails.subscriptions.activate(subscription_id)
           stream_from stream_name_for(subscription)
           shared_stream_names_for(subscription).each { |stream_name| stream_from stream_name }
         rescue KeyError, ActiveRecord::RecordNotFound, UnidentifiedSubscriber
@@ -18,7 +18,7 @@ module Upkeep
         end
 
         def unsubscribed
-          Upkeep::Rails.subscriptions.unregister(subscription_id) if Upkeep::Rails.subscriptions.respond_to?(:unregister)
+          Upkeep::Rails.subscriptions.unregister(subscription_id)
         rescue KeyError, ActiveRecord::RecordNotFound
           nil
         end

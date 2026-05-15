@@ -17,11 +17,7 @@ module Upkeep
       end
 
       def deliver(envelope)
-        stream_name = if envelope.respond_to?(:stream_name) && envelope.stream_name
-          envelope.stream_name
-        else
-          self.class.stream_name_for(envelope.subscriber_id)
-        end
+        stream_name = envelope.stream_name || self.class.stream_name_for(envelope.subscriber_id)
         payload = {
           subscriber_id: envelope.subscriber_id,
           stream_name: stream_name,
