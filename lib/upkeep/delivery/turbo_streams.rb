@@ -144,13 +144,13 @@ module Upkeep
         planned_targets.group_by { |planned_target| render_group_key(planned_target) }.map do |_key, targets|
           stream_for(
             targets.first,
-            subscriber_ids: targets.map(&:subscriber_id),
+            subscriber_ids: targets.flat_map(&:subscriber_ids),
             matched_dependency_keys: targets.flat_map(&:matched_dependency_keys)
           )
         end
       end
 
-      def stream_for(planned_target, subscriber_ids: [planned_target.subscriber_id], matched_dependency_keys: planned_target.matched_dependency_keys)
+      def stream_for(planned_target, subscriber_ids: planned_target.subscriber_ids, matched_dependency_keys: planned_target.matched_dependency_keys)
         html, render_duration_ms = render_target(planned_target)
 
         Stream.new(
