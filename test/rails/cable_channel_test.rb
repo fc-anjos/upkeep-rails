@@ -36,6 +36,21 @@ class CableChannelTest < ActionCable::Channel::TestCase
       Upkeep::Rails.subscriptions.fetch(subscription_record.id).metadata.fetch("last_seen_at")
   end
 
+  def test_subscribe_activates_subscription_store
+    subscription_record = registered_subscription(stream_name: "upkeep:test:user-1")
+    activated_ids = []
+    Upkeep::Rails.subscriptions.define_singleton_method(:activate) do |subscription_id|
+      activated_ids << subscription_id
+      true
+    end
+    stub_connection(current_user: "user-1")
+
+    subscribe subscription_id: subscription_record.id
+
+    assert subscription.confirmed?
+    assert_equal [subscription_record.id], activated_ids
+  end
+
   def test_subscribes_to_public_shared_streams_derived_from_the_server_subscription
     subscription_record = registered_subscription_with_public_frame(stream_name: "upkeep:test:user-1")
     shared_stream_name = Upkeep::SharedStreams.names_for_subscription(subscription_record).first

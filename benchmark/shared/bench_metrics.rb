@@ -538,7 +538,8 @@ module BenchMetrics
           subscription_id: event.payload[:subscription_id],
           dependency_entries: event.payload[:dependency_entries],
           mode: event.payload[:mode],
-          durability: event.payload[:durability]
+          durability: event.payload[:durability],
+          index_durability: event.payload[:index_durability]
         }
       )
     end
@@ -549,8 +550,13 @@ module BenchMetrics
         duration_ms: event.duration,
         extra: {
           store: event.payload[:store],
+          jobs: event.payload[:jobs],
           subscriptions: event.payload[:subscriptions],
+          index_jobs: event.payload[:index_jobs],
           dependency_entries: event.payload[:dependency_entries],
+          pending_index_entries: event.payload[:pending_index_entries],
+          subscription_rows: event.payload[:subscription_rows],
+          operations: event.payload[:operations],
           index_rows: event.payload[:index_rows]
         }
       )

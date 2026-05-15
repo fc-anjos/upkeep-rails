@@ -5,7 +5,7 @@ module Upkeep
     class AsyncDurableWriter
       DEFAULT_BATCH_SIZE = 100
       DEFAULT_FLUSH_INTERVAL = 1.0
-      Job = Data.define(:subscription, :entries)
+      Job = Data.define(:subscription, :entries, :operation)
 
       def initialize(batch_size: DEFAULT_BATCH_SIZE, flush_interval: DEFAULT_FLUSH_INTERVAL, &persist_batch)
         @batch_size = batch_size
@@ -24,11 +24,11 @@ module Upkeep
         @worker.name = "upkeep-durable-writer" if @worker.respond_to?(:name=)
       end
 
-      def enqueue(subscription, entries:)
+      def enqueue(subscription, entries:, operation: :persist)
         @mutex.synchronize do
           raise IOError, "Upkeep durable writer is closed" if @closed
 
-          @queue << Job.new(subscription, entries)
+          @queue << Job.new(subscription, entries, operation)
           @pending += 1
           @available.signal
         end

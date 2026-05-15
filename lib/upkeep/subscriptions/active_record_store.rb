@@ -18,6 +18,8 @@ module Upkeep
       LOOKUP_NOTIFICATION = LayeredReverseIndex::LOOKUP_NOTIFICATION
       REGISTER_NOTIFICATION = "register_subscription_store.upkeep"
       PERSIST_NOTIFICATION = ActiveRecordSubscriptionPersistence::PERSIST_NOTIFICATION
+      DURABILITY_MODE = "async_subscription_row_index_on_subscribe"
+      INDEX_DURABILITY = "on_subscribe"
 
       class SubscriptionRecord < ActiveRecord::Base
         self.table_name = "upkeep_subscriptions"
@@ -39,11 +41,15 @@ module Upkeep
 
       attr_reader :reverse_index
 
+      DeferredIndexWrite = Data.define(:subscription, :entries)
+
       def initialize(subscription_record: SubscriptionRecord, index_record: IndexEntryRecord)
         @subscription_record = subscription_record
         @index_record = index_record
         @index_builder = ReverseIndex.new
         @active_registry = ActiveRegistry.new
+        @deferred_index_writes = {}
+        @deferred_index_mutex = Mutex.new
         @persistence = ActiveRecordSubscriptionPersistence.new(
           subscription_record: subscription_record,
           index_record: index_record,
@@ -85,11 +91,24 @@ module Upkeep
 
       def drain = durable_writer.drain
 
-      def shutdown = durable_writer.shutdown
+      def shutdown
+        clear_deferred_index_writes
+        durable_writer.shutdown
+      end
+
+      def activate(id)
+        subscription, entries = activation_index_write(id)
+        return false unless subscription
+        return true unless entries
+
+        durable_writer.enqueue(subscription, entries: entries, operation: :persist_index)
+        true
+      end
 
       def touch(id, now: Time.now)
         metadata = { "last_seen_at" => now.utc.iso8601 }
         active_registry.touch(id, metadata: metadata)
+        activate(id)
         durable_writer.drain
         persistence.touch(id, metadata: metadata, now: now)
       end
@@ -97,6 +116,7 @@ module Upkeep
       def unregister(ids)
         ids = Array(ids)
         active_registry.unregister(ids)
+        delete_deferred_index_writes(ids)
         persisted_ids = durable_writer.cancel(ids)
         persistence.delete(persisted_ids)
         ids.size
@@ -122,6 +142,7 @@ module Upkeep
       end
 
       def reset
+        clear_deferred_index_writes
         durable_writer.drain
         active_registry.reset
         persistence.reset
@@ -134,6 +155,7 @@ module Upkeep
           subscriptions: [persistent_count, active_count].max,
           persistent_subscriptions: persistent_count,
           active_subscriptions: active_count,
+          deferred_index_subscriptions: deferred_index_count,
           reverse_index: reverse_index.summary
         }
       end
@@ -156,12 +178,49 @@ module Upkeep
           payload[:subscription_id] = subscription.id
           payload[:dependency_entries] = entries.size
           payload[:mode] = "live_first"
-          payload[:durability] = "async"
+          payload[:durability] = DURABILITY_MODE
+          payload[:index_durability] = INDEX_DURABILITY
         end
 
         active_registry.register(subscription, entries: entries)
-        durable_writer.enqueue(subscription, entries: entries)
+        durable_writer.enqueue(subscription, entries: entries, operation: :persist_subscription)
+        defer_index_write(subscription, entries)
         subscription
+      end
+
+      def defer_index_write(subscription, entries)
+        @deferred_index_mutex.synchronize do
+          @deferred_index_writes[subscription.id] = DeferredIndexWrite.new(subscription, entries)
+        end
+      end
+
+      def activation_index_write(id)
+        deferred_write = take_deferred_index_write(id)
+        return [active_registry.fetch(id) || deferred_write.subscription, deferred_write.entries] if deferred_write
+
+        if (subscription = active_registry.fetch(id))
+          [subscription, unique_entries(index_builder.entries_for_subscription(subscription))]
+        else
+          persistence.fetch_with_index_entries(id)
+        end
+      rescue ActiveRecord::RecordNotFound
+        [nil, nil]
+      end
+
+      def take_deferred_index_write(id)
+        @deferred_index_mutex.synchronize { @deferred_index_writes.delete(id) }
+      end
+
+      def delete_deferred_index_writes(ids)
+        @deferred_index_mutex.synchronize { ids.each { |id| @deferred_index_writes.delete(id) } }
+      end
+
+      def clear_deferred_index_writes
+        @deferred_index_mutex.synchronize { @deferred_index_writes.clear }
+      end
+
+      def deferred_index_count
+        @deferred_index_mutex.synchronize { @deferred_index_writes.size }
       end
 
       def unique_entries(entries)
