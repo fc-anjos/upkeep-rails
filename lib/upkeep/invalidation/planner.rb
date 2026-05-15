@@ -8,6 +8,7 @@ module Upkeep
       PlannedTarget = Data.define(
         :subscription_id,
         :subscriber_id,
+        :subscriber_ids,
         :target,
         :frame_id,
         :identity_signature,
@@ -17,6 +18,10 @@ module Upkeep
         :action,
         :deoptimization_reason
       ) do
+        def represented_subscriber_count
+          subscriber_ids.size
+        end
+
         def render
           recipe.render_target(target)
         end
@@ -30,6 +35,7 @@ module Upkeep
         def summary
           {
             targets: targets.size,
+            represented_subscribers: targets.sum(&:represented_subscriber_count),
             candidate_entries: candidate_entries.size,
             matched_entries: matched_entries.size,
             target_kinds: targets.map { |target| target.target.kind }.uniq.sort,
@@ -47,6 +53,7 @@ module Upkeep
         changes = Array(changes)
         payload = { change_count: changes.size }
         ActiveSupport::Notifications.instrument("plan.upkeep", payload) do
+          @delivery_strategy_cache = {}
           candidate_entries = store.reverse_index.entries_for(changes)
           matched_entries = candidate_entries.select { |entry| changes.any? { |change| entry.dependency.matches_change?(change) } }
 
@@ -58,6 +65,8 @@ module Upkeep
           payload.merge!(payload_for(plan))
           plan
         end
+      ensure
+        @delivery_strategy_cache = nil
       end
 
       private
@@ -69,6 +78,7 @@ module Upkeep
           candidate_entries: plan.candidate_entries.size,
           matched_entries: plan.matched_entries.size,
           targets: plan.targets.size,
+          represented_subscribers: plan.targets.sum(&:represented_subscriber_count),
           target_kinds: plan.targets.map { |target| target.target.kind }.uniq.sort,
           manifest_replay_targets: plan.targets.count(&:manifest_replay?),
           actions: plan.targets.map(&:action).tally,
@@ -124,12 +134,13 @@ module Upkeep
 
         identity_signature = subscription.identity_signature(frame_id)
         sharing_signature = SharedStreams.signature_for(recipe) if identity_signature == "public" && frame.payload.fetch(:kind) == "render_site"
-        action, recipe, delivery_target, deoptimization_reason = delivery_strategy(frame, recipe, entries, changes)
+        action, recipe, delivery_target, deoptimization_reason = cached_delivery_strategy(frame, recipe, entries, changes, sharing_signature: sharing_signature)
         target = delivery_target || target
 
         PlannedTarget.new(
           subscription.id,
           subscription.subscriber_id,
+          [subscription.subscriber_id],
           target,
           frame_id,
           identity_signature,
@@ -139,6 +150,27 @@ module Upkeep
           action,
           deoptimization_reason
         )
+      end
+
+      def cached_delivery_strategy(frame, recipe, entries, changes, sharing_signature:)
+        key = delivery_strategy_cache_key(frame, recipe, entries, changes, sharing_signature)
+        return delivery_strategy(frame, recipe, entries, changes) unless key
+
+        @delivery_strategy_cache.fetch(key) do
+          @delivery_strategy_cache[key] = delivery_strategy(frame, recipe, entries, changes)
+        end
+      end
+
+      def delivery_strategy_cache_key(frame, recipe, entries, changes, sharing_signature)
+        return unless sharing_signature
+
+        [
+          frame.payload.fetch(:kind),
+          frame.payload.fetch(:site_id),
+          sharing_signature,
+          entries.map { |entry| entry.dependency_cache_key.inspect }.uniq.sort,
+          changes.map { |change| change.slice(:type, :table, :id, :changed_attributes).inspect }.sort
+        ]
       end
 
       def target_for_frame(frame)
@@ -248,17 +280,23 @@ module Upkeep
 
       def deduplicate_targets(targets)
         targets.each_with_object({}) do |target, indexed_targets|
-          key = [
-            target.subscriber_id,
-            target.target.kind,
-            target.target.id,
-            target.identity_signature,
-            target.sharing_signature,
-            target.action,
-            target.deoptimization_reason
-          ]
+          key = deduplication_key(target)
           indexed_targets[key] = merge_target(indexed_targets[key], target)
         end.values
+      end
+
+      def deduplication_key(target)
+        subscriber_key = target.sharing_signature ? "shared" : target.subscriber_id
+
+        [
+          subscriber_key,
+          target.target.kind,
+          target.target.id,
+          target.identity_signature,
+          target.sharing_signature,
+          target.action,
+          target.deoptimization_reason
+        ]
       end
 
       def merge_target(existing, target)
@@ -267,6 +305,7 @@ module Upkeep
         PlannedTarget.new(
           existing.subscription_id,
           existing.subscriber_id,
+          (existing.subscriber_ids + target.subscriber_ids).uniq.sort_by(&:to_s),
           existing.target,
           existing.frame_id,
           existing.identity_signature,

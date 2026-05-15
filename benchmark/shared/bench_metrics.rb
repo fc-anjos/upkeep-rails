@@ -217,6 +217,7 @@ module BenchMetrics
   @last_rss_kb = Concurrent::AtomicFixnum.new(0)
   @plan_count = Concurrent::AtomicFixnum.new(0)
   @planned_target_count = Concurrent::AtomicFixnum.new(0)
+  @represented_subscriber_count = Concurrent::AtomicFixnum.new(0)
   @turbo_stream_batch_count = Concurrent::AtomicFixnum.new(0)
   @turbo_stream_group_count = Concurrent::AtomicFixnum.new(0)
   @turbo_stream_render_count = Concurrent::AtomicFixnum.new(0)
@@ -296,6 +297,7 @@ module BenchMetrics
     @transmit_count = Concurrent::AtomicFixnum.new(0)
     @plan_count = Concurrent::AtomicFixnum.new(0)
     @planned_target_count = Concurrent::AtomicFixnum.new(0)
+    @represented_subscriber_count = Concurrent::AtomicFixnum.new(0)
     @turbo_stream_batch_count = Concurrent::AtomicFixnum.new(0)
     @turbo_stream_group_count = Concurrent::AtomicFixnum.new(0)
     @turbo_stream_render_count = Concurrent::AtomicFixnum.new(0)
@@ -604,6 +606,7 @@ module BenchMetrics
     ActiveSupport::Notifications.subscribe(UPKEEP_PLAN) do |event|
       @plan_count.increment
       @planned_target_count.increment(event.payload[:targets].to_i)
+      @represented_subscriber_count.increment(event.payload[:represented_subscribers].to_i)
       increment_reactivity_tally(:live_deoptimizations_by_reason, event.payload[:deoptimizations])
       emit(
         event: "upkeep_plan",
@@ -613,6 +616,7 @@ module BenchMetrics
           candidate_entries: event.payload[:candidate_entries],
           matched_entries: event.payload[:matched_entries],
           targets: event.payload[:targets],
+          represented_subscribers: event.payload[:represented_subscribers],
           target_kinds: event.payload[:target_kinds],
           actions: event.payload[:actions],
           deoptimizations: event.payload[:deoptimizations]
@@ -920,6 +924,7 @@ module BenchMetrics
     {
       plans: @plan_count.value,
       planned_targets: @planned_target_count.value,
+      represented_subscribers: @represented_subscriber_count.value,
       stream_batches: @turbo_stream_batch_count.value,
       render_groups: @turbo_stream_group_count.value,
       render_count: @turbo_stream_render_count.value,

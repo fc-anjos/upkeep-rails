@@ -122,6 +122,7 @@ report = {
       "shared_stream_names" => upkeep_graph["shared_stream_names"],
       "relay_metrics_available" => relay_metrics_available,
       "planned_targets" => upkeep_delivery["planned_targets"],
+      "represented_subscribers" => upkeep_delivery["represented_subscribers"],
       "runtime_render_groups" => upkeep_delivery["render_groups"],
       "runtime_render_count" => upkeep_delivery["render_count"],
       "live_deoptimizations" => upkeep_live_deoptimizations
@@ -184,6 +185,7 @@ File.write(md_path, <<~MARKDOWN)
   | Runtime render groups | #{fmt(upkeep.dig("reactivity", "runtime_render_groups"))} |
   | Runtime render count | #{fmt(upkeep.dig("reactivity", "runtime_render_count"))} |
   | Planned targets | #{fmt(upkeep.dig("reactivity", "planned_targets"))} |
+  | Represented subscribers | #{fmt(upkeep.dig("reactivity", "represented_subscribers"))} |
   | Live delivery deopts | `#{upkeep.dig("reactivity", "live_deoptimizations") || {}}` |
   | Render groups by tier | `#{upkeep["render_groups_by_tier"]}` |
   | Render groups by mode | `#{upkeep["render_groups_by_mode"]}` |

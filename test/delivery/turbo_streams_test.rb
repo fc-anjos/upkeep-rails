@@ -120,6 +120,7 @@ class TurboStreamsDeliveryTest < Minitest::Test
 
     batch = delivery.build(plan_for(store))
 
+    assert_equal ["subscriber-a", "subscriber-b"], batch.streams.first.subscriber_ids.sort
     assert_equal 1, batch.envelopes.size
     assert_match(/\Ashared:upkeep:shared:/, batch.envelopes.first.subscriber_id)
     assert_match(/\Aupkeep:shared:/, batch.envelopes.first.stream_name)
