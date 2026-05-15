@@ -131,7 +131,7 @@ module Upkeep
             table_columns: metadata.fetch(:table_columns),
             coverage: metadata.fetch(:coverage),
             sql: metadata.fetch(:sql),
-            predicates: metadata.fetch(:predicates, [])
+            predicates: metadata.fetch(:predicates)
           )
         else
           raise ArgumentError, "unsupported persistent dependency source: #{source.inspect}"

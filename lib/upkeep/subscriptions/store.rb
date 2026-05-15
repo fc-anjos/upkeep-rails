@@ -41,7 +41,7 @@ module Upkeep
           snapshot.fetch(:subscriber_id),
           recorder,
           recorder.graph,
-          snapshot.fetch(:metadata, {})
+          snapshot.fetch(:metadata)
         )
       end
     end
@@ -98,6 +98,19 @@ module Upkeep
           reverse_index.delete_subscription(id)
         end
         ids.size
+      end
+
+      def activate(id)
+        @subscriptions.fetch(id)
+        true
+      end
+
+      def drain
+        true
+      end
+
+      def shutdown
+        true
       end
 
       def fetch(id)

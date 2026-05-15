@@ -3,7 +3,7 @@
 require "test_helper"
 
 class ActionCableAdapterTest < Minitest::Test
-  Envelope = Data.define(:subscriber_id, :body)
+  Envelope = Data.define(:subscriber_id, :body, :stream_name)
   Batch = Data.define(:envelopes)
 
   class RecordingCableServer
@@ -101,10 +101,10 @@ class ActionCableAdapterTest < Minitest::Test
   private
 
   def envelope(subscriber_id, body)
-    Envelope.new(subscriber_id, body)
+    Envelope.new(subscriber_id, body, nil)
   end
 
   def shared_envelope(stream_name, body)
-    Struct.new(:subscriber_id, :body, :stream_name).new("shared:#{stream_name}", body, stream_name)
+    Envelope.new("shared:#{stream_name}", body, stream_name)
   end
 end

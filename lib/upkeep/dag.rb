@@ -194,7 +194,7 @@ module Upkeep
           graph.nodes[node_snapshot.fetch(:id)] = Node.new(
             node_snapshot.fetch(:id),
             kind,
-            deserialize_payload(kind, node_snapshot.fetch(:payload, {}))
+            deserialize_payload(kind, node_snapshot.fetch(:payload))
           )
         end
 
