@@ -26,6 +26,8 @@ module Upkeep
             run_matrix_cold_connect_churn_chat_workload
           when "render_dedup/featured_item_compare"
             run_render_dedup_featured_item_compare_workload
+          when "render_dedup/identity_free_feed_compare"
+            run_render_dedup_identity_free_feed_compare_workload
           when "memory_ceiling/shared_feed_churn"
             run_memory_ceiling_shared_feed_churn_workload
           else
@@ -84,6 +86,17 @@ module Upkeep
 
               run_k6!("render_dedup/mixed_region_feed_ivar_turbo.js", turbo_url, turbo_ws_url, "Render dedup featured item compare - Turbo")
               poll_turbo("after-render-dedup-featured-item-compare-turbo")
+            end
+          end
+
+          def run_render_dedup_identity_free_feed_compare_workload
+            with_bench_vus(workload.vus) do
+              run_k6!("render_dedup/identity_free_feed_upkeep.js", upkeep_url, relay_ws_url, "Render dedup identity-free feed compare - Upkeep")
+              poll_upkeep("after-render-dedup-identity-free-feed-compare-upkeep")
+              return if config.upkeep_only?
+
+              run_k6!("render_dedup/identity_free_feed_turbo.js", turbo_url, turbo_ws_url, "Render dedup identity-free feed compare - Turbo")
+              poll_turbo("after-render-dedup-identity-free-feed-compare-turbo")
             end
           end
 

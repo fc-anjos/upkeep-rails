@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "active_support/notifications"
 require_relative "rails/configuration"
 require_relative "rails/replay"
 require_relative "rails/action_view_capture"
@@ -12,6 +13,8 @@ require_relative "rails/railtie" if defined?(::Rails::Railtie)
 
 module Upkeep
   module Rails
+    SUBSCRIPTION_IDENTITY = "upkeep.subscription_identity"
+
     class << self
       def configuration
         @configuration ||= Configuration.new
@@ -42,18 +45,33 @@ module Upkeep
       def register_controller_subscription(controller, recorder)
         html = response_body_html(controller.response.body)
         return unless subscription_response?(controller, recorder, html)
-        return unless recorder.reactive?
 
-        identity = Cable::SubscriberIdentity.derive_from_request(controller.request, recorder: recorder)
+        decision = Cable::SubscriberIdentity.decision_for(controller.request, recorder: recorder)
+        unless recorder.reactive?
+          instrument_subscription_identity(
+            decision,
+            registered: false,
+            deopt_reason: "refused_boundary",
+            refused_boundaries: recorder.refused_boundaries.map(&:reason)
+          )
+          return
+        end
+
+        identity = Cable::SubscriberIdentity.derive_from_request(
+          controller.request,
+          recorder: recorder,
+          decision: decision
+        )
         subscription = subscriptions.register(
           subscriber_id: identity.subscriber_id,
           recorder: recorder,
-          metadata: {
+          metadata: identity_metadata(decision).merge(
             path: controller.request.fullpath,
             stream_name: identity.stream_name,
             shared_stream_names: SharedStreams.names_for_recorder(recorder)
-          }
+          )
         )
+        instrument_subscription_identity(decision, registered: true, subscription: subscription)
 
         controller.response.body = ClientSubscription.inject(
           html,
@@ -62,7 +80,13 @@ module Upkeep
         )
 
         subscription
-      rescue Cable::UnidentifiedSubscriber
+      rescue Cable::UnidentifiedSubscriber => error
+        instrument_subscription_identity(
+          decision || Cable::SubscriberIdentity.decision_for(controller.request, recorder: recorder),
+          registered: false,
+          deopt_reason: "unidentified_identity",
+          error: error.message
+        )
         nil
       end
 
@@ -110,6 +134,30 @@ module Upkeep
       def discard_subscription_store!
         @subscriptions.shutdown if @subscriptions.respond_to?(:shutdown)
         @subscriptions = nil
+      end
+
+      def identity_metadata(decision)
+        {
+          identity_mode: decision.mode,
+          anonymous: decision.anonymous,
+          anonymous_deopt_reason: decision.deopt_reason,
+          identity_sources: decision.identity_sources
+        }.compact
+      end
+
+      def instrument_subscription_identity(decision, registered:, subscription: nil, deopt_reason: nil, **extra)
+        ActiveSupport::Notifications.instrument(
+          SUBSCRIPTION_IDENTITY,
+          {
+            registered: registered,
+            subscription_id: subscription&.id,
+            subscriber_id: subscription&.subscriber_id,
+            identity_mode: decision&.mode,
+            anonymous: decision&.anonymous,
+            anonymous_deopt_reason: deopt_reason || decision&.deopt_reason,
+            identity_sources: decision&.identity_sources
+          }.merge(extra)
+        )
       end
 
       def subscription_response?(controller, recorder, html)

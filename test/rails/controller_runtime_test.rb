@@ -42,6 +42,12 @@ class RuntimeDeliveryCardsController < ActionController::Base
     @cards = RuntimeDeliveryCard.order(:id)
     render template: "runtime_delivery_cards/anonymous"
   end
+
+  def request_variant
+    @cards = RuntimeDeliveryCard.order(:id)
+    @user_agent = request.user_agent
+    render template: "runtime_delivery_cards/request_variant"
+  end
 end
 
 class ControllerRuntimeTest < Minitest::Test
@@ -92,11 +98,19 @@ class ControllerRuntimeTest < Minitest::Test
     RuntimeDeliveryCard.create!(title: "Plan")
     RuntimeDeliveryCurrent.user = user
 
-    _status, _headers, body = RuntimeDeliveryCardsController.action(:index).call(env_for("/cards"))
-    html = collect_body(body)
+    events = capture_notifications(Upkeep::Rails::SUBSCRIPTION_IDENTITY) do
+      _status, _headers, body = RuntimeDeliveryCardsController.action(:index).call(env_for("/cards"))
+      @html = collect_body(body)
+    end
+    html = @html
     subscription = Upkeep::Rails.subscriptions.subscriptions.first
 
     assert subscription
+    assert_equal Upkeep::Rails::Cable::SubscriberIdentity::IDENTIFIED_MODE, subscription.metadata.fetch(:identity_mode)
+    assert_equal "identity_dependencies_present", subscription.metadata.fetch(:anonymous_deopt_reason)
+    assert_includes subscription.metadata.fetch(:identity_sources), "current_attribute"
+    assert_equal Upkeep::Rails::Cable::SubscriberIdentity::IDENTIFIED_MODE, events.last.payload.fetch(:identity_mode)
+    assert_equal "identity_dependencies_present", events.last.payload.fetch(:anonymous_deopt_reason)
     assert_equal subscription.subscriber_id, Upkeep::Rails::Cable::SubscriberIdentity.for_identifiers(current_user: user).subscriber_id
     assert_includes html, "data-upkeep-subscription"
     assert_includes html, subscription.id
@@ -106,14 +120,50 @@ class ControllerRuntimeTest < Minitest::Test
   def test_anonymous_get_registers_subscription_and_injects_client_marker
     RuntimeDeliveryCard.create!(title: "Plan")
 
-    _status, _headers, body = RuntimeDeliveryCardsController.action(:anonymous).call(env_for("/cards"))
-    html = collect_body(body)
+    events = capture_notifications(Upkeep::Rails::SUBSCRIPTION_IDENTITY) do
+      _status, _headers, body = RuntimeDeliveryCardsController.action(:anonymous).call(env_for("/cards"))
+      @html = collect_body(body)
+    end
+    html = @html
     subscription = Upkeep::Rails.subscriptions.subscriptions.first
 
     assert subscription
+    assert_equal Upkeep::Rails::Cable::SubscriberIdentity::ANONYMOUS_PUBLIC_MODE, subscription.metadata.fetch(:identity_mode)
+    assert_equal true, subscription.metadata.fetch(:anonymous)
+    assert_nil subscription.metadata[:anonymous_deopt_reason]
+    assert_equal Upkeep::Rails::Cable::SubscriberIdentity::ANONYMOUS_PUBLIC_MODE, events.last.payload.fetch(:identity_mode)
+    assert_equal true, events.last.payload.fetch(:anonymous)
     assert_includes html, "data-upkeep-subscription"
     assert_includes html, subscription.id
     assert_includes html, subscription.metadata.fetch(:stream_name)
+  end
+
+  def test_identity_free_get_stays_anonymous_even_when_session_exists
+    RuntimeDeliveryCard.create!(title: "Plan")
+    env = env_for("/cards")
+    env["rack.session"] = { "session_id" => "existing-session" }
+
+    _status, _headers, body = RuntimeDeliveryCardsController.action(:anonymous).call(env)
+    collect_body(body)
+    subscription = Upkeep::Rails.subscriptions.subscriptions.first
+
+    assert subscription
+    assert_equal Upkeep::Rails::Cable::SubscriberIdentity::ANONYMOUS_PUBLIC_MODE, subscription.metadata.fetch(:identity_mode)
+    refute_includes subscription.subscriber_id, "existing-session"
+  end
+
+  def test_request_replay_inputs_do_not_force_connection_identity
+    RuntimeDeliveryCard.create!(title: "Plan")
+
+    _status, _headers, body = RuntimeDeliveryCardsController.action(:request_variant).call(
+      env_for("/cards/request", params: {}, method: "GET").merge("HTTP_USER_AGENT" => "UpkeepBench")
+    )
+    collect_body(body)
+    subscription = Upkeep::Rails.subscriptions.subscriptions.first
+
+    assert subscription
+    assert_equal Upkeep::Rails::Cable::SubscriberIdentity::ANONYMOUS_PUBLIC_MODE, subscription.metadata.fetch(:identity_mode)
+    assert_includes subscription.recorder.graph.summary.fetch(:dependency_sources), "request"
   end
 
   def test_warn_policy_refuses_subscription_registration_for_opaque_collection
@@ -209,6 +259,15 @@ class ControllerRuntimeTest < Minitest::Test
     body.close if body.respond_to?(:close)
   end
 
+  def capture_notifications(name)
+    events = []
+    subscriber = ActiveSupport::Notifications.subscribe(name) { |event| events << event }
+    yield
+    events
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
+  end
+
   def resolver
     ActionView::FixtureResolver.new(
       "runtime_delivery_cards/index.html.erb" => <<~ERB,
@@ -221,6 +280,14 @@ class ControllerRuntimeTest < Minitest::Test
       ERB
       "runtime_delivery_cards/anonymous.html.erb" => <<~ERB,
         <main>
+          <ul>
+            <%= render partial: "runtime_delivery_cards/card", collection: @cards, as: :card %>
+          </ul>
+        </main>
+      ERB
+      "runtime_delivery_cards/request_variant.html.erb" => <<~ERB,
+        <main>
+          <p><%= @user_agent %></p>
           <ul>
             <%= render partial: "runtime_delivery_cards/card", collection: @cards, as: :card %>
           </ul>

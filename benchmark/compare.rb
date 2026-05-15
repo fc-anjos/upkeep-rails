@@ -195,6 +195,66 @@ def event_stats(events, event_name, filters = {})
   summarize(durations)
 end
 
+def event_field_stats(events, event_name, field_name, filters = {})
+  values = events.filter_map do |event|
+    next unless event["event"] == event_name
+    next unless filters.all? { |key, value| event[key.to_s] == value }
+
+    event[field_name]
+  end
+
+  summarize(values)
+end
+
+def event_interval_ms(event)
+  if event["started_wall_time_ms"] && event["finished_wall_time_ms"]
+    [ event["started_wall_time_ms"], event["finished_wall_time_ms"] ]
+  elsif event["timestamp"] && event["duration_ms"]
+    finish = event["timestamp"] * 1000.0
+    [ finish - event["duration_ms"], finish ]
+  end
+end
+
+def intervals_overlap?(left, right)
+  return false unless left && right
+
+  left.first <= right.last && right.first <= left.last
+end
+
+def overlap_stats(events, event_name, overlap_event_name)
+  overlap_intervals = events.filter_map do |event|
+    next unless event["event"] == overlap_event_name
+
+    event_interval_ms(event)
+  end
+
+  event_count = 0
+  overlap_count = 0
+  overlap_durations = []
+  non_overlap_durations = []
+
+  events.each do |event|
+    next unless event["event"] == event_name
+
+    event_count += 1
+    interval = event_interval_ms(event)
+    duration = event["duration_ms"]
+    if overlap_intervals.any? { |candidate| intervals_overlap?(interval, candidate) }
+      overlap_count += 1
+      overlap_durations << duration if duration
+    else
+      non_overlap_durations << duration if duration
+    end
+  end
+
+  {
+    "events" => event_count,
+    "overlaps" => overlap_count,
+    "overlap_p95" => summarize(overlap_durations)["p95"],
+    "non_overlap_p95" => summarize(non_overlap_durations)["p95"]
+  }
+end
+
 def dominant_phase(phases)
   phases.compact.max_by { |_name, value| value }
 end
@@ -287,6 +347,65 @@ cold_client_phases = {
   }
 }
 
+cold_residuals = {
+  "upkeep" => {
+    "Login HTTP minus `sessions#create`" =>
+      cold_client_phases["upkeep"]["login_http"] && cold_server_phases["upkeep"]["sessions#create"] ?
+        (cold_client_phases["upkeep"]["login_http"] - cold_server_phases["upkeep"]["sessions#create"]).round(2) : nil,
+    "Page request minus `rooms#show`" =>
+      cold_client_phases["upkeep"]["page_request"] && cold_server_phases["upkeep"]["rooms#show"] ?
+        (cold_client_phases["upkeep"]["page_request"] - cold_server_phases["upkeep"]["rooms#show"]).round(2) : nil,
+    "WebSocket connect minus cable open" =>
+      cold_client_phases["upkeep"]["ws_connecting"] && cold_server_phases["upkeep"]["cable open"] ?
+        (cold_client_phases["upkeep"]["ws_connecting"] - cold_server_phases["upkeep"]["cable open"]).round(2) : nil
+  },
+  "turbo" => {
+    "Login HTTP minus `sessions#create`" =>
+      cold_client_phases["turbo"]["login_http"] && cold_server_phases["turbo"]["sessions#create"] ?
+        (cold_client_phases["turbo"]["login_http"] - cold_server_phases["turbo"]["sessions#create"]).round(2) : nil,
+    "Page request minus `rooms#show`" =>
+      cold_client_phases["turbo"]["page_request"] && cold_server_phases["turbo"]["rooms#show"] ?
+        (cold_client_phases["turbo"]["page_request"] - cold_server_phases["turbo"]["rooms#show"]).round(2) : nil,
+    "WebSocket connect minus cable open" =>
+      cold_client_phases["turbo"]["ws_connecting"] && cold_server_phases["turbo"]["cable open"] ?
+        (cold_client_phases["turbo"]["ws_connecting"] - cold_server_phases["turbo"]["cable open"]).round(2) : nil
+  }
+}
+
+cold_admission_delays = {
+  "upkeep" => {
+    "Login HTTP to `sessions#create` start" =>
+      event_field_stats(cold_phase_windows["upkeep"], "bench_request", "client_to_server_start_ms", phase: "sessions#create")["p95"],
+    "Page request to `rooms#show` start" =>
+      event_field_stats(cold_phase_windows["upkeep"], "bench_request", "client_to_server_start_ms", phase: "rooms#show")["p95"],
+    "WebSocket connect to cable request start" =>
+      event_field_stats(cold_phase_windows["upkeep"], "bench_cable_request", "client_to_server_start_ms")["p95"],
+    "WebSocket connect to cable open start" =>
+      event_field_stats(cold_phase_windows["upkeep"], "bench_cable_open", "client_to_server_start_ms")["p95"],
+    "Subscribe send to registration start" =>
+      event_field_stats(cold_phase_windows["upkeep"], "bench_subscription_registration", "client_to_server_start_ms")["p95"]
+  },
+  "turbo" => {
+    "Login HTTP to `sessions#create` start" =>
+      event_field_stats(cold_phase_windows["turbo"], "bench_request", "client_to_server_start_ms", phase: "sessions#create")["p95"],
+    "Page request to `rooms#show` start" =>
+      event_field_stats(cold_phase_windows["turbo"], "bench_request", "client_to_server_start_ms", phase: "rooms#show")["p95"],
+    "WebSocket connect to cable request start" =>
+      event_field_stats(cold_phase_windows["turbo"], "bench_cable_request", "client_to_server_start_ms")["p95"],
+    "WebSocket connect to cable open start" =>
+      event_field_stats(cold_phase_windows["turbo"], "bench_cable_open", "client_to_server_start_ms")["p95"],
+    "Subscribe send to registration start" =>
+      event_field_stats(cold_phase_windows["turbo"], "bench_subscription_registration", "client_to_server_start_ms")["p95"]
+  }
+}
+
+upkeep_persistence_overlap = {
+  "Durable persistence batch" => event_stats(cold_phase_windows["upkeep"], "upkeep_subscription_store_persist")["p95"],
+  "Controller request overlap" => overlap_stats(cold_phase_windows["upkeep"], "bench_request", "upkeep_subscription_store_persist"),
+  "Cable open overlap" => overlap_stats(cold_phase_windows["upkeep"], "bench_cable_open", "upkeep_subscription_store_persist"),
+  "Subscription registration overlap" => overlap_stats(cold_phase_windows["upkeep"], "bench_subscription_registration", "upkeep_subscription_store_persist")
+}
+
 upkeep_cold_client_dominant = dominant_phase(cold_client_phases["upkeep"])
 turbo_cold_client_dominant = dominant_phase(cold_client_phases["turbo"])
 upkeep_cold_server_dominant = dominant_phase(cold_server_phases["upkeep"])
@@ -330,9 +449,34 @@ report = <<~MD
   |-----------------------|--------|-------|
   | `sessions#create` | #{fmt cold_server_phases["upkeep"]["sessions#create"]} | #{fmt cold_server_phases["turbo"]["sessions#create"]} |
   | `rooms#show` | #{fmt cold_server_phases["upkeep"]["rooms#show"]} | #{fmt cold_server_phases["turbo"]["rooms#show"]} |
+  | Cable request | #{fmt cold_server_phases["upkeep"]["cable request"]} | #{fmt cold_server_phases["turbo"]["cable request"]} |
+  | Cable open | #{fmt cold_server_phases["upkeep"]["cable open"]} | #{fmt cold_server_phases["turbo"]["cable open"]} |
   | Cable connect | #{fmt cold_server_phases["upkeep"]["cable connect"]} | #{fmt cold_server_phases["turbo"]["cable connect"]} |
   | Subscription registration | #{fmt cold_server_phases["upkeep"]["subscription registration"]} | #{fmt cold_server_phases["turbo"]["subscription registration"]} |
   | Subscription confirmation | #{fmt cold_server_phases["upkeep"]["subscription confirmation"]} | #{fmt cold_server_phases["turbo"]["subscription confirmation"]} |
+
+  | Client/server p95 delta (ms) | Upkeep | Turbo |
+  |------------------------------|--------|-------|
+  | Login HTTP minus `sessions#create` | #{fmt cold_residuals["upkeep"]["Login HTTP minus `sessions#create`"]} | #{fmt cold_residuals["turbo"]["Login HTTP minus `sessions#create`"]} |
+  | Page request minus `rooms#show` | #{fmt cold_residuals["upkeep"]["Page request minus `rooms#show`"]} | #{fmt cold_residuals["turbo"]["Page request minus `rooms#show`"]} |
+  | WebSocket connect minus cable open | #{fmt cold_residuals["upkeep"]["WebSocket connect minus cable open"]} | #{fmt cold_residuals["turbo"]["WebSocket connect minus cable open"]} |
+
+  | Client-to-server admission delay (p95 ms) | Upkeep | Turbo |
+  |-------------------------------------------|--------|-------|
+  | Login HTTP to `sessions#create` start | #{fmt cold_admission_delays["upkeep"]["Login HTTP to `sessions#create` start"]} | #{fmt cold_admission_delays["turbo"]["Login HTTP to `sessions#create` start"]} |
+  | Page request to `rooms#show` start | #{fmt cold_admission_delays["upkeep"]["Page request to `rooms#show` start"]} | #{fmt cold_admission_delays["turbo"]["Page request to `rooms#show` start"]} |
+  | WebSocket connect to cable request start | #{fmt cold_admission_delays["upkeep"]["WebSocket connect to cable request start"]} | #{fmt cold_admission_delays["turbo"]["WebSocket connect to cable request start"]} |
+  | WebSocket connect to cable open start | #{fmt cold_admission_delays["upkeep"]["WebSocket connect to cable open start"]} | #{fmt cold_admission_delays["turbo"]["WebSocket connect to cable open start"]} |
+  | Subscribe send to registration start | #{fmt cold_admission_delays["upkeep"]["Subscribe send to registration start"]} | #{fmt cold_admission_delays["turbo"]["Subscribe send to registration start"]} |
+
+  | Upkeep durable persistence overlap | Value |
+  |------------------------------------|-------|
+  | Durable persistence batch p95 (ms) | #{fmt upkeep_persistence_overlap["Durable persistence batch"]} |
+  | Controller events overlapping persistence | #{upkeep_persistence_overlap["Controller request overlap"]["overlaps"]} / #{upkeep_persistence_overlap["Controller request overlap"]["events"]} |
+  | Controller p95 while overlapping persistence (ms) | #{fmt upkeep_persistence_overlap["Controller request overlap"]["overlap_p95"]} |
+  | Controller p95 outside persistence (ms) | #{fmt upkeep_persistence_overlap["Controller request overlap"]["non_overlap_p95"]} |
+  | Cable open events overlapping persistence | #{upkeep_persistence_overlap["Cable open overlap"]["overlaps"]} / #{upkeep_persistence_overlap["Cable open overlap"]["events"]} |
+  | Subscription registration events overlapping persistence | #{upkeep_persistence_overlap["Subscription registration overlap"]["overlaps"]} / #{upkeep_persistence_overlap["Subscription registration overlap"]["events"]} |
 
   Dominant client phase:
   Upkeep: #{upkeep_cold_client_dominant ? "#{upkeep_cold_client_dominant[0]} p95 #{fmt upkeep_cold_client_dominant[1]} ms" : "—"}

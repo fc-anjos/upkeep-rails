@@ -48,6 +48,37 @@ class CableChannelTest < ActionCable::Channel::TestCase
     assert_has_stream shared_stream_name
   end
 
+  def test_subscribes_to_anonymous_public_subscription_without_connection_identity
+    subscription_record = registered_subscription(
+      stream_name: "upkeep:test:anonymous",
+      metadata: {
+        identity_mode: Upkeep::Rails::Cable::SubscriberIdentity::ANONYMOUS_PUBLIC_MODE,
+        anonymous: true
+      }
+    )
+    stub_connection(current_user: nil)
+
+    subscribe subscription_id: subscription_record.id
+
+    assert subscription.confirmed?
+    assert_has_stream "upkeep:test:anonymous"
+  end
+
+  def test_rejects_identified_subscription_when_connection_identity_does_not_match
+    alice = Upkeep::Rails::Cable::SubscriberIdentity.for_identifiers(current_user: "alice")
+    subscription_record = registered_subscription(
+      subscriber_id: alice.subscriber_id,
+      stream_name: alice.stream_name,
+      metadata: { identity_mode: Upkeep::Rails::Cable::SubscriberIdentity::IDENTIFIED_MODE }
+    )
+    stub_connection(current_user: "bob")
+
+    subscribe subscription_id: subscription_record.id
+
+    assert subscription.rejected?
+    assert_no_streams
+  end
+
   def test_unsubscribe_keeps_subscription_state_out_of_transport
     subscription_record = registered_subscription(stream_name: "upkeep:test:user-1")
     stub_connection(current_user: "user-1")
@@ -82,11 +113,11 @@ class CableChannelTest < ActionCable::Channel::TestCase
 
   private
 
-  def registered_subscription(stream_name:)
+  def registered_subscription(stream_name:, subscriber_id: nil, metadata: {})
     Upkeep::Rails.subscriptions.register(
-      subscriber_id: "subscriber-#{stream_name}",
+      subscriber_id: subscriber_id || "subscriber-#{stream_name}",
       recorder: Upkeep::Runtime::Recorder.new,
-      metadata: { stream_name: stream_name }
+      metadata: { stream_name: stream_name }.merge(metadata)
     )
   end
 

@@ -56,7 +56,10 @@ function benchHeader(res, name) {
 
 function loadPageAndToken(baseUrl, pagePath, jar, channel) {
   const renderStart = Date.now();
-  const pageRes = http.get(`${baseUrl}${pagePath}`, { jar });
+  const pageRes = http.get(`${baseUrl}${pagePath}`, {
+    headers: { "X-Bench-Client-Started-At-Ms": `${renderStart}` },
+    jar,
+  });
   pageRender.add(Date.now() - renderStart);
   check(pageRes, { "page loaded": (r) => r.status === 200 });
 
@@ -99,21 +102,27 @@ function benchConnectId(label = "primary") {
   return `${label}-vu${__VU}-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
 }
 
-function wsUrlWithBenchConnectId(wsUrl, connectId) {
+function wsUrlWithBenchConnectId(wsUrl, connectId, startedAtMs) {
   const joiner = wsUrl.includes("?") ? "&" : "?";
-  return `${wsUrl}${joiner}bench_connect_id=${encodeURIComponent(connectId)}`;
+  return [
+    `${wsUrl}${joiner}bench_connect_id=${encodeURIComponent(connectId)}`,
+    `bench_client_started_at_ms=${encodeURIComponent(startedAtMs)}`,
+  ].join("&");
 }
 
 function connectSubscription(wsUrl, baseUrl, jar, channel, token, wsTimeout, connectId) {
-  const client = cable.connect(wsUrlWithBenchConnectId(wsUrl, connectId), {
+  const connectStartedAt = Date.now();
+  const client = cable.connect(wsUrlWithBenchConnectId(wsUrl, connectId, connectStartedAt), {
     receiveTimeoutMs: wsTimeout,
     cookies: cookieString(jar, baseUrl),
   });
   if (!check(client, { connected: (c) => c })) fail("WebSocket connection failed");
 
+  const subscribeStartedAt = Date.now();
   const sub = client.subscribe(channel.name, {
     [channel.paramKey]: token,
     bench_connect_id: connectId,
+    bench_subscribe_started_at_ms: subscribeStartedAt,
   });
   if (!check(sub, { subscribed: (ch) => ch })) fail("Subscription failed");
   suback.add(sub.ackDuration());
@@ -139,7 +148,7 @@ export function establishScenarioContext(config) {
 
   const setupStartedAt = Date.now();
   const loginStartedAt = Date.now();
-  const jar = login(baseUrl, email, "benchpass123");
+  const jar = login(baseUrl, email, "benchpass123", { startedAtMs: loginStartedAt });
   loginLatency.add(Date.now() - loginStartedAt);
 
   const primary = loadPageAndToken(baseUrl, pagePath, jar, channel);
