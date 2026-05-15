@@ -8,7 +8,7 @@ import { check, sleep } from "k6";
 // Retries on transient failures (non-200 status, including 401/5xx that
 // appear under saturation bursts). Backoff is short + jittered so a
 // ramp cohort doesn't re-collide on retry.
-export function login(baseUrl, email, password, { maxAttempts = 4 } = {}) {
+export function login(baseUrl, email, password, { maxAttempts = 4, startedAtMs = Date.now() } = {}) {
   const jar = http.cookieJar();
   let res;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -16,7 +16,11 @@ export function login(baseUrl, email, password, { maxAttempts = 4 } = {}) {
       `${baseUrl}/sessions`,
       JSON.stringify({ email, password }),
       {
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "X-Bench-Client-Started-At-Ms": `${startedAtMs}`,
+        },
         jar,
       }
     );

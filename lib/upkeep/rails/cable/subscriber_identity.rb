@@ -10,8 +10,13 @@ module Upkeep
       class UnidentifiedSubscriber < StandardError; end
 
       Identity = Data.define(:subscriber_id, :stream_name, :components)
+      Decision = Data.define(:mode, :anonymous, :deopt_reason, :identity_sources)
 
       module SubscriberIdentity
+        ANONYMOUS_PUBLIC_MODE = "anonymous_public"
+        IDENTIFIED_MODE = "identified"
+        CONNECTION_IDENTITY_SOURCES = %w[Current.user cookie current_attribute session warden_user].freeze
+
         module_function
 
         def derive(connection)
@@ -32,11 +37,33 @@ module Upkeep
           identities
         end
 
-        def derive_from_request(request, recorder:)
-          components = request_components(request) + recorder_components(recorder)
-          components = anonymous_components if components.empty?
+        def derive_from_request(request, recorder:, decision: decision_for(request, recorder: recorder))
+          components = if decision.anonymous
+            anonymous_components
+          else
+            request_components(request) + recorder_components(recorder)
+          end
+
+          if components.empty?
+            raise UnidentifiedSubscriber,
+              "subscription has identity dependencies but no canonical request or recorder identity"
+          end
 
           for_components(components)
+        end
+
+        def decision_for(_request = nil, recorder:)
+          dependencies = identity_dependencies(recorder)
+          if dependencies.empty?
+            Decision.new(ANONYMOUS_PUBLIC_MODE, true, nil, [])
+          else
+            Decision.new(
+              IDENTIFIED_MODE,
+              false,
+              "identity_dependencies_present",
+              dependencies.map { |dependency| dependency.source.to_s }.uniq.sort
+            )
+          end
         end
 
         def identifier_components(connection)
@@ -67,15 +94,27 @@ module Upkeep
         end
 
         def recorder_components(recorder)
-          recorder.graph.dependency_nodes
-            .map(&:payload)
-            .select(&:identity?)
+          identity_dependencies(recorder)
             .filter_map { |dependency| component_for_dependency(dependency) }
             .uniq
         end
 
         def anonymous_components
-          [ scalar_component(:anonymous_subscription, SecureRandom.uuid) ]
+          [ scalar_component(:anonymous_public_subscription, SecureRandom.uuid) ]
+        end
+
+        def identity_dependencies(recorder)
+          return [] unless recorder
+
+          recorder.graph.dependency_nodes
+            .map(&:payload)
+            .select(&:identity?)
+            .select { |dependency| connection_identity_dependency?(dependency) }
+            .uniq(&:cache_key)
+        end
+
+        def connection_identity_dependency?(dependency)
+          CONNECTION_IDENTITY_SOURCES.include?(dependency.source.to_s)
         end
 
         def component_for_dependency(dependency)

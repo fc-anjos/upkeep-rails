@@ -242,13 +242,14 @@ module Upkeep
       end
 
       def controller_metadata(controller)
+        request = controller.request
         {
           class: controller.class.name,
           action: controller.action_name,
-          request_method: controller.request.request_method,
-          path: controller.request.path,
-          query_string_digest: Digest::SHA256.hexdigest(controller.request.query_string.to_s)[0, 16],
-          path_parameters: controller.request.path_parameters.keys.map(&:to_s).sort
+          request_method: request.env["REQUEST_METHOD"].to_s,
+          path: request.env["PATH_INFO"].to_s,
+          query_string_digest: Digest::SHA256.hexdigest(request.env["QUERY_STRING"].to_s)[0, 16],
+          path_parameters: request.path_parameters.keys.map(&:to_s).sort
         }
       end
 

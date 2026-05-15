@@ -5,6 +5,7 @@ require "pathname"
 require_relative "../../benchmark/runner/config"
 require_relative "../../benchmark/runner/k6_runner"
 require_relative "../../benchmark/runner/metrics_collector"
+require_relative "../../benchmark/runner/workload_registry"
 require_relative "../../benchmark/shared/bench_metrics"
 
 class BenchmarkLayoutTest < Minitest::Test
@@ -44,6 +45,22 @@ class BenchmarkLayoutTest < Minitest::Test
     assert_equal "matrix-chat-warm-turbo.json", runner.send(:summary_file_for, "matrix/chat_turbo.js", "matrix-chat_turbo")
     assert_equal "matrix-chat-cold-upkeep.json", runner.send(:summary_file_for, "matrix/chat_upkeep_cold_connect_churn.js", "matrix-chat_upkeep_cold_connect_churn")
     assert_equal "matrix-board-upkeep.json", runner.send(:summary_file_for, "matrix/board_upkeep.js", "matrix-board_upkeep")
+  end
+
+  def test_identity_free_feed_compare_is_a_turbo_comparison_workload
+    workload = Upkeep::Benchmark::Runner::WorkloadRegistry.new(identity_free_feed_compare_config).resolve
+
+    assert_equal "render_dedup/identity_free_feed_compare", workload.key
+    assert workload.needs_turbo
+    assert_nil workload.route_script
+  end
+
+  def test_benchmark_apps_emit_cable_connect_timing
+    %w[upkeep-app turbo-app].each do |app_name|
+      connection = benchmark_root.join(app_name, "app/channels/application_cable/connection.rb").read
+
+      assert_includes connection, "BenchMetrics.instrument_cable_connect(self)"
+    end
   end
 
   def test_matrix_metrics_poll_uses_lightweight_upkeep_endpoint
@@ -145,6 +162,14 @@ class BenchmarkLayoutTest < Minitest::Test
       "BENCH_FAMILY" => "memory_ceiling",
       "BENCH_WORKLOAD" => "shared_feed_churn",
       "BENCH_TIER" => "smoke"
+    )
+  end
+
+  def identity_free_feed_compare_config
+    config_for(
+      "BENCH_FAMILY" => "render_dedup",
+      "BENCH_WORKLOAD" => "identity_free_feed_compare",
+      "BENCH_TIER" => "gate"
     )
   end
 

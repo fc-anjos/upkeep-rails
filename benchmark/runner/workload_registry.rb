@@ -47,6 +47,9 @@ module Upkeep
           when "render_dedup/featured_item_compare"
             require_tier!(key, "gate", "report")
             build(key, needs_turbo: true, vus: tier_vus(report: 200, gate: 50))
+          when "render_dedup/identity_free_feed_compare"
+            require_tier!(key, "gate", "report")
+            build(key, needs_turbo: true, vus: tier_vus(report: 200, gate: 50))
           when "render_dedup/mixed_region_feed_ivar"
             require_tier!(key, "ci", "gate", "report")
             apply_ivar_steady_seconds!

@@ -23,6 +23,7 @@ module BenchMetrics
   UPKEEP_SUBSCRIPTION_STORE_REGISTER = "register_subscription_store.upkeep"
   UPKEEP_SUBSCRIPTION_STORE_PERSIST = "persist_subscription_store.upkeep"
   UPKEEP_SUBSCRIPTION_INDEX_LOOKUP = "lookup_subscription_index.upkeep"
+  UPKEEP_SUBSCRIPTION_IDENTITY = "upkeep.subscription_identity"
   UPKEEP_BROKER_REQUEST = "upkeep.broker_request"
   UPKEEP_BROKER_SERVER_REQUEST = "upkeep.broker_server_request"
   UPKEEP_PLAN = "plan.upkeep"
@@ -121,8 +122,9 @@ module BenchMetrics
       request_id: request.request_id,
       controller: controller.class.name,
       action: controller.action_name,
-      method: request.request_method,
-      path: request.fullpath
+      method: rack_request_method(request.env),
+      path: rack_fullpath(request.env),
+      client_started_at_ms: client_started_at_ms_from_request(request)
     ) do
       yield
     end
@@ -139,7 +141,8 @@ module BenchMetrics
       bench_connect_id: params["bench_connect_id"],
       connection_class: connection.class.name,
       request_id: request&.request_id,
-      path: request_fullpath(request)
+      path: request_fullpath(request),
+      client_started_at_ms: client_started_at_ms_from_params(params)
     ) do
       yield
     end
@@ -157,7 +160,8 @@ module BenchMetrics
       server_class: server.class.name,
       request_id: request&.request_id,
       method: env["REQUEST_METHOD"],
-      path: request_fullpath(request)
+      path: request_fullpath(request),
+      client_started_at_ms: client_started_at_ms_from_params(params)
     ) do
       yield
     end
@@ -178,7 +182,8 @@ module BenchMetrics
       bench_connect_id: params["bench_connect_id"],
       connection_class: connection.class.name,
       request_id: request&.request_id,
-      path: request_fullpath(request)
+      path: request_fullpath(request),
+      client_started_at_ms: client_started_at_ms_from_params(params)
     ) do
       yield
     end
@@ -196,7 +201,8 @@ module BenchMetrics
       channel_class: channel.class.name,
       identifier: channel.identifier,
       request_id: request&.request_id,
-      path: request_fullpath(request)
+      path: request_fullpath(request),
+      client_started_at_ms: client_started_at_ms_from_params(params, "bench_subscribe_started_at_ms")
     ) do
       yield
     end
@@ -218,6 +224,8 @@ module BenchMetrics
   @reactivity_mutex = Mutex.new
   @refused_boundaries_by_reason = Hash.new(0)
   @live_deoptimizations_by_reason = Hash.new(0)
+  @subscription_identity_by_mode = Hash.new(0)
+  @subscription_identity_deopts_by_reason = Hash.new(0)
   @turbo_stream_actions = Hash.new(0)
 
   class << self
@@ -561,6 +569,25 @@ module BenchMetrics
       )
     end
 
+    ActiveSupport::Notifications.subscribe(UPKEEP_SUBSCRIPTION_IDENTITY) do |event|
+      increment_reactivity_tally(:subscription_identity_by_mode, event.payload[:identity_mode])
+      increment_reactivity_tally(:subscription_identity_deopts_by_reason, event.payload[:anonymous_deopt_reason])
+      emit(
+        event: "upkeep_subscription_identity",
+        duration_ms: event.duration,
+        extra: {
+          registered: event.payload[:registered],
+          subscription_id: event.payload[:subscription_id],
+          identity_mode: event.payload[:identity_mode],
+          anonymous: event.payload[:anonymous],
+          anonymous_deopt_reason: event.payload[:anonymous_deopt_reason],
+          identity_sources: event.payload[:identity_sources],
+          refused_boundaries: event.payload[:refused_boundaries],
+          error: event.payload[:error]
+        }
+      )
+    end
+
     ActiveSupport::Notifications.subscribe(UPKEEP_REFUSED_BOUNDARY) do |event|
       increment_reactivity_tally(:refused_boundaries_by_reason, event.payload[:reason])
       emit(
@@ -651,7 +678,7 @@ module BenchMetrics
           action: event.payload[:action],
           method: event.payload[:method],
           path: event.payload[:path]
-        }
+        }.merge(client_timing_extra(event))
       )
     end
 
@@ -664,7 +691,7 @@ module BenchMetrics
           connection_class: event.payload[:connection_class],
           request_id: event.payload[:request_id],
           path: event.payload[:path]
-        }
+        }.merge(client_timing_extra(event))
       )
     end
 
@@ -678,7 +705,7 @@ module BenchMetrics
           request_id: event.payload[:request_id],
           method: event.payload[:method],
           path: event.payload[:path]
-        }
+        }.merge(client_timing_extra(event))
       )
     end
 
@@ -691,7 +718,7 @@ module BenchMetrics
           connection_class: event.payload[:connection_class],
           request_id: event.payload[:request_id],
           path: event.payload[:path]
-        }
+        }.merge(client_timing_extra(event))
       )
     end
 
@@ -705,7 +732,7 @@ module BenchMetrics
           identifier: event.payload[:identifier],
           request_id: event.payload[:request_id],
           path: event.payload[:path]
-        }
+        }.merge(client_timing_extra(event))
       )
     end
 
@@ -755,6 +782,8 @@ module BenchMetrics
     @reactivity_mutex.synchronize do
       @refused_boundaries_by_reason = Hash.new(0)
       @live_deoptimizations_by_reason = Hash.new(0)
+      @subscription_identity_by_mode = Hash.new(0)
+      @subscription_identity_deopts_by_reason = Hash.new(0)
       @turbo_stream_actions = Hash.new(0)
     end
   end
@@ -763,6 +792,7 @@ module BenchMetrics
     {
       subscription_graphs: subscription_graphs_snapshot,
       refused_boundaries: refused_boundaries_snapshot,
+      subscription_identity: subscription_identity_snapshot,
       delivery: upkeep_delivery_snapshot
     }
   end
@@ -869,6 +899,19 @@ module BenchMetrics
     {
       total: by_reason.values.sum,
       by_reason: by_reason
+    }
+  end
+
+  def self.subscription_identity_snapshot
+    by_mode = reactivity_tally_snapshot(:subscription_identity_by_mode)
+    deopts = reactivity_tally_snapshot(:subscription_identity_deopts_by_reason)
+    {
+      total: by_mode.values.sum,
+      by_mode: by_mode,
+      anonymous_deopts: {
+        total: deopts.values.sum,
+        by_reason: deopts
+      }
     }
   end
 
@@ -1271,6 +1314,39 @@ module BenchMetrics
     )
   end
 
+  def self.client_timing_extra(notification)
+    client_started_at_ms = notification.payload[:client_started_at_ms]
+    return {} unless client_started_at_ms
+
+    server_started_at_ms = (Time.now.to_f * 1000) - notification.duration
+    {
+      client_started_at_ms: client_started_at_ms,
+      server_started_at_ms: server_started_at_ms.round(3),
+      client_to_server_start_ms: (server_started_at_ms - client_started_at_ms).round(3)
+    }
+  end
+
+  BENCH_CLIENT_STARTED_AT_HEADER = "X-Bench-Client-Started-At-Ms"
+
+  def self.client_started_at_ms_from_request(request)
+    client_started_at_ms_from_value(
+      request&.get_header("HTTP_X_BENCH_CLIENT_STARTED_AT_MS") ||
+        request&.headers&.[](BENCH_CLIENT_STARTED_AT_HEADER)
+    )
+  end
+
+  def self.client_started_at_ms_from_params(params, key = "bench_client_started_at_ms")
+    client_started_at_ms_from_value(params[key])
+  end
+
+  def self.client_started_at_ms_from_value(value)
+    return nil if value.nil? || value.to_s.empty?
+
+    Float(value)
+  rescue ArgumentError, TypeError
+    nil
+  end
+
   def self.request_params_hash(params)
     case params
     when nil
@@ -1293,7 +1369,21 @@ module BenchMetrics
   def self.request_fullpath(request)
     return unless request
 
-    request.respond_to?(:fullpath) ? request.fullpath : request.path
+    rack_fullpath(request.env) if request.respond_to?(:env)
+  rescue StandardError
+    nil
+  end
+
+  def self.rack_request_method(env)
+    env&.fetch("REQUEST_METHOD", nil)
+  end
+
+  def self.rack_fullpath(env)
+    return unless env
+
+    path = env.fetch("PATH_INFO", nil).to_s
+    query = env.fetch("QUERY_STRING", nil).to_s
+    query.empty? ? path : "#{path}?#{query}"
   rescue StandardError
     nil
   end
@@ -1310,12 +1400,13 @@ module BenchMetrics
   private_class_method :setup_log_file, :emit, :setup_counters, :subscribe_notifications,
                        :start_memory_sampler, :sample_rss!, :subscription_count, :install_endpoint,
                        :emit_notification, :request_params_hash, :parse_json, :request_fullpath,
+                       :rack_request_method, :rack_fullpath,
                        :action_dispatch_request, :install_action_cable_hooks, :current_subscription_store,
                        :memory_phase_from_env, :upkeep_reactivity_snapshot,
                        :subscription_graphs_snapshot, :empty_subscription_graph_summary,
                        :accumulate_subscription_graph_summary, :finish_subscription_graph_summary,
                        :replay_recipe_bytes, :shared_stream_names_count,
-                       :refused_boundaries_snapshot, :upkeep_delivery_snapshot,
+                       :refused_boundaries_snapshot, :subscription_identity_snapshot, :upkeep_delivery_snapshot,
                        :setup_reactivity_counters, :increment_reactivity_tally,
                        :reactivity_tally_snapshot, :sorted_hash,
                        :action_cable_counts, :action_cable_stream_entries,

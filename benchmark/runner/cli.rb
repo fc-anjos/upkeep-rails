@@ -257,6 +257,11 @@ module Upkeep
               run_ruby(File.join(bench_dir, "featured_item_compare_report.rb"), results_dir, timestamp)
               puts "\nResults in: #{results_dir}/"
               puts "Compare report: #{File.join(results_dir, "featured-item-compare-#{timestamp}.md")}"
+            when "render_dedup/identity_free_feed_compare"
+              puts "\n== Generating identity-free feed compare report =="
+              run_ruby(File.join(bench_dir, "identity_free_feed_compare_report.rb"), results_dir, timestamp)
+              puts "\nResults in: #{results_dir}/"
+              puts "Compare report: #{File.join(results_dir, "identity-free-feed-compare-#{timestamp}.md")}"
             else
               puts "\n== Generating matrix comparison report =="
               run_ruby(File.join(bench_dir, "compare.rb"), results_dir, timestamp)

@@ -12,7 +12,7 @@ module ApplicationCable
 
     def find_verified_user
       user_id = request.session[:user_id] || cookies.signed[:user_id]
-      User.find_by(id: user_id) || reject_unauthorized_connection
+      User.find_by(id: user_id)
     end
   end
 end
