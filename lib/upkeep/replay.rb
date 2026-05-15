@@ -75,6 +75,7 @@ module Upkeep
             sql: snapshot.fetch(:sql),
             primary_key: snapshot[:primary_key],
             appendable: snapshot.fetch(:appendable),
+            limit_value: snapshot.fetch(:limit_value),
             predicates: snapshot.fetch(:predicates),
             member_ids: snapshot.fetch(:member_ids)
           )
@@ -201,7 +202,7 @@ module Upkeep
       end
     end
 
-    class ActiveRecordRelationValue < Data.define(:model, :sql, :primary_key, :appendable, :predicates, :member_ids)
+    class ActiveRecordRelationValue < Data.define(:model, :sql, :primary_key, :appendable, :limit_value, :predicates, :member_ids)
       include Value
 
       def type = "active_record_relation"
@@ -217,9 +218,10 @@ module Upkeep
           sql: sql,
           primary_key: primary_key,
           appendable: appendable,
+          limit_value: limit_value,
           predicates: predicates,
           member_ids: member_ids
-        }.compact
+        }
       end
     end
 

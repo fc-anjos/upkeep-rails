@@ -21,6 +21,7 @@ class DeliveryCardsController < ActionController::Base
     else
       cards.order(:id)
     end
+    @cards = @cards.limit(params[:limit].to_i) if params[:limit]
     render template: "delivery_cards/index"
   end
 end
@@ -127,6 +128,26 @@ class TurboStreamsDeliveryTest < Minitest::Test
     assert_includes batch.envelopes.first.body, "Review"
   end
 
+  def test_public_collection_create_uses_direct_delivery_stream_for_single_subscriber
+    create_delivery_card!("Plan")
+    create_delivery_card!("Build")
+
+    store = Upkeep::Subscriptions::Store.new
+    register_controller_subscription(store, subscriber_id: "subscriber-a")
+
+    Upkeep::Runtime::ChangeLog.reset
+    create_delivery_card!("Review")
+
+    plan = plan_for(store)
+    batch = delivery.build(plan)
+
+    assert_nil plan.targets.first.sharing_signature
+    assert_nil batch.streams.first.shared_stream_name
+    assert_equal ["subscriber-a"], batch.envelopes.map(&:subscriber_id)
+    assert_nil batch.envelopes.first.stream_name
+    assert_includes batch.envelopes.first.body, "Review"
+  end
+
   def test_building_turbo_streams_emits_cost_notification
     create_delivery_card!("Plan")
 
@@ -218,6 +239,27 @@ class TurboStreamsDeliveryTest < Minitest::Test
 
     assert_equal "prepend", turbo_stream["action"]
     assert_equal stream.target_selector, turbo_stream["targets"]
+    assert_includes stream.html, "Zed"
+    refute_includes stream.html, "Plan"
+    refute_includes stream.html, "Build"
+  end
+
+  def test_collection_create_prepends_for_unfilled_limited_relation
+    create_delivery_card!("Plan")
+    create_delivery_card!("Build")
+
+    store = Upkeep::Subscriptions::Store.new
+    register_controller_subscription(store, subscriber_id: "subscriber-a", path: "/cards?status=open&order=title_desc&limit=50")
+
+    Upkeep::Runtime::ChangeLog.reset
+    create_delivery_card!("Zed")
+
+    batch = delivery.build(plan_for(store))
+    stream = batch.streams.first
+    turbo_stream = Nokogiri::HTML5.fragment(stream.to_html).at_css("turbo-stream")
+
+    assert_equal "prepend", turbo_stream["action"]
+    assert_nil stream.deoptimization_reason
     assert_includes stream.html, "Zed"
     refute_includes stream.html, "Plan"
     refute_includes stream.html, "Build"

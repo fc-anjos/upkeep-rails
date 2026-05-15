@@ -248,7 +248,9 @@ module Upkeep
             entry_snapshot.fetch(:subscription_id),
             entry_snapshot.fetch(:owner_id),
             dependency.cache_key,
-            dependency
+            dependency,
+            nil,
+            nil
           )
         end
       end

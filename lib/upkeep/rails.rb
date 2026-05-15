@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "active_support/notifications"
+require_relative "capture/request"
+require_relative "subscriptions/registrar"
 require_relative "rails/configuration"
 require_relative "rails/replay"
 require_relative "rails/action_view_capture"
@@ -14,6 +16,10 @@ require_relative "rails/railtie" if defined?(::Rails::Railtie)
 module Upkeep
   module Rails
     SUBSCRIPTION_IDENTITY = "upkeep.subscription_identity"
+    INTERNAL_DELIVERY_TABLES = %w[
+      upkeep_subscriptions
+      upkeep_subscription_index_entries
+    ].freeze
 
     class << self
       def configuration
@@ -36,15 +42,17 @@ module Upkeep
       def reset_runtime!
         @delivery_dispatcher&.shutdown
         @delivery_dispatcher = nil
+        @subscription_shape_cache&.reset
+        @subscription_registrar = nil
         discard_subscription_store! if @subscriptions
         @subscriptions = build_subscription_store
         @subscriptions.reset
         @transport = Delivery::BroadcastTransport.new
       end
 
-      def register_controller_subscription(controller, recorder)
-        html = response_body_html(controller.response.body)
-        return unless subscription_response?(controller, recorder, html)
+      def register_controller_subscription(controller, capture)
+        recorder = capture.recorder
+        return unless subscription_response?(controller, capture)
 
         decision = Cable::SubscriberIdentity.decision_for(controller.request, recorder: recorder)
         unless recorder.reactive?
@@ -62,24 +70,18 @@ module Upkeep
           recorder: recorder,
           decision: decision
         )
-        subscription = subscriptions.register(
-          subscriber_id: identity.subscriber_id,
+        registration = subscription_registrar.register(
+          identity: identity,
+          decision: decision,
           recorder: recorder,
           metadata: identity_metadata(decision).merge(
             path: controller.request.fullpath,
-            stream_name: identity.stream_name,
-            shared_stream_names: SharedStreams.names_for_recorder(recorder)
+            stream_name: identity.stream_name
           )
         )
-        instrument_subscription_identity(decision, registered: true, subscription: subscription)
+        instrument_subscription_identity(decision, registered: true, subscription: registration.subscription)
 
-        controller.response.body = ClientSubscription.inject(
-          html,
-          identity: identity,
-          subscription: subscription
-        )
-
-        subscription
+        registration
       rescue Cable::UnidentifiedSubscriber => error
         instrument_subscription_identity(
           decision || Cable::SubscriberIdentity.decision_for(controller.request, recorder: recorder),
@@ -91,14 +93,14 @@ module Upkeep
       end
 
       def deliver_changes!(changes = Runtime::ChangeLog.drain)
-        changes = Array(changes)
+        changes = deliverable_changes(changes)
         return Delivery::Transport::DispatchReport.new([]) if changes.empty?
 
         delivery_dispatcher.enqueue(changes)
       end
 
       def deliver_changes_now!(changes = Runtime::ChangeLog.drain)
-        changes = Array(changes)
+        changes = deliverable_changes(changes)
         return Delivery::Transport::DispatchReport.new([]) if changes.empty?
 
         batch = delivery_batch_for([changes])
@@ -125,15 +127,70 @@ module Upkeep
         end
       end
 
+      def subscription_registrar
+        @subscription_registrar ||= Subscriptions::Registrar.new(
+          store: subscriptions,
+          shape_cache: subscription_shape_cache
+        )
+      end
+
+      def subscription_shape_cache
+        @subscription_shape_cache ||= Subscriptions::ShapeCache.new
+      end
+
       def delivery_batch_for(change_sets)
+        change_sets = compact_change_sets(change_sets)
+        return Delivery::TurboStreams::Batch.new([]) if change_sets.empty?
+
         planner = Invalidation::Planner.new(store: subscriptions)
         plans = change_sets.map { |changes| planner.plan(changes) }
+        plans = plans.reject { |plan| plan.targets.empty? }
+        return Delivery::TurboStreams::Batch.new([]) if plans.empty?
+
         Delivery::TurboStreams.new.build_many(plans)
+      end
+
+      def compact_change_sets(change_sets)
+        change_sets
+          .map { |changes| deliverable_changes(changes) }
+          .reject(&:empty?)
+          .uniq { |changes| change_set_key(changes) }
+      end
+
+      def deliverable_changes(changes)
+        Array(changes).reject { |change| internal_delivery_change?(change) }
+      end
+
+      def internal_delivery_change?(change)
+        INTERNAL_DELIVERY_TABLES.include?(change_value(change, :table).to_s)
+      end
+
+      def change_set_key(changes)
+        changes.map { |change| change_key(change) }.sort
+      end
+
+      def change_key(change)
+        [
+          change_value(change, :type).to_s,
+          change_value(change, :table).to_s,
+          change_value(change, :model).to_s,
+          change_value(change, :id).to_s,
+          Array(change_value(change, :changed_attributes)).map(&:to_s).sort,
+          change_value(change, :old_values).inspect,
+          change_value(change, :new_values).inspect
+        ]
+      end
+
+      def change_value(change, key)
+        return unless change.respond_to?(:[])
+
+        change[key] || change[key.to_s]
       end
 
       def discard_subscription_store!
         @subscriptions&.shutdown
         @subscriptions = nil
+        @subscription_registrar = nil
       end
 
       def identity_metadata(decision)
@@ -160,31 +217,12 @@ module Upkeep
         )
       end
 
-      def subscription_response?(controller, recorder, html)
+      def subscription_response?(controller, capture)
         controller.request.get? &&
-          controller.response.successful? &&
-          html_response?(controller) &&
-          html.include?("</") &&
-          recorder.graph.frame_nodes.any?
-      end
-
-      def html_response?(controller)
-        controller.response.media_type == "text/html" ||
-          controller.response.content_type.to_s.start_with?("text/html")
-      end
-
-      def response_body_html(body)
-        case body
-        when String
-          body
-        when Array
-          body.join
-        else
-          return body.body.join if body.respond_to?(:body) && body.body.respond_to?(:join)
-          return body.to_a.join if body.respond_to?(:to_a)
-
-          body.to_s
-        end
+          capture.successful? &&
+          capture.html_response? &&
+          capture.html.include?("</") &&
+          capture.recorder.graph.frame_nodes.any?
       end
 
       def build_subscription_store

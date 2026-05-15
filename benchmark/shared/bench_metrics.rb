@@ -24,6 +24,7 @@ module BenchMetrics
   UPKEEP_SUBSCRIPTION_STORE_PERSIST = "persist_subscription_store.upkeep"
   UPKEEP_SUBSCRIPTION_INDEX_LOOKUP = "lookup_subscription_index.upkeep"
   UPKEEP_SUBSCRIPTION_IDENTITY = "upkeep.subscription_identity"
+  UPKEEP_SUBSCRIPTION_SHAPE = "subscription_shape.upkeep"
   UPKEEP_BROKER_REQUEST = "upkeep.broker_request"
   UPKEEP_BROKER_SERVER_REQUEST = "upkeep.broker_server_request"
   UPKEEP_PLAN = "plan.upkeep"
@@ -227,6 +228,8 @@ module BenchMetrics
   @live_deoptimizations_by_reason = Hash.new(0)
   @subscription_identity_by_mode = Hash.new(0)
   @subscription_identity_deopts_by_reason = Hash.new(0)
+  @subscription_shape_by_state = Hash.new(0)
+  @subscription_shape_bypass_by_reason = Hash.new(0)
   @turbo_stream_actions = Hash.new(0)
 
   class << self
@@ -596,6 +599,23 @@ module BenchMetrics
       )
     end
 
+    ActiveSupport::Notifications.subscribe(UPKEEP_SUBSCRIPTION_SHAPE) do |event|
+      increment_reactivity_tally(:subscription_shape_by_state, event.payload[:cache_state])
+      increment_reactivity_tally(:subscription_shape_bypass_by_reason, event.payload[:reason])
+      emit(
+        event: "upkeep_subscription_shape",
+        duration_ms: event.duration,
+        extra: {
+          key: event.payload[:key],
+          cache_state: event.payload[:cache_state],
+          cacheable: event.payload[:cacheable],
+          reason: event.payload[:reason],
+          entries: event.payload[:entries],
+          shared_stream_names: event.payload[:shared_stream_names]
+        }
+      )
+    end
+
     ActiveSupport::Notifications.subscribe(UPKEEP_REFUSED_BOUNDARY) do |event|
       increment_reactivity_tally(:refused_boundaries_by_reason, event.payload[:reason])
       emit(
@@ -794,6 +814,8 @@ module BenchMetrics
       @live_deoptimizations_by_reason = Hash.new(0)
       @subscription_identity_by_mode = Hash.new(0)
       @subscription_identity_deopts_by_reason = Hash.new(0)
+      @subscription_shape_by_state = Hash.new(0)
+      @subscription_shape_bypass_by_reason = Hash.new(0)
       @turbo_stream_actions = Hash.new(0)
     end
   end
@@ -803,6 +825,7 @@ module BenchMetrics
       subscription_graphs: subscription_graphs_snapshot,
       refused_boundaries: refused_boundaries_snapshot,
       subscription_identity: subscription_identity_snapshot,
+      subscription_shapes: subscription_shapes_snapshot,
       delivery: upkeep_delivery_snapshot
     }
   end
@@ -921,6 +944,19 @@ module BenchMetrics
       anonymous_deopts: {
         total: deopts.values.sum,
         by_reason: deopts
+      }
+    }
+  end
+
+  def self.subscription_shapes_snapshot
+    by_state = reactivity_tally_snapshot(:subscription_shape_by_state)
+    bypass = reactivity_tally_snapshot(:subscription_shape_bypass_by_reason)
+    {
+      total: by_state.values.sum,
+      by_state: by_state,
+      bypasses: {
+        total: bypass.values.sum,
+        by_reason: bypass
       }
     }
   end

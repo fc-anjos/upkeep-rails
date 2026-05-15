@@ -552,6 +552,7 @@ module Upkeep
             sql: analysis.sql,
             primary_key: analysis.primary_key,
             appendable: analysis.appendable?,
+            limit_value: analysis.limit_value,
             predicates: analysis.predicates,
             member_ids: rendered_collection ? relation_member_ids(analysis.primary_key, rendered_collection) : []
           )
@@ -561,6 +562,7 @@ module Upkeep
             sql: relation_analysis.sql,
             primary_key: relation_analysis.primary_key,
             appendable: relation_analysis.appendable?,
+            limit_value: relation_analysis.limit_value,
             predicates: relation_analysis.predicates,
             member_ids: rendered_collection ? relation_member_ids(relation_analysis.primary_key, rendered_collection) : []
           )

@@ -102,14 +102,30 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     refute_includes plan.targets.first.render, "Archived"
   end
 
-  def test_register_is_live_immediately_and_subscription_row_is_durable_before_activation
-    create_subscription_card!("Plan")
+  def test_register_is_pending_until_activation_and_subscription_row_is_durable_before_activation
+    card = create_subscription_card!("Plan")
 
     _html, recorder = capture_controller_request("/cards?status=open")
     store = active_record_store
     subscription = store.register(subscriber_id: "subscriber-a", recorder: recorder, metadata: { stream_name: "stream-a" })
 
     assert_equal "stream-a", store.fetch(subscription.id).metadata.fetch(:stream_name)
+    assert_equal 1, store.summary.fetch(:pending_subscriptions)
+    assert_equal 0, store.summary.fetch(:active_subscriptions)
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.update!(title: "Plan v2")
+
+    events = capture_notifications("lookup_subscription_index.upkeep") do
+      @pending_entries = store.reverse_index.entries_for(Upkeep::Runtime::ChangeLog.events)
+    end
+
+    assert_empty @pending_entries
+    assert_equal "pending_activation", events.first.payload.fetch(:mode)
+    assert_equal "not_activated_yet", events.first.payload.fetch(:miss_reason)
+    assert_operator events.first.payload.fetch(:pending_entries), :>, 0
+    assert_equal 0, events.first.payload.fetch(:active_entries)
+
     store.drain
     reloaded_store = active_record_store
 
@@ -119,11 +135,58 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     assert_equal 1, store.summary.fetch(:deferred_index_subscriptions)
 
     store.activate(subscription.id)
+    assert_equal 0, store.summary.fetch(:pending_subscriptions)
+    assert_equal 1, store.summary.fetch(:active_subscriptions)
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.update!(title: "Plan v3")
+
+    events = capture_notifications("lookup_subscription_index.upkeep") do
+      @active_entries = store.reverse_index.entries_for(Upkeep::Runtime::ChangeLog.events)
+    end
+
+    assert_operator @active_entries.size, :>, 0
+    assert_equal "active", events.first.payload.fetch(:mode)
+    assert_operator events.first.payload.fetch(:active_entries), :>, 0
+    refute_includes events.first.payload, :miss_reason
+
     store.drain
 
     assert_operator Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.count, :>, 0
     assert_equal 2, Upkeep::Subscriptions::ActiveRecordStore::SubscriptionRecord.first.recorder_snapshot.fetch("__upkeep_snapshot_version")
     assert_equal "active_record_attribute", Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.first.dependency_source
+  end
+
+  def test_identity_free_pending_and_active_indexes_share_one_cohort_shape
+    card = create_subscription_card!("Plan")
+    create_subscription_card!("Build")
+
+    store = active_record_store
+    _html, first_recorder = capture_controller_request("/cards?status=open")
+    first_subscription = store.register(subscriber_id: "subscriber-a", recorder: first_recorder, metadata: { stream_name: "stream-a" })
+    first_pending_entries = store.summary.fetch(:reverse_index).fetch(:pending).fetch(:entries)
+
+    _html, second_recorder = capture_controller_request("/cards?status=open")
+    second_subscription = store.register(subscriber_id: "subscriber-b", recorder: second_recorder, metadata: { stream_name: "stream-b" })
+    second_pending_entries = store.summary.fetch(:reverse_index).fetch(:pending).fetch(:entries)
+
+    assert_operator first_pending_entries, :>, 0
+    assert_equal first_pending_entries, second_pending_entries
+
+    store.activate(first_subscription.id)
+    store.activate(second_subscription.id)
+
+    active_entries = store.summary.fetch(:reverse_index).fetch(:active).fetch(:entries)
+    assert_equal first_pending_entries, active_entries
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.update!(title: "Plan v2")
+
+    plan = Upkeep::Invalidation::Planner.new(store: store).plan(Upkeep::Runtime::ChangeLog.events)
+
+    assert_equal ["subscriber-a", "subscriber-b"], plan.targets.flat_map(&:subscriber_ids).uniq.sort
+    assert_equal 2, plan.summary.fetch(:represented_subscribers)
+    assert_equal 1, plan.candidate_entries.size
   end
 
   def test_reloaded_store_can_activate_index_from_persisted_subscription_row
@@ -187,12 +250,34 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
 
     assert_equal 1, events.size
     assert_equal "active_record", events.first.payload.fetch(:store)
-    assert_equal "live_first", events.first.payload.fetch(:mode)
+    assert_equal "pending_activation", events.first.payload.fetch(:mode)
     assert_equal "async_subscription_row_index_on_subscribe", events.first.payload.fetch(:durability)
     assert_equal "on_subscribe", events.first.payload.fetch(:index_durability)
     assert_match(/\Asubscription-/, events.first.payload.fetch(:subscription_id))
     assert_operator events.first.payload.fetch(:dependency_entries), :>, 0
     refute_includes events.first.payload, :index_rows
+    store.drain
+  end
+
+  def test_activate_reports_immediate_active_index_metadata
+    create_subscription_card!("Plan")
+
+    _html, recorder = capture_controller_request("/cards?status=open")
+    store = active_record_store
+    subscription = store.register(subscriber_id: "subscriber-a", recorder: recorder, metadata: { stream_name: "stream-a" })
+
+    events = capture_notifications("activate_subscription_store.upkeep") do
+      assert store.activate(subscription.id)
+    end
+
+    assert_equal 1, events.size
+    assert_equal "active_record", events.first.payload.fetch(:store)
+    assert_equal subscription.id, events.first.payload.fetch(:subscription_id)
+    assert_equal true, events.first.payload.fetch(:activated)
+    assert_equal :pending, events.first.payload.fetch(:activation_source)
+    assert_operator events.first.payload.fetch(:dependency_entries), :>, 0
+    assert_equal 1, events.first.payload.fetch(:active_subscriptions)
+    assert_equal 0, events.first.payload.fetch(:pending_subscriptions)
     store.drain
   end
 
@@ -359,7 +444,8 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
 
     _html, recorder = capture_controller_request("/cards?status=open")
     store = active_record_store
-    store.register(subscriber_id: "subscriber-a", recorder: recorder, metadata: { stream_name: "stream-a" })
+    subscription = store.register(subscriber_id: "subscriber-a", recorder: recorder, metadata: { stream_name: "stream-a" })
+    store.activate(subscription.id)
     store.drain
 
     Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.delete_all
