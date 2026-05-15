@@ -138,6 +138,25 @@ class ControllerRuntimeTest < Minitest::Test
     assert_includes html, subscription.metadata.fetch(:stream_name)
   end
 
+  def test_identity_free_get_reuses_subscription_shape_without_reusing_response_html
+    RuntimeDeliveryCard.create!(title: "Plan")
+
+    events = capture_notifications(Upkeep::Subscriptions::ShapeCache::NOTIFICATION) do
+      _status, _headers, first_body = RuntimeDeliveryCardsController.action(:anonymous).call(env_for("/cards"))
+      @first_html = collect_body(first_body)
+      _status, _headers, second_body = RuntimeDeliveryCardsController.action(:anonymous).call(env_for("/cards"))
+      @second_html = collect_body(second_body)
+    end
+    subscriptions = Upkeep::Rails.subscriptions.subscriptions
+
+    assert_equal ["miss", "hit"], events.map { |event| event.payload.fetch(:cache_state) }
+    assert_equal 2, subscriptions.size
+    assert_equal ["hit", "miss"], subscriptions.map { |subscription| subscription.metadata.fetch(:subscription_shape_cache) }.sort
+    refute_equal subscriptions.first.id, subscriptions.last.id
+    assert_includes @first_html, subscriptions.first.id
+    assert_includes @second_html, subscriptions.last.id
+  end
+
   def test_identity_free_get_stays_anonymous_even_when_session_exists
     RuntimeDeliveryCard.create!(title: "Plan")
     env = env_for("/cards")
@@ -218,6 +237,26 @@ class ControllerRuntimeTest < Minitest::Test
     assert_includes adapter.bodies.first, "Plan v2"
   end
 
+  def test_subscription_storage_changes_are_not_planned_for_delivery
+    plan_events = []
+    build_events = []
+    plan_subscriber = ActiveSupport::Notifications.subscribe("plan.upkeep") { |event| plan_events << event }
+    build_subscriber = ActiveSupport::Notifications.subscribe("build_turbo_streams.upkeep") { |event| build_events << event }
+
+    Upkeep::Rails.deliver_changes_now!([
+      delivery_change(table: "upkeep_subscriptions"),
+      delivery_change(table: "upkeep_subscription_index_entries")
+    ])
+    Upkeep::Rails.deliver_changes!([delivery_change(table: "upkeep_subscriptions")])
+    Upkeep::Rails.drain_delivery!
+
+    assert_empty plan_events
+    assert_empty build_events
+  ensure
+    ActiveSupport::Notifications.unsubscribe(plan_subscriber) if plan_subscriber
+    ActiveSupport::Notifications.unsubscribe(build_subscriber) if build_subscriber
+  end
+
   def test_controller_page_replay_does_not_register_another_subscription
     user = RuntimeDeliveryUser.create!(name: "Alice")
     RuntimeDeliveryCard.create!(title: "Plan")
@@ -257,6 +296,18 @@ class ControllerRuntimeTest < Minitest::Test
     body.each.to_a.join
   ensure
     body.close if body.respond_to?(:close)
+  end
+
+  def delivery_change(table:)
+    {
+      type: "update",
+      table: table,
+      model: table.classify,
+      id: "subscription-test",
+      changed_attributes: ["updated_at"],
+      old_values: {},
+      new_values: {}
+    }
   end
 
   def capture_notifications(name)

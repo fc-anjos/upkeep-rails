@@ -8,6 +8,45 @@ ActionCable.server.config.cable = { "adapter" => "test" }
 class CableChannelTest < ActionCable::Channel::TestCase
   tests Upkeep::Rails::Cable::Channel
 
+  class ActivationVisibleStore
+    attr_reader :reverse_index
+
+    def initialize(subscription)
+      @subscription = subscription
+      @reverse_index = Upkeep::Subscriptions::ReverseIndex.new
+    end
+
+    def fetch(id)
+      raise KeyError, id unless subscription&.id == id
+
+      subscription
+    end
+
+    def activate(id)
+      fetch(id)
+      reverse_index.index(subscription)
+      true
+    end
+
+    def unregister(ids)
+      Array(ids).each { |id| reverse_index.delete_subscription(id) }
+      @subscription = nil
+      Array(ids).size
+    end
+
+    def reset
+      @reverse_index = Upkeep::Subscriptions::ReverseIndex.new
+    end
+
+    def shutdown
+      true
+    end
+
+    private
+
+    attr_reader :subscription
+  end
+
   def setup
     super
     Upkeep::Rails.reset_runtime!
@@ -49,6 +88,20 @@ class CableChannelTest < ActionCable::Channel::TestCase
 
     assert subscription.confirmed?
     assert_equal [subscription_record.id], activated_ids
+  end
+
+  def test_channel_activation_makes_subscription_visible_to_lookup
+    subscription_record = lookup_subscription(stream_name: "upkeep:test:user-1")
+    store = ActivationVisibleStore.new(subscription_record)
+    Upkeep::Rails.instance_variable_set(:@subscriptions, store)
+    stub_connection(current_user: "user-1")
+
+    assert_empty store.reverse_index.entries_for([lookup_change])
+
+    subscribe subscription_id: subscription_record.id
+
+    assert subscription.confirmed?
+    assert_equal [subscription_record.id], store.reverse_index.entries_for([lookup_change]).map(&:subscription_id)
   end
 
   def test_subscribes_to_public_shared_streams_derived_from_the_server_subscription
@@ -157,5 +210,36 @@ class CableChannelTest < ActionCable::Channel::TestCase
         shared_stream_names: Upkeep::SharedStreams.names_for_recorder(recorder)
       }
     )
+  end
+
+  def lookup_subscription(stream_name:)
+    recorder = Upkeep::Runtime::Recorder.new
+    recorder.record_dependency(
+      Upkeep::Dependencies::ActiveRecordAttribute.new(
+        table: "activation_cards",
+        model: "ActivationCard",
+        id: 1,
+        attribute: "title"
+      )
+    )
+
+    Upkeep::Subscriptions::Subscription.new(
+      "subscription-activation-visible",
+      "subscriber-#{stream_name}",
+      recorder,
+      recorder.graph,
+      { stream_name: stream_name }
+    )
+  end
+
+  def lookup_change
+    {
+      type: "update",
+      table: "activation_cards",
+      id: 1,
+      changed_attributes: ["title"],
+      old_values: { "title" => "Plan" },
+      new_values: { "title" => "Plan v2" }
+    }
   end
 end

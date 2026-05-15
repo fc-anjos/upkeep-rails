@@ -73,6 +73,11 @@ module Upkeep
 
       Batch = Data.define(:streams) do
         def envelopes
+          return [] if streams.empty?
+
+          direct_subscriber_id = single_direct_subscriber_id
+          return [Envelope.subscriber(direct_subscriber_id, streams)] if direct_subscriber_id
+
           shared_envelopes + subscriber_envelopes
         end
 
@@ -88,6 +93,13 @@ module Upkeep
         end
 
         private
+
+        def single_direct_subscriber_id
+          return if streams.any?(&:shared_stream_name)
+
+          subscriber_ids = streams.flat_map(&:subscriber_ids).uniq
+          subscriber_ids.first if subscriber_ids.one?
+        end
 
         def shared_envelopes
           streams
@@ -141,6 +153,9 @@ module Upkeep
       end
 
       def stream_targets(planned_targets)
+        return [] if planned_targets.empty?
+        return [stream_for(planned_targets.first)] if planned_targets.one?
+
         planned_targets.group_by { |planned_target| render_group_key(planned_target) }.map do |_key, targets|
           stream_for(
             targets.first,
@@ -160,7 +175,7 @@ module Upkeep
           html,
           Targeting::Extraction.digest_html(html),
           planned_target.identity_signature,
-          shared_stream_name_for(planned_target),
+          shared_stream_name_for(planned_target, subscriber_ids: subscriber_ids),
           subscriber_ids.uniq.sort_by(&:to_s),
           matched_dependency_keys.uniq,
           planned_target.deoptimization_reason,
@@ -226,8 +241,9 @@ module Upkeep
         streams.sum(&:render_duration_ms).round(3)
       end
 
-      def shared_stream_name_for(planned_target)
+      def shared_stream_name_for(planned_target, subscriber_ids:)
         return unless planned_target.sharing_signature
+        return unless subscriber_ids.uniq.size > 1
 
         SharedStreams.stream_name(
           target: planned_target.target,

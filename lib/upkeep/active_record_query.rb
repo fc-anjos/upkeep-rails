@@ -58,6 +58,7 @@ module Upkeep
       :sql,
       :primary_key,
       :appendable,
+      :limit_value,
       :predicates
     ) do
       def tables = table_columns.keys.sort
@@ -101,6 +102,7 @@ module Upkeep
           sql: safe_sql,
           primary_key: @primary_key,
           appendable: appendable_relation?,
+          limit_value: @relation.limit_value,
           predicates: normalized_predicates
         )
       end

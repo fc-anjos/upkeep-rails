@@ -17,6 +17,7 @@ module Upkeep
     class ActiveRecordStore
       LOOKUP_NOTIFICATION = LayeredReverseIndex::LOOKUP_NOTIFICATION
       REGISTER_NOTIFICATION = "register_subscription_store.upkeep"
+      ACTIVATE_NOTIFICATION = "activate_subscription_store.upkeep"
       PERSIST_NOTIFICATION = ActiveRecordSubscriptionPersistence::PERSIST_NOTIFICATION
       DURABILITY_MODE = "async_subscription_row_index_on_subscribe"
       INDEX_DURABILITY = "on_subscribe"
@@ -47,6 +48,7 @@ module Upkeep
         @subscription_record = subscription_record
         @index_record = index_record
         @index_builder = ReverseIndex.new
+        @pending_registry = ActiveRegistry.new
         @active_registry = ActiveRegistry.new
         @deferred_index_writes = {}
         @deferred_index_mutex = Mutex.new
@@ -63,7 +65,8 @@ module Upkeep
           active_index: active_registry,
           persistent_index: persistent_index,
           persistent_count: -> { persistence.count },
-          store: "active_record"
+          store: "active_record",
+          pending_index: pending_registry
         )
         @durable_writer = AsyncDurableWriter.new { |jobs| persistence.persist_jobs(jobs) }
       end
@@ -78,14 +81,14 @@ module Upkeep
         false
       end
 
-      def register(subscriber_id:, recorder:, metadata: {})
+      def register(subscriber_id:, recorder:, metadata: {}, entries: nil)
         if ActiveSupport::Notifications.notifier.listening?(REGISTER_NOTIFICATION)
           payload = { store: "active_record" }
           ActiveSupport::Notifications.instrument(REGISTER_NOTIFICATION, payload) do
-            register_subscription(subscriber_id, recorder, metadata, payload: payload)
+            register_subscription(subscriber_id, recorder, metadata, entries: entries, payload: payload)
           end
         else
-          register_subscription(subscriber_id, recorder, metadata)
+          register_subscription(subscriber_id, recorder, metadata, entries: entries)
         end
       end
 
@@ -97,15 +100,19 @@ module Upkeep
       end
 
       def activate(id)
-        subscription, entries = activation_index_write(id)
-        return false unless subscription
-
-        durable_writer.enqueue(subscription, entries: entries, operation: :persist_index)
-        true
+        if ActiveSupport::Notifications.notifier.listening?(ACTIVATE_NOTIFICATION)
+          payload = { store: "active_record", subscription_id: id }
+          ActiveSupport::Notifications.instrument(ACTIVATE_NOTIFICATION, payload) do
+            activate_subscription(id, payload: payload)
+          end
+        else
+          activate_subscription(id)
+        end
       end
 
       def touch(id, now: Time.now)
         metadata = { "last_seen_at" => now.utc.iso8601 }
+        pending_registry.touch(id, metadata: metadata)
         active_registry.touch(id, metadata: metadata)
         activate(id)
         durable_writer.drain
@@ -114,6 +121,7 @@ module Upkeep
 
       def unregister(ids)
         ids = Array(ids)
+        pending_registry.unregister(ids)
         active_registry.unregister(ids)
         delete_deferred_index_writes(ids)
         persisted_ids = durable_writer.cancel(ids)
@@ -129,30 +137,40 @@ module Upkeep
       end
 
       def fetch(id)
-        active_registry.fetch(id) || persistence.fetch(id)
+        active_registry.fetch(id) || pending_registry.fetch(id) || persistence.fetch(id)
       end
 
       def subscriptions
         persistent_count = persistence.count
-        return active_registry.subscriptions if active_registry.covers?(persistent_count)
+        in_memory_subscriptions = (active_registry.subscriptions + pending_registry.subscriptions).to_h do |subscription|
+          [subscription.id, subscription]
+        end
+        return in_memory_subscriptions.values if in_memory_subscriptions.size >= persistent_count
 
-        active_subscriptions = active_registry.subscriptions.to_h { |subscription| [subscription.id, subscription] }
-        persistence.subscriptions.map { |subscription| active_subscriptions.fetch(subscription.id, subscription) }
+        seen_ids = {}
+        persisted = persistence.subscriptions.map do |subscription|
+          seen_ids[subscription.id] = true
+          in_memory_subscriptions.fetch(subscription.id, subscription)
+        end
+        persisted + in_memory_subscriptions.values.reject { |subscription| seen_ids[subscription.id] }
       end
 
       def reset
         clear_deferred_index_writes
         durable_writer.drain
+        pending_registry.reset
         active_registry.reset
         persistence.reset
       end
 
       def summary
         persistent_count = persistence.count
+        pending_count = pending_registry.count
         active_count = active_registry.count
         {
-          subscriptions: [persistent_count, active_count].max,
+          subscriptions: [persistent_count, active_count + pending_count].max,
           persistent_subscriptions: persistent_count,
+          pending_subscriptions: pending_count,
           active_subscriptions: active_count,
           deferred_index_subscriptions: deferred_index_count,
           reverse_index: reverse_index.summary
@@ -161,9 +179,9 @@ module Upkeep
 
       private
 
-      attr_reader :subscription_record, :index_record, :index_builder, :active_registry, :persistence, :durable_writer
+      attr_reader :subscription_record, :index_record, :index_builder, :pending_registry, :active_registry, :persistence, :durable_writer
 
-      def register_subscription(subscriber_id, recorder, metadata, payload: nil)
+      def register_subscription(subscriber_id, recorder, metadata, entries: nil, payload: nil)
         subscription = Subscription.new(
           next_subscription_id,
           subscriber_id,
@@ -172,19 +190,44 @@ module Upkeep
           metadata
         )
 
-        entries = unique_entries(index_builder.entries_for_subscription(subscription))
+        entries = unique_entries(materialize_entries(subscription, entries))
         if payload
           payload[:subscription_id] = subscription.id
           payload[:dependency_entries] = entries.size
-          payload[:mode] = "live_first"
+          payload[:mode] = "pending_activation"
           payload[:durability] = DURABILITY_MODE
           payload[:index_durability] = INDEX_DURABILITY
         end
 
-        active_registry.register(subscription, entries: entries)
+        pending_registry.register(subscription, entries: entries)
         durable_writer.enqueue(subscription, entries: entries, operation: :persist_subscription)
         defer_index_write(subscription, entries)
         subscription
+      end
+
+      def activate_subscription(id, payload: nil)
+        subscription, entries, source = activation_index_write(id)
+        unless subscription
+          payload[:activated] = false if payload
+          payload[:miss_reason] = "no_subscription" if payload
+          return false
+        end
+
+        unless source == :active
+          active_registry.register(subscription, entries: entries)
+          pending_registry.unregister(id)
+          durable_writer.enqueue(subscription, entries: entries, operation: :persist_index)
+        end
+
+        if payload
+          payload[:activated] = true
+          payload[:activation_source] = source
+          payload[:dependency_entries] = entries.size
+          payload[:active_subscriptions] = active_registry.count
+          payload[:pending_subscriptions] = pending_registry.count
+        end
+
+        true
       end
 
       def defer_index_write(subscription, entries)
@@ -195,15 +238,21 @@ module Upkeep
 
       def activation_index_write(id)
         deferred_write = take_deferred_index_write(id)
-        return [active_registry.fetch(id) || deferred_write.subscription, deferred_write.entries] if deferred_write
+        if deferred_write
+          subscription = pending_registry.fetch(id) || active_registry.fetch(id) || deferred_write.subscription
+          return [subscription, deferred_write.entries, :pending]
+        end
 
         if (subscription = active_registry.fetch(id))
-          [subscription, unique_entries(index_builder.entries_for_subscription(subscription))]
+          [subscription, [], :active]
+        elsif (subscription = pending_registry.fetch(id))
+          [subscription, unique_entries(index_builder.entries_for_subscription(subscription)), :pending]
         else
-          persistence.fetch_with_index_entries(id)
+          subscription, entries = persistence.fetch_with_index_entries(id)
+          [subscription, entries, :persistent]
         end
       rescue ActiveRecord::RecordNotFound
-        [nil, nil]
+        [nil, nil, nil]
       end
 
       def take_deferred_index_write(id)
@@ -224,6 +273,14 @@ module Upkeep
 
       def unique_entries(entries)
         entries.uniq { |entry| [entry.owner_id, entry.dependency_cache_key] }
+      end
+
+      def materialize_entries(subscription, entries)
+        if entries
+          index_builder.entries_for_subscription_instance(entries, subscription)
+        else
+          index_builder.entries_for_subscription(subscription)
+        end
       end
 
       def next_subscription_id

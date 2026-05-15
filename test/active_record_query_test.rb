@@ -224,6 +224,7 @@ class ActiveRecordQueryTest < Minitest::Test
     assert analyze(QueryAnalysisCard.where(status: "open").order(:id)).appendable?
     refute analyze(QueryAnalysisCard.where("status = ?", "open").order(:id), opaque_table_policy: :allow_table).appendable?
     refute analyze(QueryAnalysisCard.where(status: "open").limit(10)).appendable?
+    assert_equal 10, analyze(QueryAnalysisCard.where(status: "open").limit(10)).limit_value
     refute analyze(QueryAnalysisCard.distinct.where(status: "open")).appendable?
     refute analyze(QueryAnalysisCard.group(:status)).appendable?
   end
@@ -245,6 +246,7 @@ class ActiveRecordQueryTest < Minitest::Test
           sql: QueryAnalysisCard.order(:id).to_sql,
           primary_key: QueryAnalysisCard.primary_key,
           appendable: true,
+          limit_value: nil,
           predicates: [],
           member_ids: [card.id.to_s]
         ),

@@ -55,6 +55,66 @@ def k6_metric(data, metric, key)
   data.dig("metrics", metric, "values", key)
 end
 
+def integer_env(key, default)
+  Integer(ENV.fetch(key, default))
+rescue ArgumentError
+  default
+end
+
+def listen_backlog
+  return Integer(ENV["LISTEN_BACKLOG"]) if ENV["LISTEN_BACKLOG"]
+
+  Integer(`sysctl -n kern.ipc.somaxconn 2>/dev/null || sysctl -n net.core.somaxconn 2>/dev/null || echo 128`.strip)
+rescue ArgumentError
+  128
+end
+
+def admission_capacity
+  worker_capacity = [1, integer_env("PUMA_WORKERS", 1) * integer_env("PUMA_THREADS", 5)].max
+  backlog = [worker_capacity, listen_backlog].max
+  admission_ceiling = [worker_capacity, [backlog, worker_capacity * 8].min].max
+  {
+    "worker_capacity" => worker_capacity,
+    "backlog" => backlog,
+    "admission_ceiling" => admission_ceiling
+  }
+end
+
+def compute_admission_waves(target, worker_capacity:, admission_ceiling:)
+  waves = []
+  admitted = 0
+  wave_size = worker_capacity
+  while admitted < target
+    remaining = target - admitted
+    size = [remaining, [worker_capacity, [admission_ceiling, wave_size].min].max].min
+    waves << size
+    admitted += size
+    wave_size = [admission_ceiling, wave_size * 2].min
+  end
+  waves
+end
+
+def warm_setup_profile(vus)
+  tier = ENV.fetch("BENCH_TIER", "gate")
+  stage_interval_ms = { "gate" => 2000, "report" => 4000 }.fetch(tier, 2000)
+  settle_ms = { "gate" => 5000, "report" => 10_000 }.fetch(tier, 5000)
+  capacity = admission_capacity
+  waves = compute_admission_waves(
+    vus.to_i,
+    worker_capacity: capacity.fetch("worker_capacity"),
+    admission_ceiling: capacity.fetch("admission_ceiling")
+  )
+
+  capacity.merge(
+    "tier" => tier,
+    "vus" => vus.to_i,
+    "stage_interval_ms" => stage_interval_ms,
+    "settle_ms" => settle_ms,
+    "setup_window_ms" => (waves.length * stage_interval_ms) + settle_ms,
+    "waves" => waves
+  )
+end
+
 def fmt(value)
   case value
   when nil then "-"
@@ -79,6 +139,7 @@ upkeep_reactivity = upkeep_after["upkeep_reactivity"] || {}
 upkeep_graph = upkeep_reactivity["subscription_graphs"] || {}
 upkeep_delivery = upkeep_reactivity["delivery"] || {}
 upkeep_identity = upkeep_reactivity["subscription_identity"] || {}
+upkeep_shapes = upkeep_reactivity["subscription_shapes"] || {}
 upkeep_live_deoptimizations = upkeep_delivery["live_deoptimizations"] || {}
 
 upkeep_deliveries = k6_metric(upkeep_k6, "deliveries_observed", "count")
@@ -90,6 +151,13 @@ if render_dedup_savings.zero? && upkeep_deliveries && upkeep_render_groups.posit
   render_dedup_savings = upkeep_deliveries.to_i - upkeep_render_groups
 end
 turbo_refresh_gets = k6_metric(turbo_k6, "refresh_gets", "count")
+observed_vus = [
+  k6_metric(upkeep_k6, "vus", "value"),
+  k6_metric(upkeep_k6, "vus_max", "value"),
+  k6_metric(turbo_k6, "vus", "value"),
+  ENV["BENCH_VUS"]
+].compact.first&.to_i
+setup_profile = warm_setup_profile(observed_vus || 0)
 relay_metrics_available = relay_render_groups.positive?
 delivery_bytes = relay_metrics_available ? counter_delta(upkeep_before, upkeep_after, "delivery_payload_bytes_total") : nil
 client_frames_sent = relay_metrics_available ? counter_delta(upkeep_before, upkeep_after, "client_frames_sent_total") : nil
@@ -97,7 +165,8 @@ relay_note = relay_metrics_available ? "" : "\nRelay metrics were unavailable in
 
 report = {
   "timestamp" => timestamp,
-  "vus" => ENV["BENCH_VUS"]&.to_i,
+  "vus" => observed_vus,
+  "warm_setup_profile" => setup_profile,
   "transport_note" => "The /feed render/update surface and subscription transport are anonymous; no login/session is used.",
   "upkeep" => {
     "writes" => k6_metric(upkeep_k6, "writes_issued", "count"),
@@ -112,6 +181,7 @@ report = {
     "post_p95_ms" => k6_metric(upkeep_k6, "post_latency", "p(95)"),
     "page_render_p95_ms" => k6_metric(upkeep_k6, "page_render", "p(95)"),
     "setup_p95_ms" => k6_metric(upkeep_k6, "setup_total", "p(95)"),
+    "steady_state_setup_leaks" => k6_metric(upkeep_k6, "steady_state_setup_leaks", "count"),
     "suback_p95_ms" => k6_metric(upkeep_k6, "suback", "p(95)"),
     "render_groups_by_tier" => labelled_delta(upkeep_before, upkeep_after, "render_groups_by_tier"),
     "render_groups_by_mode" => labelled_delta(upkeep_before, upkeep_after, "render_groups_by_mode"),
@@ -121,13 +191,16 @@ report = {
       "dependencies" => upkeep_graph["dependencies"],
       "shared_stream_names" => upkeep_graph["shared_stream_names"],
       "relay_metrics_available" => relay_metrics_available,
+      "plans" => upkeep_delivery["plans"],
       "planned_targets" => upkeep_delivery["planned_targets"],
       "represented_subscribers" => upkeep_delivery["represented_subscribers"],
+      "stream_batches" => upkeep_delivery["stream_batches"],
       "runtime_render_groups" => upkeep_delivery["render_groups"],
       "runtime_render_count" => upkeep_delivery["render_count"],
       "live_deoptimizations" => upkeep_live_deoptimizations
     },
-    "subscription_identity" => upkeep_identity
+    "subscription_identity" => upkeep_identity,
+    "subscription_shapes" => upkeep_shapes
   },
   "turbo" => {
     "writes" => k6_metric(turbo_k6, "writes_issued", "count"),
@@ -138,6 +211,7 @@ report = {
     "post_p95_ms" => k6_metric(turbo_k6, "post_latency", "p(95)"),
     "page_render_p95_ms" => k6_metric(turbo_k6, "page_render", "p(95)"),
     "setup_p95_ms" => k6_metric(turbo_k6, "setup_total", "p(95)"),
+    "steady_state_setup_leaks" => k6_metric(turbo_k6, "steady_state_setup_leaks", "count"),
     "suback_p95_ms" => k6_metric(turbo_k6, "suback", "p(95)")
   }
 }
@@ -155,6 +229,8 @@ File.write(md_path, <<~MARKDOWN)
 
   Timestamp: `#{timestamp}`
   VUs: #{report["vus"] || "(default)"}
+  Warm setup: #{fmt(setup_profile["setup_window_ms"])} ms window, #{fmt(setup_profile["stage_interval_ms"])} ms wave interval, #{fmt(setup_profile["settle_ms"])} ms settle.
+  Admission waves: `#{setup_profile["waves"].join(", ")}`
 
   Note: `/feed` render, write, and subscription paths are identity-free.
   No login/session is used; Upkeep must classify the graph as anonymous
@@ -168,6 +244,7 @@ File.write(md_path, <<~MARKDOWN)
   | Upkeep render groups | #{fmt(upkeep["render_groups"])} | n/a |
   | Upkeep delivery/render ratio | #{fmt(upkeep["dedup_ratio"])} | n/a |
   | Turbo refresh GETs | n/a | #{fmt(turbo["refresh_gets"])} |
+  | Setup leaks after warm window | #{fmt(upkeep["steady_state_setup_leaks"])} | #{fmt(turbo["steady_state_setup_leaks"])} |
   | Setup p95 ms | #{fmt(upkeep["setup_p95_ms"])} | #{fmt(turbo["setup_p95_ms"])} |
   | Page render p95 ms | #{fmt(upkeep["page_render_p95_ms"])} | #{fmt(turbo["page_render_p95_ms"])} |
   | Subscribe ack p95 ms | #{fmt(upkeep["suback_p95_ms"])} | #{fmt(turbo["suback_p95_ms"])} |
@@ -182,6 +259,8 @@ File.write(md_path, <<~MARKDOWN)
   | --- | ---: |
   | Render dedup savings | #{fmt(upkeep["render_dedup_savings"])} |
   | Byte-equality proofs | #{fmt(upkeep["byte_equality_proofs"])} |
+  | Plans | #{fmt(upkeep.dig("reactivity", "plans"))} |
+  | Stream batches | #{fmt(upkeep.dig("reactivity", "stream_batches"))} |
   | Runtime render groups | #{fmt(upkeep.dig("reactivity", "runtime_render_groups"))} |
   | Runtime render count | #{fmt(upkeep.dig("reactivity", "runtime_render_count"))} |
   | Planned targets | #{fmt(upkeep.dig("reactivity", "planned_targets"))} |
@@ -191,6 +270,7 @@ File.write(md_path, <<~MARKDOWN)
   | Render groups by mode | `#{upkeep["render_groups_by_mode"]}` |
   | Subscription identity modes | `#{upkeep.dig("subscription_identity", "by_mode") || {}}` |
   | Anonymous deopts | `#{upkeep.dig("subscription_identity", "anonymous_deopts") || {}}` |
+  | Subscription shape cache | `#{upkeep["subscription_shapes"] || {}}` |
   | Stored subscriptions | #{fmt(upkeep.dig("reactivity", "subscriptions"))} |
   | Shared stream names | #{fmt(upkeep.dig("reactivity", "shared_stream_names"))} |
 

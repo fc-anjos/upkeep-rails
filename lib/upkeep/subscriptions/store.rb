@@ -55,7 +55,7 @@ module Upkeep
         @next_id = 0
       end
 
-      def register(subscriber_id:, recorder:, metadata: {})
+      def register(subscriber_id:, recorder:, metadata: {}, entries: nil)
         subscription = Subscription.new(
           next_subscription_id,
           subscriber_id,
@@ -66,7 +66,11 @@ module Upkeep
 
         @subscriptions[subscription.id] = subscription
         touch(subscription.id)
-        reverse_index.index(subscription)
+        if entries
+          reverse_index.index_entries(entries, subscription: subscription)
+        else
+          reverse_index.index(subscription)
+        end
         subscription
       end
 

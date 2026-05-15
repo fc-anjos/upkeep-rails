@@ -59,7 +59,9 @@ class InvalidationPlannerTest < Minitest::Test
     assert_equal ["subscriber-a", "subscriber-b"], plan.targets.first.subscriber_ids.sort
     assert_equal ["render_site"], plan.targets.map { |target| target.target.kind }.uniq
     assert_equal 1, plan.summary.fetch(:manifest_replay_targets)
-    assert_equal 2, plan.matched_entries.size
+    assert_equal 1, plan.candidate_entries.size
+    assert_equal 1, plan.matched_entries.size
+    assert_equal 2, plan.summary.fetch(:represented_subscribers)
     assert_operator store.summary.fetch(:reverse_index).fetch(:lookup_keys), :>, 0
 
     plan.targets.each do |target|
@@ -67,6 +69,32 @@ class InvalidationPlannerTest < Minitest::Test
       assert_includes rendered, "Review"
       refute_includes rendered, "Archived"
     end
+  end
+
+  def test_identity_free_cohort_index_is_sublinear_and_survives_representative_unsubscribe
+    card = create_subscription_card!("Plan")
+    create_subscription_card!("Build")
+
+    store = Upkeep::Subscriptions::Store.new
+    first_subscription = register_controller_subscription(store, subscriber_id: "subscriber-a")
+    first_entry_count = store.summary.fetch(:reverse_index).fetch(:entries)
+    second_subscription = register_controller_subscription(store, subscriber_id: "subscriber-b")
+    second_entry_count = store.summary.fetch(:reverse_index).fetch(:entries)
+
+    assert_operator first_entry_count, :>, 0
+    assert_equal first_entry_count, second_entry_count
+
+    store.unregister(first_subscription.id)
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.update!(title: "Plan v2")
+
+    plan = planner(store).plan(Upkeep::Runtime::ChangeLog.events)
+
+    assert_equal [second_subscription.id], plan.targets.map(&:subscription_id).uniq
+    assert_equal ["subscriber-b"], plan.targets.flat_map(&:subscriber_ids).uniq
+    assert_equal 1, plan.summary.fetch(:represented_subscribers)
+    assert_equal second_entry_count, store.summary.fetch(:reverse_index).fetch(:entries)
   end
 
   def test_scalar_query_dependency_targets_page_replay

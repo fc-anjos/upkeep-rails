@@ -16,7 +16,7 @@ module Upkeep
         @mutex.synchronize do
           @subscriptions[subscription.id] = subscription
           if entries
-            @reverse_index.index_entries(entries)
+            @reverse_index.index_entries(entries, subscription: subscription)
           else
             @reverse_index.index(subscription)
           end

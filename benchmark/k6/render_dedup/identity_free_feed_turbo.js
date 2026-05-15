@@ -8,8 +8,9 @@
 import http from "k6/http";
 import { check, fail, sleep } from "k6";
 import cable from "k6/x/cable";
+import exec from "k6/execution";
 import { Counter, Trend } from "k6/metrics";
-import { BASE_URL, WS_URL } from "../utils/config.js";
+import { BASE_URL, WS_URL, warmSetupAdmissionForVu, warmSetupWindowMs } from "../utils/config.js";
 import { findBetween } from "../utils/index.js";
 import { isApplicationMessage } from "../utils/messages.js";
 import { textSummary } from "../utils/summary.js";
@@ -23,15 +24,18 @@ const suback = new Trend("suback", true);
 const writesIssued = new Counter("writes_issued");
 const refreshesObserved = new Counter("refreshes_observed");
 const refreshGets = new Counter("refresh_gets");
+const steadyStateSetupLeaks = new Counter("steady_state_setup_leaks");
 
 const N_VUS = parseInt(__ENV.BENCH_VUS || "50", 10);
 const STEADY_SECONDS = parseInt(__ENV.IDENTITY_FREE_FEED_STEADY_S || "20", 10);
 const N_WRITERS = parseInt(__ENV.IDENTITY_FREE_FEED_WRITERS || "1", 10);
+const SETUP_WINDOW_SECONDS = Math.ceil(warmSetupWindowMs() / 1000);
 
 export const options = {
   summaryTrendStats: ["avg", "min", "med", "max", "p(50)", "p(90)", "p(95)", "p(99)"],
   thresholds: {
     checks: ["rate==1"],
+    steady_state_setup_leaks: ["count==0"],
     writes_issued: [`count>=${N_WRITERS}`],
     refreshes_observed: [`count>=${Math.max(1, N_VUS - N_WRITERS)}`],
     refresh_gets: [`count>=${Math.max(1, N_VUS - N_WRITERS)}`],
@@ -41,7 +45,7 @@ export const options = {
       executor: "per-vu-iterations",
       vus: N_VUS,
       iterations: 1,
-      maxDuration: `${STEADY_SECONDS + 45}s`,
+      maxDuration: `${SETUP_WINDOW_SECONDS + STEADY_SECONDS + 60}s`,
     },
   },
 };
@@ -98,6 +102,11 @@ function recordRefresh() {
 }
 
 export default function () {
+  const scenarioStartAt = new Date(exec.scenario.startTime).getTime();
+  const measuredPhaseStartsAt = scenarioStartAt + warmSetupWindowMs();
+  const admission = warmSetupAdmissionForVu(__VU);
+  if (admission.delayMs > 0) sleep(admission.delayMs / 1000);
+
   const setupStartedAt = Date.now();
 
   const pageStartedAt = Date.now();
@@ -105,7 +114,7 @@ export default function () {
   pageRender.add(Date.now() - pageStartedAt);
   check(pageRes, { "feed loaded": (r) => r.status === 200 });
 
-  const token = findBetween(pageRes.body, 'signed-stream-name="', '"');
+  const token = pageRes.body ? findBetween(pageRes.body, 'signed-stream-name="', '"') : "";
   if (!token) fail("could not extract signed-stream-name from /feed");
 
   const client = cable.connect(WS_URL, {
@@ -116,9 +125,13 @@ export default function () {
   const sub = client.subscribe("Turbo::StreamsChannel", { signed_stream_name: token });
   if (!check(sub, { subscribed: (ch) => ch })) fail("subscribe failed");
   suback.add(sub.ackDuration());
-  setupTotal.add(Date.now() - setupStartedAt);
+  const setupCompletedAt = Date.now();
+  setupTotal.add(setupCompletedAt - setupStartedAt);
 
-  sleep(3);
+  if (setupCompletedAt > measuredPhaseStartsAt) steadyStateSetupLeaks.add(1);
+
+  const waitSeconds = Math.max(0, measuredPhaseStartsAt - Date.now()) / 1000;
+  if (waitSeconds > 0) sleep(waitSeconds);
 
   if (__VU <= N_WRITERS) {
     const offsetMs = N_WRITERS > 1 ? ((__VU - 1) * 1000) / N_WRITERS : 0;

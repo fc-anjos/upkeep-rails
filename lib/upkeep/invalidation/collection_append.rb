@@ -21,7 +21,7 @@ module Upkeep
         collection = replay.collection
         return unless collection.is_a?(Replay::ActiveRecordRelationValue)
         return unless collection.primary_key
-        return unless collection.appendable?
+        return unless collection.appendable? || unfilled_limit_window?(collection)
 
         model = constantize(collection.model)
         return unless change.fetch(:table) == model.table_name
@@ -65,6 +65,15 @@ module Upkeep
 
         ordered_ids.last == record.public_send(primary_key).to_s &&
           (snapshot_ids - ordered_ids).empty?
+      end
+
+      def unfilled_limit_window?(collection)
+        return false unless collection.limit_value
+
+        limit = Integer(collection.limit_value)
+        limit.positive? && collection.member_ids.size < limit
+      rescue ArgumentError, TypeError
+        false
       end
 
       def constantize(name)

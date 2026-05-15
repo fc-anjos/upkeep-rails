@@ -69,6 +69,7 @@ module Upkeep
       def primary_key = analysis.primary_key
       def predicates = analysis.predicates
       def appendable? = analysis.appendable?
+      def limit_value = analysis.limit_value
     end
 
     class Recorder

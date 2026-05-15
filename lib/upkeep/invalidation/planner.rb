@@ -56,10 +56,22 @@ module Upkeep
           @delivery_strategy_cache = {}
           candidate_entries = store.reverse_index.entries_for(changes)
           matched_entries = candidate_entries.select { |entry| changes.any? { |change| entry.dependency.matches_change?(change) } }
+          entries_by_subscription_id = matched_entries.group_by(&:subscription_id)
+          subscriptions_by_id = entries_by_subscription_id.keys.to_h do |subscription_id|
+            [subscription_id, store.fetch(subscription_id)]
+          end
+          represented_subscriber_ids = matched_entries.flat_map(&:represented_subscriber_ids).uniq
+          represented_subscriber_ids = subscriptions_by_id.values.map(&:subscriber_id).uniq if represented_subscriber_ids.empty?
+          shared_delivery = represented_subscriber_ids.size > 1
 
-          targets = matched_entries
-            .group_by(&:subscription_id)
-            .flat_map { |subscription_id, entries| targets_for_subscription(store.fetch(subscription_id), entries, changes) }
+          targets = entries_by_subscription_id.flat_map do |subscription_id, entries|
+            targets_for_subscription(
+              subscriptions_by_id.fetch(subscription_id),
+              entries,
+              changes,
+              shared_delivery: shared_delivery
+            )
+          end
 
           plan = Plan.new(deduplicate_targets(targets), candidate_entries, matched_entries)
           payload.merge!(payload_for(plan))
@@ -86,7 +98,7 @@ module Upkeep
         }
       end
 
-      def targets_for_subscription(subscription, entries, changes)
+      def targets_for_subscription(subscription, entries, changes, shared_delivery:)
         frames_by_id = Hash.new { |hash, key| hash[key] = { node: nil, dependency_keys: [], entries: [] } }
 
         entries.each do |entry|
@@ -100,7 +112,7 @@ module Upkeep
 
         remove_contained_frames(subscription.graph, frames_by_id.values.map { |bucket| bucket.fetch(:node) }, changes: changes).filter_map do |frame|
           bucket = frames_by_id.fetch(frame.id)
-          build_target(subscription, frame, bucket.fetch(:dependency_keys).uniq, bucket.fetch(:entries), changes)
+          build_target(subscription, frame, bucket.fetch(:dependency_keys).uniq, bucket.fetch(:entries), changes, shared_delivery: shared_delivery)
         end
       end
 
@@ -124,7 +136,7 @@ module Upkeep
         end
       end
 
-      def build_target(subscription, frame, dependency_keys, entries, changes)
+      def build_target(subscription, frame, dependency_keys, entries, changes, shared_delivery:)
         target = target_for_frame(frame)
         return unless target
 
@@ -133,14 +145,15 @@ module Upkeep
         return unless recipe
 
         identity_signature = subscription.identity_signature(frame_id)
-        sharing_signature = SharedStreams.signature_for(recipe) if identity_signature == "public" && frame.payload.fetch(:kind) == "render_site"
+        sharing_signature = SharedStreams.signature_for(recipe) if shared_delivery && identity_signature == "public" && frame.payload.fetch(:kind) == "render_site"
         action, recipe, delivery_target, deoptimization_reason = cached_delivery_strategy(frame, recipe, entries, changes, sharing_signature: sharing_signature)
         target = delivery_target || target
+        subscriber_ids = represented_subscriber_ids(subscription, entries)
 
         PlannedTarget.new(
           subscription.id,
           subscription.subscriber_id,
-          [subscription.subscriber_id],
+          subscriber_ids,
           target,
           frame_id,
           identity_signature,
@@ -150,6 +163,13 @@ module Upkeep
           action,
           deoptimization_reason
         )
+      end
+
+      def represented_subscriber_ids(subscription, entries)
+        subscriber_ids = entries.flat_map(&:represented_subscriber_ids).uniq.sort_by(&:to_s)
+        return [subscription.subscriber_id] if subscriber_ids.empty?
+
+        subscriber_ids
       end
 
       def cached_delivery_strategy(frame, recipe, entries, changes, sharing_signature:)

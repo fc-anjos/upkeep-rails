@@ -90,7 +90,9 @@ module Upkeep
             attributes.fetch(:subscription_id),
             owner_id,
             dependency_cache_key,
-            dependency
+            dependency,
+            nil,
+            nil
           )
         end
       end
