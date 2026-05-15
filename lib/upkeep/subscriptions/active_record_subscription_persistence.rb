@@ -10,6 +10,7 @@ module Upkeep
   module Subscriptions
     class ActiveRecordSubscriptionPersistence
       PERSIST_NOTIFICATION = "persist_subscription_store.upkeep"
+      INDEX_ENTRIES_SNAPSHOT_KEY = "__upkeep_index_entries"
 
       def initialize(subscription_record:, index_record:, index_builder:)
         @subscription_record = subscription_record
@@ -23,11 +24,17 @@ module Upkeep
         if ActiveSupport::Notifications.notifier.listening?(PERSIST_NOTIFICATION)
           payload = {
             store: "active_record",
-            subscriptions: jobs.size,
-            dependency_entries: jobs.sum { |job| job.entries.size }
+            jobs: jobs.size,
+            subscriptions: jobs.count { |job| persist_subscription?(job) },
+            index_jobs: jobs.count { |job| persist_index?(job) },
+            dependency_entries: jobs.sum { |job| persist_index?(job) ? job.entries.size : 0 },
+            pending_index_entries: jobs.sum { |job| persist_subscription?(job) ? job.entries.size : 0 },
+            operations: operation_counts(jobs)
           }
           ActiveSupport::Notifications.instrument(PERSIST_NOTIFICATION, payload) do
-            payload[:index_rows] = persist_jobs_without_instrumentation(jobs)
+            result = persist_jobs_without_instrumentation(jobs)
+            payload[:subscription_rows] = result.fetch(:subscription_rows)
+            payload[:index_rows] = result.fetch(:index_rows)
           end
         else
           persist_jobs_without_instrumentation(jobs)
@@ -69,6 +76,11 @@ module Upkeep
         subscription_with_metadata(record)
       end
 
+      def fetch_with_index_entries(id)
+        record = subscription_record.find(id)
+        [subscription_with_metadata(record), index_entries_from_snapshot(record.recorder_snapshot)]
+      end
+
       def subscriptions
         subscription_record.order(:created_at, :id).map { |record| subscription_with_metadata(record) }
       end
@@ -90,14 +102,19 @@ module Upkeep
       attr_reader :subscription_record, :index_record, :index_builder
 
       def persist_jobs_without_instrumentation(jobs)
-        index_rows = ActiveRecord::Base.connection_pool.with_connection do
+        subscription_jobs = jobs.select { |job| persist_subscription?(job) }
+        index_jobs = jobs.select { |job| persist_index?(job) }
+
+        result = ActiveRecord::Base.connection_pool.with_connection do
           ActiveRecord::Base.transaction do
-            persist_subscription_records(jobs)
-            index_subscriptions(jobs)
+            {
+              subscription_rows: persist_subscription_records(subscription_jobs),
+              index_rows: index_subscriptions(index_jobs)
+            }
           end
         end
-        increment_count_cache(jobs.size)
-        index_rows
+        increment_count_cache(result.fetch(:subscription_rows))
+        result
       end
 
       def persist_subscription_records(jobs)
@@ -108,16 +125,19 @@ module Upkeep
             id: subscription.id,
             subscriber_id: subscription.subscriber_id,
             metadata: subscription.metadata,
-            recorder_snapshot: dump(subscription.to_persistent_h),
+            recorder_snapshot: dump(persistent_snapshot_for(job)),
             created_at: now,
             updated_at: now
           }
         end
 
         subscription_record.insert_all!(rows) if rows.any?
+        rows.size
       end
 
       def index_subscriptions(jobs)
+        return 0 if jobs.empty?
+
         now = Time.now
         grouped_rows = {}
 
@@ -142,6 +162,7 @@ module Upkeep
           row.merge(owner_ids_snapshot: dump(row.delete(:owner_ids).uniq))
         end
 
+        index_record.where(subscription_id: jobs.map { |job| job.subscription.id }.uniq).delete_all
         index_record.insert_all!(rows) if rows.any?
         rows.size
       end
@@ -201,6 +222,40 @@ module Upkeep
         )
       end
 
+      def persistent_snapshot_for(job)
+        subscription = job.subscription
+        subscription.to_persistent_h.merge(
+          INDEX_ENTRIES_SNAPSHOT_KEY => index_entries_snapshot(job.entries)
+        )
+      end
+
+      def index_entries_snapshot(entries)
+        entries.map do |entry|
+          {
+            subscription_id: entry.subscription_id,
+            owner_id: entry.owner_id,
+            dependency: entry.dependency.to_h
+          }
+        end
+      end
+
+      def index_entries_from_snapshot(recorder_snapshot)
+        snapshot = load(recorder_snapshot)
+        key = snapshot.key?(INDEX_ENTRIES_SNAPSHOT_KEY) ? INDEX_ENTRIES_SNAPSHOT_KEY : INDEX_ENTRIES_SNAPSHOT_KEY.to_sym
+        return nil unless snapshot.key?(key)
+
+        Array(snapshot[key]).map do |entry_snapshot|
+          entry_snapshot = Dependencies.symbolize_keys(entry_snapshot)
+          dependency = Dependencies.from_h(entry_snapshot.fetch(:dependency))
+          ReverseIndex::Entry.new(
+            entry_snapshot.fetch(:subscription_id),
+            entry_snapshot.fetch(:owner_id),
+            dependency.cache_key,
+            dependency
+          )
+        end
+      end
+
       def dump(value)
         JsonSnapshot.dump(value)
       end
@@ -219,6 +274,18 @@ module Upkeep
 
       def write_count_cache(value)
         @count_mutex.synchronize { @count_cache = value }
+      end
+
+      def persist_subscription?(job)
+        [:persist, :persist_subscription].include?(job.operation)
+      end
+
+      def persist_index?(job)
+        [:persist, :persist_index].include?(job.operation)
+      end
+
+      def operation_counts(jobs)
+        jobs.each_with_object(Hash.new(0)) { |job, counts| counts[job.operation.to_s] += 1 }.to_h
       end
     end
   end
