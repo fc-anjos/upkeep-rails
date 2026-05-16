@@ -12,8 +12,8 @@ module Upkeep
         @shape_cache = shape_cache
       end
 
-      def register(identity:, decision:, recorder:, metadata: {})
-        shape = shape_cache.resolve(recorder: recorder, decision: decision)
+      def register(identity:, decision:, recorder:, metadata: {}, signature: nil)
+        shape = shape_cache.resolve(recorder: recorder, decision: decision, signature: signature)
         subscription = store.register(
           subscriber_id: identity.subscriber_id,
           recorder: recorder,

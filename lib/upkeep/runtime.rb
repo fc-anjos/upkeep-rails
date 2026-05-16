@@ -87,6 +87,7 @@ module Upkeep
         end
         @relation_provenance_by_collection_id = {}
         @graph.add_node(REQUEST_NODE_ID, kind: :request, payload: {}) unless @graph.node?(REQUEST_NODE_ID)
+        @subscription_shape_trace = DAG::SubscriptionShape::Trace.new(graph_version: @graph.version)
       end
 
       def self.from_h(snapshot)
@@ -103,8 +104,11 @@ module Upkeep
       end
 
       def with_frame(frame_id, metadata)
+        invalidate_subscription_shape_trace_if_needed
+        parent_id = current_owner
         @graph.add_node(frame_id, kind: :frame, payload: metadata)
-        @graph.add_edge(current_owner, frame_id, reason: :contains)
+        @graph.add_edge(parent_id, frame_id, reason: :contains)
+        @subscription_shape_trace.record_frame(frame_id, metadata, parent_id: parent_id, graph_version: @graph.version)
         @frame_stack.push(frame_id)
         yield
       ensure
@@ -112,7 +116,16 @@ module Upkeep
       end
 
       def record_dependency(dependency)
-        @graph.add_dependency(current_owner, dependency)
+        invalidate_subscription_shape_trace_if_needed
+        owner_id = current_owner
+        @graph.add_dependency(owner_id, dependency)
+        @subscription_shape_trace.record_dependency(owner_id, dependency, graph_version: @graph.version)
+      end
+
+      def subscription_shape(request_signature: nil)
+        return @subscription_shape_trace.subscription_shape(request_signature: request_signature) if @subscription_shape_trace.covers?(@graph)
+
+        DAG::SubscriptionShape.from_graph(@graph, request_signature: request_signature)
       end
 
       def record_ambient_replay_input(source, key, value)
@@ -173,6 +186,10 @@ module Upkeep
       end
 
       private
+
+      def invalidate_subscription_shape_trace_if_needed
+        @subscription_shape_trace.invalidate! unless @subscription_shape_trace.synchronized_with?(@graph)
+      end
 
       def identity_dependencies_for(frame_id)
         identity_dependency_owner_ids(frame_id)

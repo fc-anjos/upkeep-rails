@@ -9,16 +9,20 @@ module Upkeep
     Edge = Data.define(:from, :to, :reason)
 
     class Graph
-      attr_reader :nodes, :edges
+      attr_reader :nodes, :edges, :version
 
       def initialize
         @nodes = {}
         @edges = []
+        @version = 0
         reset_indexes!
       end
 
       def add_node(id, kind:, payload: {})
-        nodes[id] ||= Node.new(id, kind, payload)
+        return nodes.fetch(id) if nodes.key?(id)
+
+        @version += 1
+        nodes[id] = Node.new(id, kind, payload)
       end
 
       def add_edge(from, to, reason:)
@@ -26,6 +30,7 @@ module Upkeep
         return false if @edge_keys[key]
 
         @edge_keys[key] = true
+        @version += 1
         edge = Edge.new(from, to, reason)
         edges << edge
         @outgoing_edges_by_from[from] << edge
@@ -359,3 +364,5 @@ module Upkeep
     end
   end
 end
+
+require_relative "dag/subscription_shape"

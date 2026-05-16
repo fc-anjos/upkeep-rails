@@ -163,11 +163,11 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
 
     store = active_record_store
     _html, first_recorder = capture_controller_request("/cards?status=open")
-    first_subscription = store.register(subscriber_id: "subscriber-a", recorder: first_recorder, metadata: { stream_name: "stream-a" })
+    first_subscription = store.register(subscriber_id: "subscriber-a", recorder: first_recorder, metadata: { stream_name: "stream-a", subscription_shape_key: "shape:cards:open" })
     first_pending_entries = store.summary.fetch(:reverse_index).fetch(:pending).fetch(:entries)
 
     _html, second_recorder = capture_controller_request("/cards?status=open")
-    second_subscription = store.register(subscriber_id: "subscriber-b", recorder: second_recorder, metadata: { stream_name: "stream-b" })
+    second_subscription = store.register(subscriber_id: "subscriber-b", recorder: second_recorder, metadata: { stream_name: "stream-b", subscription_shape_key: "shape:cards:open" })
     second_pending_entries = store.summary.fetch(:reverse_index).fetch(:pending).fetch(:entries)
 
     assert_operator first_pending_entries, :>, 0

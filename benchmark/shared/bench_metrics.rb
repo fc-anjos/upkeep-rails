@@ -25,6 +25,7 @@ module BenchMetrics
   UPKEEP_SUBSCRIPTION_INDEX_LOOKUP = "lookup_subscription_index.upkeep"
   UPKEEP_SUBSCRIPTION_IDENTITY = "upkeep.subscription_identity"
   UPKEEP_SUBSCRIPTION_SHAPE = "subscription_shape.upkeep"
+  UPKEEP_SUBSCRIBE_CHANNEL = "subscribe_channel.upkeep"
   UPKEEP_BROKER_REQUEST = "upkeep.broker_request"
   UPKEEP_BROKER_SERVER_REQUEST = "upkeep.broker_server_request"
   UPKEEP_PLAN = "plan.upkeep"
@@ -230,6 +231,8 @@ module BenchMetrics
   @subscription_identity_deopts_by_reason = Hash.new(0)
   @subscription_shape_by_state = Hash.new(0)
   @subscription_shape_bypass_by_reason = Hash.new(0)
+  @subscription_shape_phase_samples = Hash.new { |hash, key| hash[key] = [] }
+  @subscription_subscribe_phase_samples = Hash.new { |hash, key| hash[key] = [] }
   @turbo_stream_actions = Hash.new(0)
 
   class << self
@@ -602,6 +605,7 @@ module BenchMetrics
     ActiveSupport::Notifications.subscribe(UPKEEP_SUBSCRIPTION_SHAPE) do |event|
       increment_reactivity_tally(:subscription_shape_by_state, event.payload[:cache_state])
       increment_reactivity_tally(:subscription_shape_bypass_by_reason, event.payload[:reason])
+      record_phase_samples(:subscription_shape_phase_samples, phase_samples_for(event, event.payload[:cache_state]))
       emit(
         event: "upkeep_subscription_shape",
         duration_ms: event.duration,
@@ -611,7 +615,28 @@ module BenchMetrics
           cacheable: event.payload[:cacheable],
           reason: event.payload[:reason],
           entries: event.payload[:entries],
-          shared_stream_names: event.payload[:shared_stream_names]
+          shared_stream_names: event.payload[:shared_stream_names],
+          key_ms: event.payload[:key_ms],
+          compile_ms: event.payload[:compile_ms],
+          index_template_ms: event.payload[:index_template_ms],
+          shared_stream_names_ms: event.payload[:shared_stream_names_ms]
+        }
+      )
+    end
+
+    ActiveSupport::Notifications.subscribe(UPKEEP_SUBSCRIBE_CHANNEL) do |event|
+      record_phase_samples(:subscription_subscribe_phase_samples, phase_samples_for(event))
+      emit(
+        event: "upkeep_subscribe_channel",
+        duration_ms: event.duration,
+        extra: {
+          subscription_id: event.payload[:subscription_id],
+          rejected: event.payload[:rejected],
+          stream_count: event.payload[:stream_count],
+          fetch_ms: event.payload[:fetch_ms],
+          authorization_ms: event.payload[:authorization_ms],
+          activation_ms: event.payload[:activation_ms],
+          stream_attach_ms: event.payload[:stream_attach_ms]
         }
       )
     end
@@ -816,6 +841,8 @@ module BenchMetrics
       @subscription_identity_deopts_by_reason = Hash.new(0)
       @subscription_shape_by_state = Hash.new(0)
       @subscription_shape_bypass_by_reason = Hash.new(0)
+      @subscription_shape_phase_samples = Hash.new { |hash, key| hash[key] = [] }
+      @subscription_subscribe_phase_samples = Hash.new { |hash, key| hash[key] = [] }
       @turbo_stream_actions = Hash.new(0)
     end
   end
@@ -826,6 +853,7 @@ module BenchMetrics
       refused_boundaries: refused_boundaries_snapshot,
       subscription_identity: subscription_identity_snapshot,
       subscription_shapes: subscription_shapes_snapshot,
+      subscription_subscribe: subscription_subscribe_snapshot,
       delivery: upkeep_delivery_snapshot
     }
   end
@@ -957,7 +985,14 @@ module BenchMetrics
       bypasses: {
         total: bypass.values.sum,
         by_reason: bypass
-      }
+      },
+      timings: phase_samples_snapshot(:subscription_shape_phase_samples)
+    }
+  end
+
+  def self.subscription_subscribe_snapshot
+    {
+      timings: phase_samples_snapshot(:subscription_subscribe_phase_samples)
     }
   end
 
@@ -1007,6 +1042,57 @@ module BenchMetrics
     @reactivity_mutex.synchronize do
       sorted_hash(instance_variable_get(:"@#{name}") || {})
     end
+  end
+
+  def self.phase_samples_for(event, prefix = nil)
+    {
+      total_ms: event.duration,
+      key_ms: event.payload[:key_ms],
+      compile_ms: event.payload[:compile_ms],
+      index_template_ms: event.payload[:index_template_ms],
+      shared_stream_names_ms: event.payload[:shared_stream_names_ms],
+      fetch_ms: event.payload[:fetch_ms],
+      authorization_ms: event.payload[:authorization_ms],
+      activation_ms: event.payload[:activation_ms],
+      stream_attach_ms: event.payload[:stream_attach_ms]
+    }.compact.transform_keys { |key| prefix ? "#{prefix}.#{key}" : key.to_s }
+  end
+
+  def self.record_phase_samples(name, samples)
+    samples = samples.to_h.select { |_phase, value| value.is_a?(Numeric) }
+    return if samples.empty?
+
+    @reactivity_mutex ||= Mutex.new
+    @reactivity_mutex.synchronize do
+      phase_samples = instance_variable_get(:"@#{name}") || Hash.new { |hash, key| hash[key] = [] }
+      samples.each { |phase, value| phase_samples[phase.to_s] << value.to_f }
+      instance_variable_set(:"@#{name}", phase_samples)
+    end
+  end
+
+  def self.phase_samples_snapshot(name)
+    @reactivity_mutex ||= Mutex.new
+    @reactivity_mutex.synchronize do
+      samples = instance_variable_get(:"@#{name}") || {}
+      samples.keys.map(&:to_s).sort.each_with_object({}) do |phase, out|
+        values = Array(samples.fetch(phase, samples.fetch(phase.to_sym, []))).sort
+        next if values.empty?
+
+        out[phase] = {
+          count: values.size,
+          avg_ms: (values.sum / values.size).round(3),
+          p95_ms: percentile(values, 0.95).round(3),
+          max_ms: values.last.round(3)
+        }
+      end
+    end
+  end
+
+  def self.percentile(sorted_values, percentile)
+    return 0.0 if sorted_values.empty?
+
+    index = [(sorted_values.size * percentile).ceil - 1, 0].max
+    sorted_values.fetch([index, sorted_values.size - 1].min)
   end
 
   def self.sorted_hash(hash)
@@ -1453,8 +1539,10 @@ module BenchMetrics
                        :subscription_graphs_snapshot, :empty_subscription_graph_summary,
                        :accumulate_subscription_graph_summary, :finish_subscription_graph_summary,
                        :replay_recipe_bytes, :shared_stream_names_count,
-                       :refused_boundaries_snapshot, :subscription_identity_snapshot, :upkeep_delivery_snapshot,
-                       :setup_reactivity_counters, :increment_reactivity_tally,
+                       :refused_boundaries_snapshot, :subscription_identity_snapshot,
+                       :subscription_shapes_snapshot, :subscription_subscribe_snapshot, :upkeep_delivery_snapshot,
+                       :setup_reactivity_counters, :increment_reactivity_tally, :phase_samples_for,
+                       :record_phase_samples, :phase_samples_snapshot, :percentile,
                        :reactivity_tally_snapshot, :sorted_hash,
                        :action_cable_counts, :action_cable_stream_entries,
                        :allocation_delta, :class_retention_bytes, :deep_retention_enabled?,
