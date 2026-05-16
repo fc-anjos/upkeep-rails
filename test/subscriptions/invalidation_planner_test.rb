@@ -249,7 +249,11 @@ class InvalidationPlannerTest < Minitest::Test
 
   def register_controller_subscription(store, subscriber_id:)
     _html, recorder = capture_controller_request("/cards?status=open")
-    store.register(subscriber_id: subscriber_id, recorder: recorder)
+    store.register(
+      subscriber_id: subscriber_id,
+      recorder: recorder,
+      metadata: { subscription_shape_key: "shape:subscription_cards:index:open" }
+    )
   end
 
   def capture_controller_request(path, action: :index)

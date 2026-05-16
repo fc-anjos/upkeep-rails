@@ -140,6 +140,7 @@ upkeep_graph = upkeep_reactivity["subscription_graphs"] || {}
 upkeep_delivery = upkeep_reactivity["delivery"] || {}
 upkeep_identity = upkeep_reactivity["subscription_identity"] || {}
 upkeep_shapes = upkeep_reactivity["subscription_shapes"] || {}
+upkeep_subscribe = upkeep_reactivity["subscription_subscribe"] || {}
 upkeep_live_deoptimizations = upkeep_delivery["live_deoptimizations"] || {}
 
 upkeep_deliveries = k6_metric(upkeep_k6, "deliveries_observed", "count")
@@ -200,7 +201,8 @@ report = {
       "live_deoptimizations" => upkeep_live_deoptimizations
     },
     "subscription_identity" => upkeep_identity,
-    "subscription_shapes" => upkeep_shapes
+    "subscription_shapes" => upkeep_shapes,
+    "subscription_subscribe" => upkeep_subscribe
   },
   "turbo" => {
     "writes" => k6_metric(turbo_k6, "writes_issued", "count"),
@@ -271,6 +273,8 @@ File.write(md_path, <<~MARKDOWN)
   | Subscription identity modes | `#{upkeep.dig("subscription_identity", "by_mode") || {}}` |
   | Anonymous deopts | `#{upkeep.dig("subscription_identity", "anonymous_deopts") || {}}` |
   | Subscription shape cache | `#{upkeep["subscription_shapes"] || {}}` |
+  | Subscription shape timings | `#{upkeep.dig("subscription_shapes", "timings") || {}}` |
+  | Subscribe channel timings | `#{upkeep.dig("subscription_subscribe", "timings") || {}}` |
   | Stored subscriptions | #{fmt(upkeep.dig("reactivity", "subscriptions"))} |
   | Shared stream names | #{fmt(upkeep.dig("reactivity", "shared_stream_names"))} |
 

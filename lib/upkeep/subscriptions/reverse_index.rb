@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "digest"
-
 module Upkeep
   module Subscriptions
     class ReverseIndex
@@ -80,6 +78,7 @@ module Upkeep
       end
 
       def entries_for_subscription(subscription)
+        cohort_key = cohort_key_for(subscription)
         subscription.graph.dependency_nodes.flat_map do |node|
           subscription.graph.dependency_owner_ids(node.id).map do |owner_id|
             Entry.new(
@@ -88,7 +87,7 @@ module Upkeep
               node.payload.cache_key,
               node.payload,
               [subscription.subscriber_id],
-              cohort_key_for(subscription)
+              cohort_key
             )
           end
         end
@@ -145,7 +144,7 @@ module Upkeep
 
         existing_entry = @cohort_entries_by_index_key[index_key]
         members[entry.subscription_id] = subscriber_ids
-        replacement_entry = cohort_entry_from(entry, members)
+        replacement_entry = existing_entry ? append_cohort_members(existing_entry, subscriber_ids) : cohort_entry_from(entry, members)
 
         if existing_entry
           replace_entry(lookup_key, existing_entry, replacement_entry)
@@ -187,6 +186,17 @@ module Upkeep
           entry.dependency_cache_key,
           entry.dependency,
           members.values.flatten.uniq.sort_by(&:to_s),
+          entry.cohort_key
+        )
+      end
+
+      def append_cohort_members(entry, subscriber_ids)
+        Entry.new(
+          entry.subscription_id,
+          entry.owner_id,
+          entry.dependency_cache_key,
+          entry.dependency,
+          entry.represented_subscriber_ids | subscriber_ids,
           entry.cohort_key
         )
       end
@@ -250,16 +260,17 @@ module Upkeep
       def cohort_key_for(subscription)
         return unless identity_free_subscription?(subscription)
 
-        Digest::SHA256.hexdigest([
-          "identity_free_subscription",
-          subscription.recorder.to_h(dependencies: :all)
-        ].inspect)
+        metadata_value(subscription, :subscription_shape_key)
       end
 
       def identity_free_subscription?(subscription)
         return false if subscription.graph.dependency_nodes.any? { |node| cohort_identity_dependency?(node.payload) }
 
         true
+      end
+
+      def metadata_value(subscription, key)
+        subscription.metadata[key] || subscription.metadata[key.to_s]
       end
 
       def cohort_identity_dependency?(dependency)

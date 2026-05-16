@@ -74,6 +74,7 @@ module Upkeep
           identity: identity,
           decision: decision,
           recorder: recorder,
+          signature: capture.signature,
           metadata: identity_metadata(decision).merge(
             path: controller.request.fullpath,
             stream_name: identity.stream_name
