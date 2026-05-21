@@ -169,11 +169,35 @@ class ControllerRuntimeTest < Minitest::Test
     assert_equal true, payload.fetch(:subscription_request)
     assert_equal true, payload.fetch(:registered)
     assert_operator payload.fetch(:capture_action_ms), :>=, 0
+    assert_operator payload.fetch(:capture_sql_ms), :>=, 0
+    assert_operator payload.fetch(:capture_view_ms), :>=, 0
+    assert_operator payload.fetch(:capture_recorder_frame_ms), :>=, 0
+    assert_operator payload.fetch(:capture_recorder_dependency_ms), :>=, 0
+    assert_operator payload.fetch(:capture_sql_count), :>=, 1
+    assert_operator payload.fetch(:capture_recorder_frame_count), :>=, 1
     assert_operator payload.fetch(:change_capture_ms), :>=, 0
     assert_operator payload.fetch(:register_ms), :>=, 0
     assert_operator payload.fetch(:inject_ms), :>=, 0
     assert_operator payload.fetch(:deliver_changes_ms), :>=, 0
     assert_operator payload.fetch(:graph_frames), :>, 0
+  end
+
+  def test_mutation_request_reports_action_and_delivery_phase_timings
+    card = RuntimeDeliveryCard.create!(title: "Plan")
+
+    events = capture_notifications(Upkeep::Rails::REQUEST_CAPTURE) do
+      _status, _headers, body = RuntimeDeliveryCardsController.action(:update).call(
+        env_for("/cards/#{card.id}", method: "PATCH", params: { id: card.id, title: "Plan v2" })
+      )
+      collect_body(body)
+    end
+    payload = events.last.payload
+
+    assert_equal false, payload.fetch(:subscription_request)
+    assert_equal false, payload.fetch(:registered)
+    assert_operator payload.fetch(:action_ms), :>=, 0
+    assert_operator payload.fetch(:change_capture_ms), :>=, 0
+    assert_operator payload.fetch(:deliver_changes_ms), :>=, 0
   end
 
   def test_identity_free_get_stays_anonymous_even_when_session_exists

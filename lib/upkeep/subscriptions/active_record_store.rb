@@ -182,6 +182,7 @@ module Upkeep
       attr_reader :subscription_record, :index_record, :index_builder, :pending_registry, :active_registry, :persistence, :durable_writer
 
       def register_subscription(subscriber_id, recorder, metadata, entries: nil, payload: nil)
+        recorder.flush_pending_dependencies if recorder.respond_to?(:flush_pending_dependencies)
         subscription = Subscription.new(
           next_subscription_id,
           subscriber_id,

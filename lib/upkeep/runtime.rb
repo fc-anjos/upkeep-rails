@@ -13,12 +13,13 @@ module Upkeep
 
       module_function
 
-      def capture_request
+      def capture_request(profile: false)
         previous = Thread.current[THREAD_KEY]
-        recorder = Recorder.new
+        recorder = Recorder.new(profile: profile)
         Thread.current[THREAD_KEY] = recorder
 
         result = yield(recorder)
+        recorder.flush_pending_dependencies
         [result, recorder]
       ensure
         Thread.current[THREAD_KEY] = previous
@@ -78,13 +79,17 @@ module Upkeep
 
       attr_reader :graph, :refused_boundaries
 
-      def initialize(graph: nil)
+      def initialize(graph: nil, profile: false)
         @frame_stack = []
         @graph = graph || DAG::Graph.new
+        @profile = profile
+        @profile_timings = Hash.new(0.0)
+        @profile_counts = Hash.new(0)
         @refused_boundaries = []
         @ambient_replay_inputs_by_owner = Hash.new do |owners, owner_id|
           owners[owner_id] = Hash.new { |sources, source| sources[source] = {} }
         end
+        @pending_dependencies_by_owner = Hash.new { |owners, owner_id| owners[owner_id] = {} }
         @relation_provenance_by_collection_id = {}
         @graph.add_node(REQUEST_NODE_ID, kind: :request, payload: {}) unless @graph.node?(REQUEST_NODE_ID)
         @subscription_shape_trace = DAG::SubscriptionShape::Trace.new(graph_version: @graph.version)
@@ -96,6 +101,7 @@ module Upkeep
       end
 
       def to_h(dependencies: :all)
+        flush_pending_dependencies
         { graph: graph.to_h(dependencies: dependencies) }
       end
 
@@ -104,32 +110,56 @@ module Upkeep
       end
 
       def with_frame(frame_id, metadata)
-        invalidate_subscription_shape_trace_if_needed
-        parent_id = current_owner
-        @graph.add_node(frame_id, kind: :frame, payload: metadata)
-        @graph.add_edge(parent_id, frame_id, reason: :contains)
-        @subscription_shape_trace.record_frame(frame_id, metadata, parent_id: parent_id, graph_version: @graph.version)
+        profile_count(:recorder_frame_count)
+        parent_id = nil
+        profile_timing(:recorder_frame_ms) do
+          invalidate_subscription_shape_trace_if_needed
+          parent_id = current_owner
+          @graph.add_node(frame_id, kind: :frame, payload: metadata)
+          @graph.add_edge(parent_id, frame_id, reason: :contains)
+          profile_timing(:recorder_shape_trace_ms) do
+            @subscription_shape_trace.record_frame(frame_id, metadata, parent_id: parent_id, graph_version: @graph.version)
+          end
+        end
         @frame_stack.push(frame_id)
-        yield
+        begin
+          yield
+        ensure
+          flush_pending_dependencies(frame_id)
+          @frame_stack.pop
+        end
+      end
+
+      def flush_pending_dependencies(owner_id = nil)
+        if owner_id
+          flush_pending_dependencies_for(owner_id)
+        else
+          @pending_dependencies_by_owner.keys.each { |pending_owner_id| flush_pending_dependencies_for(pending_owner_id) }
+        end
       ensure
-        @frame_stack.pop
+        @pending_dependencies_by_owner.delete(owner_id) if owner_id
       end
 
       def record_dependency(dependency)
-        invalidate_subscription_shape_trace_if_needed
-        owner_id = current_owner
-        @graph.add_dependency(owner_id, dependency)
-        @subscription_shape_trace.record_dependency(owner_id, dependency, graph_version: @graph.version)
+        profile_count(:recorder_dependency_count)
+        profile_timing(:recorder_dependency_ms) do
+          owner_id = current_owner
+          @pending_dependencies_by_owner[owner_id][dependency.cache_key] ||= dependency
+        end
       end
 
       def subscription_shape(request_signature: nil)
+        flush_pending_dependencies
         return @subscription_shape_trace.subscription_shape(request_signature: request_signature) if @subscription_shape_trace.covers?(@graph)
 
         DAG::SubscriptionShape.from_graph(@graph, request_signature: request_signature)
       end
 
       def record_ambient_replay_input(source, key, value)
-        @ambient_replay_inputs_by_owner[current_owner][source.to_sym][key.to_s] = value
+        profile_count(:recorder_ambient_replay_input_count)
+        profile_timing(:recorder_ambient_replay_input_ms) do
+          @ambient_replay_inputs_by_owner[current_owner][source.to_sym][key.to_s] = value
+        end
       end
 
       def ambient_replay_inputs_for(owner_id)
@@ -141,8 +171,11 @@ module Upkeep
       def record_relation_provenance(collection, model_name:, analysis:)
         return unless collection && analysis
 
-        @relation_provenance_by_collection_id[collection.object_id] =
-          RelationProvenance.new(model_name.to_s, analysis)
+        profile_count(:recorder_relation_provenance_count)
+        profile_timing(:recorder_relation_provenance_ms) do
+          @relation_provenance_by_collection_id[collection.object_id] =
+            RelationProvenance.new(model_name.to_s, analysis)
+        end
       end
 
       def relation_provenance_for(collection)
@@ -150,16 +183,27 @@ module Upkeep
       end
 
       def refuse_boundary(reason:, message:, suggestions:, source:)
-        boundary = RefusedBoundary.new(
-          reason.to_s,
-          message.to_s,
-          Array(suggestions).map(&:to_s),
-          source.to_s
-        )
-        return false if @refused_boundaries.include?(boundary)
+        profile_count(:recorder_refused_boundary_count)
+        profile_timing(:recorder_refused_boundary_ms) do
+          boundary = RefusedBoundary.new(
+            reason.to_s,
+            message.to_s,
+            Array(suggestions).map(&:to_s),
+            source.to_s
+          )
+          return false if @refused_boundaries.include?(boundary)
 
-        @refused_boundaries << boundary
-        true
+          @refused_boundaries << boundary
+          true
+        end
+      end
+
+      def profile_timings
+        @profile_timings.transform_values { |value| value.round(3) }
+      end
+
+      def profile_counts
+        @profile_counts.dup
       end
 
       def reactive?
@@ -175,10 +219,12 @@ module Upkeep
       end
 
       def identity_profile(frame_id)
+        flush_pending_dependencies
         identity_dependencies_for(frame_id).map(&:to_h)
       end
 
       def identity_signature(frame_id)
+        flush_pending_dependencies
         identity_dependencies = identity_dependencies_for(frame_id)
         return "public" if identity_dependencies.empty?
 
@@ -189,6 +235,40 @@ module Upkeep
 
       def invalidate_subscription_shape_trace_if_needed
         @subscription_shape_trace.invalidate! unless @subscription_shape_trace.synchronized_with?(@graph)
+      end
+
+      def flush_pending_dependencies_for(owner_id)
+        dependencies = @pending_dependencies_by_owner.delete(owner_id)
+        return unless dependencies&.any?
+
+        profile_timing(:recorder_dependency_ms) do
+          dependencies.each_value do |dependency|
+            profile_count(:recorder_dependency_flush_count)
+            invalidate_subscription_shape_trace_if_needed
+            if @graph.add_dependency(owner_id, dependency)
+              profile_timing(:recorder_shape_trace_ms) do
+                @subscription_shape_trace.record_dependency(owner_id, dependency, graph_version: @graph.version)
+              end
+            end
+          end
+        end
+      end
+
+      def profile_timing(key)
+        return yield unless @profile
+
+        started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        yield
+      ensure
+        if @profile && started_at
+          @profile_timings[key] += (Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at) * 1000.0
+        end
+      end
+
+      def profile_count(key)
+        return unless @profile
+
+        @profile_counts[key] += 1
       end
 
       def identity_dependencies_for(frame_id)

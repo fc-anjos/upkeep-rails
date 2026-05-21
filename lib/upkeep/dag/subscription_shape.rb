@@ -8,6 +8,7 @@ module Upkeep
   module DAG
     class SubscriptionShape
       DIGEST_SCOPE = "upkeep-subscription-shape"
+      FRAME_PAYLOAD_SHAPE_IGNORED_KEYS = %i[manifest recipe].freeze
 
       attr_reader :signature
 
@@ -106,7 +107,9 @@ module Upkeep
       end
 
       def self.frame_payload_component(payload)
-        component = payload.reject { |key, _value| key.respond_to?(:to_sym) && key.to_sym == :recipe }
+        component = payload.reject do |key, _value|
+          key.respond_to?(:to_sym) && FRAME_PAYLOAD_SHAPE_IGNORED_KEYS.include?(key.to_sym)
+        end
         component = shape_value(component)
         recipe = payload[:recipe] || payload["recipe"]
         kind = payload[:kind] || payload["kind"]
@@ -158,16 +161,14 @@ module Upkeep
       class Trace
         def initialize(graph_version:)
           @graph_version = graph_version
-          @frames = {}
-          @dependencies = {}
-          @dependency_owner_ids_by_key = Hash.new { |owners, dependency_key| owners[dependency_key] = {} }
-          @contains = {}
-          @frame_terms_by_id = {}
-          @dependency_payloads_by_key = {}
-          @contains_terms_by_edge = {}
+          @seen_frame_ids = {}
+          @seen_dependency_keys = {}
+          @seen_dependency_owner_ids_by_key = Hash.new { |owners, dependency_key| owners[dependency_key] = {} }
+          @seen_contains_edges = {}
           @digest = Digest::SHA256.new
           @digest.update("subscription-shape-trace")
           @invalid = false
+          @recorded = false
         end
 
         def synchronized_with?(graph)
@@ -181,16 +182,16 @@ module Upkeep
         def record_frame(frame_id, metadata, parent_id:, graph_version:)
           return if @invalid
 
-          @frames[frame_id] ||= SubscriptionShape.frame_component(frame_id, metadata)
-          @contains[[parent_id, frame_id]] = true
-          unless @frame_terms_by_id.key?(frame_id)
-            @frame_terms_by_id[frame_id] = SubscriptionShape.frame_term(frame_id, metadata)
-            record_digest_term(:frame, @frame_terms_by_id.fetch(frame_id))
+          unless @seen_frame_ids.key?(frame_id)
+            @seen_frame_ids[frame_id] = true
+            record_digest_term(:frame, SubscriptionShape.frame_term(frame_id, metadata))
           end
-          unless @contains_terms_by_edge.key?([parent_id, frame_id])
-            @contains_terms_by_edge[[parent_id, frame_id]] = SubscriptionShape.contains_term(parent_id, frame_id)
-            record_digest_term(:contains, @contains_terms_by_edge.fetch([parent_id, frame_id]))
+          edge_key = [parent_id, frame_id]
+          unless @seen_contains_edges.key?(edge_key)
+            @seen_contains_edges[edge_key] = true
+            record_digest_term(:contains, SubscriptionShape.contains_term(parent_id, frame_id))
           end
+          @recorded = true
           @graph_version = graph_version
         end
 
@@ -198,19 +199,16 @@ module Upkeep
           return if @invalid
 
           dependency_cache_key = dependency.cache_key
-          dependency_payload = SubscriptionShape.shape_value(dependency.to_h)
-          @dependencies[dependency_cache_key] ||= {
-            id: dependency_cache_key,
-            dependency: dependency_payload
-          }
-          unless @dependency_payloads_by_key.key?(dependency_cache_key)
-            @dependency_payloads_by_key[dependency_cache_key] = dependency_payload
+          unless @seen_dependency_keys.key?(dependency_cache_key)
+            @seen_dependency_keys[dependency_cache_key] = true
+            dependency_payload = SubscriptionShape.shape_value(dependency.to_h)
             record_digest_term(:dependency, SubscriptionShape.canonical_term(:dependency, dependency_cache_key, dependency_payload))
           end
-          unless @dependency_owner_ids_by_key[dependency_cache_key].key?(owner_id)
-            @dependency_owner_ids_by_key[dependency_cache_key][owner_id] = true
+          unless @seen_dependency_owner_ids_by_key[dependency_cache_key].key?(owner_id)
+            @seen_dependency_owner_ids_by_key[dependency_cache_key][owner_id] = true
             record_digest_term(:dependency_owner, SubscriptionShape.canonical_term(:dependency_owner, dependency_cache_key, owner_id))
           end
+          @recorded = true
           @graph_version = graph_version
         end
 
@@ -225,7 +223,7 @@ module Upkeep
         private
 
         def recorded?
-          @frames.any? || @dependencies.any? || @contains.any?
+          @recorded
         end
 
         def graph_shape_empty?(graph)

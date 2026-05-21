@@ -127,6 +127,7 @@ module BenchMetrics
       action: controller.action_name,
       method: rack_request_method(request.env),
       path: rack_fullpath(request.env),
+      bench_phase: bench_phase_from_request(request),
       client_started_at_ms: client_started_at_ms_from_request(request)
     ) do
       yield
@@ -235,6 +236,7 @@ module BenchMetrics
   @subscription_shape_phase_samples = Hash.new { |hash, key| hash[key] = [] }
   @subscription_subscribe_phase_samples = Hash.new { |hash, key| hash[key] = [] }
   @request_capture_phase_samples = Hash.new { |hash, key| hash[key] = [] }
+  @request_capture_operation_phase_samples = Hash.new { |hash, key| hash[key] = Hash.new { |phases, phase| phases[phase] = [] } }
   @turbo_stream_actions = Hash.new(0)
 
   class << self
@@ -605,34 +607,17 @@ module BenchMetrics
     end
 
     ActiveSupport::Notifications.subscribe(UPKEEP_REQUEST_CAPTURE) do |event|
-      record_phase_samples(:request_capture_phase_samples, phase_samples_for(event))
+      samples = phase_samples_for(event)
+      record_phase_samples(:request_capture_phase_samples, samples)
+      record_operation_phase_samples(
+        :request_capture_operation_phase_samples,
+        request_capture_operation(event.payload),
+        samples
+      )
       emit(
         event: "upkeep_request_capture",
         duration_ms: event.duration,
-        extra: {
-          controller: event.payload[:controller],
-          action: event.payload[:action],
-          method: event.payload[:method],
-          path: event.payload[:path],
-          subscription_request: event.payload[:subscription_request],
-          registered: event.payload[:registered],
-          subscription_id: event.payload[:subscription_id],
-          response_status: event.payload[:response_status],
-          response_media_type: event.payload[:response_media_type],
-          html_response: event.payload[:html_response],
-          response_successful: event.payload[:response_successful],
-          html_bytes: event.payload[:html_bytes],
-          graph_frames: event.payload[:graph_frames],
-          graph_dependencies: event.payload[:graph_dependencies],
-          deliver_pending_ms: event.payload[:deliver_pending_ms],
-          change_capture_ms: event.payload[:change_capture_ms],
-          capture_action_ms: event.payload[:capture_action_ms],
-          capture_response_body_ms: event.payload[:capture_response_body_ms],
-          capture_signature_ms: event.payload[:capture_signature_ms],
-          register_ms: event.payload[:register_ms],
-          inject_ms: event.payload[:inject_ms],
-          deliver_changes_ms: event.payload[:deliver_changes_ms]
-        }
+        extra: request_capture_extra(event.payload)
       )
     end
 
@@ -766,7 +751,8 @@ module BenchMetrics
           controller: event.payload[:controller],
           action: event.payload[:action],
           method: event.payload[:method],
-          path: event.payload[:path]
+          path: event.payload[:path],
+          bench_phase: event.payload[:bench_phase]
         }.merge(client_timing_extra(event))
       )
     end
@@ -878,6 +864,7 @@ module BenchMetrics
       @subscription_shape_phase_samples = Hash.new { |hash, key| hash[key] = [] }
       @subscription_subscribe_phase_samples = Hash.new { |hash, key| hash[key] = [] }
       @request_capture_phase_samples = Hash.new { |hash, key| hash[key] = [] }
+      @request_capture_operation_phase_samples = Hash.new { |hash, key| hash[key] = Hash.new { |phases, phase| phases[phase] = [] } }
       @turbo_stream_actions = Hash.new(0)
     end
   end
@@ -1014,7 +1001,8 @@ module BenchMetrics
 
   def self.request_capture_snapshot
     {
-      timings: phase_samples_snapshot(:request_capture_phase_samples)
+      timings: phase_samples_snapshot(:request_capture_phase_samples),
+      by_operation: phase_samples_by_operation_snapshot(:request_capture_operation_phase_samples)
     }
   end
 
@@ -1087,25 +1075,15 @@ module BenchMetrics
   end
 
   def self.phase_samples_for(event, prefix = nil)
-    {
-      total_ms: event.duration,
-      key_ms: event.payload[:key_ms],
-      compile_ms: event.payload[:compile_ms],
-      index_template_ms: event.payload[:index_template_ms],
-      shared_stream_names_ms: event.payload[:shared_stream_names_ms],
-      deliver_pending_ms: event.payload[:deliver_pending_ms],
-      change_capture_ms: event.payload[:change_capture_ms],
-      capture_action_ms: event.payload[:capture_action_ms],
-      capture_response_body_ms: event.payload[:capture_response_body_ms],
-      capture_signature_ms: event.payload[:capture_signature_ms],
-      register_ms: event.payload[:register_ms],
-      inject_ms: event.payload[:inject_ms],
-      deliver_changes_ms: event.payload[:deliver_changes_ms],
-      fetch_ms: event.payload[:fetch_ms],
-      authorization_ms: event.payload[:authorization_ms],
-      activation_ms: event.payload[:activation_ms],
-      stream_attach_ms: event.payload[:stream_attach_ms]
-    }.compact.transform_keys { |key| prefix ? "#{prefix}.#{key}" : key.to_s }
+    samples = { total_ms: event.duration }
+    event.payload.each do |key, value|
+      next unless value.is_a?(Numeric)
+      next unless key.to_s.end_with?("_ms")
+
+      samples[key] = value
+    end
+
+    samples.transform_keys { |key| prefix ? "#{prefix}.#{key}" : key.to_s }
   end
 
   def self.record_phase_samples(name, samples)
@@ -1117,6 +1095,20 @@ module BenchMetrics
       phase_samples = instance_variable_get(:"@#{name}") || Hash.new { |hash, key| hash[key] = [] }
       samples.each { |phase, value| phase_samples[phase.to_s] << value.to_f }
       instance_variable_set(:"@#{name}", phase_samples)
+    end
+  end
+
+  def self.record_operation_phase_samples(name, operation, samples)
+    samples = samples.to_h.select { |_phase, value| value.is_a?(Numeric) }
+    return if operation.to_s.empty? || samples.empty?
+
+    @reactivity_mutex ||= Mutex.new
+    @reactivity_mutex.synchronize do
+      operation_samples = instance_variable_get(:"@#{name}") ||
+        Hash.new { |hash, key| hash[key] = Hash.new { |phases, phase| phases[phase] = [] } }
+      phases = operation_samples[operation.to_s]
+      samples.each { |phase, value| phases[phase.to_s] << value.to_f }
+      instance_variable_set(:"@#{name}", operation_samples)
     end
   end
 
@@ -1136,6 +1128,55 @@ module BenchMetrics
         }
       end
     end
+  end
+
+  def self.phase_samples_by_operation_snapshot(name)
+    @reactivity_mutex ||= Mutex.new
+    @reactivity_mutex.synchronize do
+      operation_samples = instance_variable_get(:"@#{name}") || {}
+      operation_samples.keys.map(&:to_s).sort.each_with_object({}) do |operation, out|
+        phases = operation_samples.fetch(operation, operation_samples.fetch(operation.to_sym, {}))
+        out[operation] = phases.keys.map(&:to_s).sort.each_with_object({}) do |phase, phase_out|
+          values = Array(phases.fetch(phase, phases.fetch(phase.to_sym, []))).sort
+          next if values.empty?
+
+          phase_out[phase] = {
+            count: values.size,
+            avg_ms: (values.sum / values.size).round(3),
+            p95_ms: percentile(values, 0.95).round(3),
+            max_ms: values.last.round(3)
+          }
+        end
+      end
+    end
+  end
+
+  def self.request_capture_operation(payload)
+    method = payload[:method].to_s
+    path = payload[:path].to_s.split("?").first
+    action = [payload[:controller], payload[:action]].compact.join("#")
+    label = [method, path].reject(&:empty?).join(" ")
+    label.empty? ? action : label
+  end
+
+  def self.request_capture_extra(payload)
+    base_keys = %i[
+      controller action method path subscription_request registered subscription_id
+      response_status response_media_type html_response response_successful html_bytes
+      graph_frames graph_dependencies
+    ]
+    extra = base_keys.each_with_object({}) do |key, out|
+      out[key] = payload[key] if payload.key?(key)
+    end
+
+    payload.each do |key, value|
+      key_string = key.to_s
+      next unless key_string.end_with?("_ms") || key_string.start_with?("capture_")
+
+      extra[key] = value
+    end
+
+    extra
   end
 
   def self.percentile(sorted_values, percentile)
@@ -1510,6 +1551,14 @@ module BenchMetrics
   end
 
   BENCH_CLIENT_STARTED_AT_HEADER = "X-Bench-Client-Started-At-Ms"
+  BENCH_PHASE_HEADER = "X-Bench-Phase"
+
+  def self.bench_phase_from_request(request)
+    request&.get_header("HTTP_X_BENCH_PHASE") ||
+      request&.headers&.[](BENCH_PHASE_HEADER)
+  rescue StandardError
+    nil
+  end
 
   def self.client_started_at_ms_from_request(request)
     client_started_at_ms_from_value(
@@ -1584,6 +1633,7 @@ module BenchMetrics
                        :start_memory_sampler, :sample_rss!, :subscription_count, :install_endpoint,
                        :emit_notification, :request_params_hash, :parse_json, :request_fullpath,
                        :rack_request_method, :rack_fullpath,
+                       :bench_phase_from_request,
                        :action_dispatch_request, :install_action_cable_hooks, :current_subscription_store,
                        :memory_phase_from_env, :upkeep_reactivity_snapshot,
                        :subscription_graphs_snapshot, :empty_subscription_graph_summary,
@@ -1593,7 +1643,9 @@ module BenchMetrics
                        :request_capture_snapshot, :subscription_shapes_snapshot,
                        :subscription_subscribe_snapshot, :upkeep_delivery_snapshot,
                        :setup_reactivity_counters, :increment_reactivity_tally, :phase_samples_for,
-                       :record_phase_samples, :phase_samples_snapshot, :percentile,
+                       :record_phase_samples, :record_operation_phase_samples,
+                       :phase_samples_snapshot, :phase_samples_by_operation_snapshot,
+                       :request_capture_operation, :request_capture_extra, :percentile,
                        :reactivity_tally_snapshot, :sorted_hash,
                        :action_cable_counts, :action_cable_stream_entries,
                        :allocation_delta, :class_retention_bytes, :deep_retention_enabled?,
