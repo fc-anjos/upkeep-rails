@@ -240,6 +240,33 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     assert_equal 2, plan.summary.fetch(:represented_subscribers)
   end
 
+  def test_partitioned_persistent_index_routes_record_specific_lookup_to_matching_subscription
+    first_card = create_subscription_card!("Plan")
+    second_card = create_subscription_card!("Build")
+
+    store = active_record_store
+    first_subscription = store.register(
+      subscriber_id: "subscriber-a",
+      recorder: recorder_with_dependency_and_session(first_card, session_id: "session-a"),
+      metadata: { subscription_shape_key: "shape:cards:partitioned" }
+    )
+    second_subscription = store.register(
+      subscriber_id: "subscriber-b",
+      recorder: recorder_with_dependency_and_session(second_card, session_id: "session-b"),
+      metadata: { subscription_shape_key: "shape:cards:partitioned" }
+    )
+    store.activate(first_subscription.id)
+    store.activate(second_subscription.id)
+    store.drain
+
+    reloaded_store = active_record_store
+    entries = reloaded_store.reverse_index.entries_for([
+      change.merge(id: first_card.id)
+    ])
+
+    assert_equal [first_subscription.id], entries.map(&:subscription_id)
+  end
+
   def test_reloaded_store_can_activate_index_from_persisted_subscription_row
     create_subscription_card!("Plan")
 
@@ -636,6 +663,22 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
         id: 1,
         attribute: "title"
       )
+    )
+    recorder
+  end
+
+  def recorder_with_dependency_and_session(card, session_id:)
+    recorder = Upkeep::Runtime::Recorder.new
+    recorder.record_dependency(
+      Upkeep::Dependencies::ActiveRecordAttribute.new(
+        table: "persistent_subscription_cards",
+        model: "PersistentSubscriptionCard",
+        id: card.id,
+        attribute: "title"
+      )
+    )
+    recorder.record_dependency(
+      Upkeep::Dependencies::SessionValue.new(key: :id, value: session_id)
     )
     recorder
   end
