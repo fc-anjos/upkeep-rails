@@ -4,9 +4,11 @@ class CreateUpkeepSubscriptions < ActiveRecord::Migration[<%= @migration_version
       t.string :subscriber_id, null: false
       t.json :recorder_snapshot, null: false
       t.json :metadata
+      t.string :subscription_shape_key
       t.timestamps
     end
     add_index :upkeep_subscriptions, :subscriber_id
+    add_index :upkeep_subscriptions, :subscription_shape_key, name: "idx_upkeep_subscriptions_on_shape_key"
 
     create_table :upkeep_subscription_index_entries do |t|
       t.string :subscription_id, null: false

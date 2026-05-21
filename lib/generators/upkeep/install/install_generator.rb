@@ -15,7 +15,10 @@ module Upkeep
     end
 
     def create_subscription_migration
-      return if migration_exists?("create_upkeep_subscriptions")
+      if migration_exists?("create_upkeep_subscriptions")
+        create_subscription_shapes_upgrade_migration
+        return
+      end
 
       @migration_version = ActiveRecord::Migration.current_version
       migration_template "create_upkeep_subscriptions.rb.erb", "db/migrate/create_upkeep_subscriptions.rb"
@@ -56,6 +59,13 @@ module Upkeep
       Dir.glob(destination_path("db/migrate/*.rb")).any? do |path|
         File.basename(path).include?(name)
       end
+    end
+
+    def create_subscription_shapes_upgrade_migration
+      return if migration_exists?("upgrade_upkeep_subscription_shapes")
+
+      @migration_version = ActiveRecord::Migration.current_version
+      migration_template "upgrade_upkeep_subscription_shapes.rb.erb", "db/migrate/upgrade_upkeep_subscription_shapes.rb"
     end
 
     def append_application_import

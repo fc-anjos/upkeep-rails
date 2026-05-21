@@ -44,8 +44,10 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
         table.string :subscriber_id, null: false
         table.json :recorder_snapshot, null: false
         table.json :metadata
+        table.string :subscription_shape_key
         table.timestamps
       end
+      add_index :upkeep_subscriptions, :subscription_shape_key, name: "idx_upkeep_subscriptions_on_shape_key"
 
       create_table :upkeep_subscription_index_entries, force: true do |table|
         table.string :subscription_id, null: false
@@ -229,8 +231,10 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     assert_operator first_index_rows, :>, 0
     assert_equal first_index_rows, persistent_index_row_count
     assert_operator Upkeep::Subscriptions::ActiveRecordStore::ShapeIndexEntryRecord.count, :>, 0
+    assert_equal ["shape:cards:open"], Upkeep::Subscriptions::ActiveRecordStore::SubscriptionRecord.distinct.pluck(:subscription_shape_key)
 
     reloaded_store = active_record_store
+    assert_equal "shape:cards:open", reloaded_store.fetch(first_subscription.id).metadata.fetch(:subscription_shape_key)
     Upkeep::Runtime::ChangeLog.reset
     card.update!(title: "Plan v2")
 
@@ -592,6 +596,7 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
         table.string :subscriber_id, null: false
         table.binary :recorder_snapshot, null: false
         table.json :metadata
+        table.string :subscription_shape_key
         table.timestamps
       end
 

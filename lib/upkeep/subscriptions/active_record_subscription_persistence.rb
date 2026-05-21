@@ -133,7 +133,8 @@ module Upkeep
           {
             id: subscription.id,
             subscriber_id: subscription.subscriber_id,
-            metadata: subscription.metadata,
+            metadata: metadata_without_shape_key(subscription.metadata),
+            subscription_shape_key: shape_key_for_metadata(subscription.metadata),
             recorder_snapshot: dump(persistent_snapshot_for(job)),
             created_at: now,
             updated_at: now
@@ -266,12 +267,15 @@ module Upkeep
 
       def subscription_with_metadata(record)
         subscription = Subscription.from_h(load(record.recorder_snapshot))
+        metadata = subscription.metadata.merge(record.metadata.to_h)
+        metadata = metadata.merge(subscription_shape_key: record.subscription_shape_key) if record.subscription_shape_key
+
         Subscription.new(
           subscription.id,
           subscription.subscriber_id,
           subscription.recorder,
           subscription.graph,
-          subscription.metadata.merge(record.metadata.to_h)
+          metadata
         )
       end
 
@@ -329,23 +333,34 @@ module Upkeep
       end
 
       def shape_keys_for_subscriptions(ids)
-        subscription_record.where(id: ids).pluck(:metadata).filter_map { |metadata| metadata_value(metadata, :subscription_shape_key) }.uniq
+        subscription_record.where(id: ids).pluck(:subscription_shape_key).compact.uniq
       end
 
       def delete_orphaned_shape_index_rows(shape_keys)
         shape_keys.each do |shape_key|
-          next if subscription_record.pluck(:metadata).any? { |metadata| metadata_value(metadata, :subscription_shape_key) == shape_key }
+          next if subscription_record.where(subscription_shape_key: shape_key).exists?
 
           shape_index_record.where(subscription_shape_key: shape_key).delete_all
         end
       end
 
       def shape_index_key(job)
-        metadata_value(job.subscription.metadata, :subscription_shape_key)
+        shape_key_for_metadata(job.subscription.metadata)
       end
 
       def shape_indexable?(job)
         shape_index_key(job) && job.entries.any? && job.entries.all?(&:cohort?)
+      end
+
+      def shape_key_for_metadata(metadata)
+        metadata_value(metadata, :subscription_shape_key)
+      end
+
+      def metadata_without_shape_key(metadata)
+        metadata.to_h.dup.tap do |attributes|
+          attributes.delete(:subscription_shape_key)
+          attributes.delete("subscription_shape_key")
+        end
       end
 
       def metadata_value(metadata, key)

@@ -26,6 +26,8 @@ class InstallGeneratorTest < Rails::Generators::TestCase
     assert migration
     assert_file migration, /create_table :upkeep_subscriptions, id: :string/
     assert_file migration, /t\.json :recorder_snapshot, null: false/
+    assert_file migration, /t\.string :subscription_shape_key/
+    assert_file migration, /idx_upkeep_subscriptions_on_shape_key/
     assert_file migration, /create_table :upkeep_subscription_index_entries/
     assert_file migration, /t\.string :dependency_source, null: false/
     assert_file migration, /t\.string :lookup_table, null: false/
@@ -71,6 +73,15 @@ class InstallGeneratorTest < Rails::Generators::TestCase
     run_generator
 
     assert_equal 1, Dir[File.join(destination_root, "db/migrate/*create_upkeep_subscriptions.rb")].size
+    upgrade_migration = Dir[File.join(destination_root, "db/migrate/*upgrade_upkeep_subscription_shapes.rb")].first
+    assert upgrade_migration
+    assert_file upgrade_migration, /add_column :upkeep_subscriptions, :subscription_shape_key, :string/
+    assert_file upgrade_migration, /backfill_subscription_shape_keys/
+    assert_file upgrade_migration, /create_table :upkeep_subscription_shape_index_entries/
+
+    run_generator
+
+    assert_equal 1, Dir[File.join(destination_root, "db/migrate/*upgrade_upkeep_subscription_shapes.rb")].size
     assert_equal 1, File.read(File.join(destination_root, "app/javascript/application.js")).scan(%r{import "upkeep/subscription"}).size
     assert_equal 1, File.read(File.join(destination_root, "app/javascript/application.js")).scan("@hotwired/turbo-rails").size
     assert_equal 1, File.read(File.join(destination_root, "config/importmap.rb")).scan("@rails/actioncable").size
