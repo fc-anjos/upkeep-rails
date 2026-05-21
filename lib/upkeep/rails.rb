@@ -16,6 +16,7 @@ require_relative "rails/railtie" if defined?(::Rails::Railtie)
 module Upkeep
   module Rails
     SUBSCRIPTION_IDENTITY = "upkeep.subscription_identity"
+    REQUEST_CAPTURE = "request_capture.upkeep"
     INTERNAL_DELIVERY_TABLES = %w[
       upkeep_subscriptions
       upkeep_subscription_index_entries

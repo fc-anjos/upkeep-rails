@@ -12,7 +12,8 @@ module Upkeep
       :response_content_type,
       :response_media_type,
       :response_successful,
-      :signature
+      :signature,
+      :timings
     ) do
       def successful?
         !!response_successful
@@ -28,16 +29,22 @@ module Upkeep
       module_function
 
       def call(controller)
-        action_result, recorder = Runtime::Observation.capture_request { yield }
+        timings = {}
+        action_result, recorder = measure(timings, :action_ms) do
+          Runtime::Observation.capture_request { yield }
+        end
+        html = measure(timings, :response_body_ms) { response_body_html(controller.response.body) }
+        signature = measure(timings, :signature_ms) { signature_for(controller) }
         RequestResult.new(
           action_result,
-          response_body_html(controller.response.body),
+          html,
           recorder,
           controller.response.status,
           controller.response.content_type,
           controller.response.media_type,
           controller.response.successful?,
-          signature_for(controller)
+          signature,
+          timings
         )
       end
 
@@ -63,6 +70,13 @@ module Upkeep
 
           body.to_s
         end
+      end
+
+      def measure(timings, key)
+        started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        yield
+      ensure
+        timings[key] = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at) * 1000.0).round(3)
       end
     end
   end

@@ -139,6 +139,7 @@ upkeep_reactivity = upkeep_after["upkeep_reactivity"] || {}
 upkeep_graph = upkeep_reactivity["subscription_graphs"] || {}
 upkeep_delivery = upkeep_reactivity["delivery"] || {}
 upkeep_identity = upkeep_reactivity["subscription_identity"] || {}
+upkeep_request_capture = upkeep_reactivity["request_capture"] || {}
 upkeep_shapes = upkeep_reactivity["subscription_shapes"] || {}
 upkeep_subscribe = upkeep_reactivity["subscription_subscribe"] || {}
 upkeep_live_deoptimizations = upkeep_delivery["live_deoptimizations"] || {}
@@ -201,6 +202,7 @@ report = {
       "live_deoptimizations" => upkeep_live_deoptimizations
     },
     "subscription_identity" => upkeep_identity,
+    "request_capture" => upkeep_request_capture,
     "subscription_shapes" => upkeep_shapes,
     "subscription_subscribe" => upkeep_subscribe
   },
@@ -272,6 +274,7 @@ File.write(md_path, <<~MARKDOWN)
   | Render groups by mode | `#{upkeep["render_groups_by_mode"]}` |
   | Subscription identity modes | `#{upkeep.dig("subscription_identity", "by_mode") || {}}` |
   | Anonymous deopts | `#{upkeep.dig("subscription_identity", "anonymous_deopts") || {}}` |
+  | Request capture timings | `#{upkeep.dig("request_capture", "timings") || {}}` |
   | Subscription shape cache | `#{upkeep["subscription_shapes"] || {}}` |
   | Subscription shape timings | `#{upkeep.dig("subscription_shapes", "timings") || {}}` |
   | Subscribe channel timings | `#{upkeep.dig("subscription_subscribe", "timings") || {}}` |

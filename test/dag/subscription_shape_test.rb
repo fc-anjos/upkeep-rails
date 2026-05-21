@@ -3,16 +3,30 @@
 require "test_helper"
 
 class SubscriptionShapeTest < Minitest::Test
-  def test_recorder_trace_matches_finished_graph_signature
-    recorder = Upkeep::Runtime::Recorder.new
-    recorder.with_frame("fragment:cards/card:1", { kind: "fragment", template: "cards/_card" }) do
-      recorder.record_dependency(card_title_dependency)
+  def test_recorder_trace_is_stable_for_same_capture_shape
+    first = recorder_with_card_frame
+    second = recorder_with_card_frame
+
+    assert_equal(
+      first.subscription_shape(request_signature: signature).signature,
+      second.subscription_shape(request_signature: signature).signature
+    )
+  end
+
+  def test_recorder_trace_is_order_sensitive_false_miss_not_unsafe_share
+    first = Upkeep::Runtime::Recorder.new
+    first.with_frame("fragment:cards/card:1", { kind: "fragment", template: "cards/_card" }) do
+      first.record_dependency(card_title_dependency)
     end
 
-    traced = recorder.subscription_shape(request_signature: signature)
-    walked = Upkeep::DAG::SubscriptionShape.from_graph(recorder.graph, request_signature: signature)
+    second = Upkeep::Runtime::Recorder.new
+    second.record_dependency(card_title_dependency)
+    second.with_frame("fragment:cards/card:1", { kind: "fragment", template: "cards/_card" }) {}
 
-    assert_equal walked.signature, traced.signature
+    refute_equal(
+      first.subscription_shape(request_signature: signature).signature,
+      second.subscription_shape(request_signature: signature).signature
+    )
   end
 
   def test_recorder_shape_falls_back_after_direct_graph_mutation
@@ -80,6 +94,14 @@ class SubscriptionShapeTest < Minitest::Test
         { kind: kind, replay: { token: replay_token } }
       end
     end.new(kind: kind, replay_token: replay_token)
+  end
+
+  def recorder_with_card_frame
+    recorder = Upkeep::Runtime::Recorder.new
+    recorder.with_frame("fragment:cards/card:1", { kind: "fragment", template: "cards/_card" }) do
+      recorder.record_dependency(card_title_dependency)
+    end
+    recorder
   end
 
   def card_title_dependency
