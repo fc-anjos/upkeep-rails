@@ -40,11 +40,13 @@ class InstallGeneratorTest < Rails::Generators::TestCase
     assert_file migration, /t\.string :subscription_shape_key, null: false/
     assert_file migration, /idx_upkeep_sub_shape_entries_on_shape_key/
     assert_file "config/initializers/upkeep.rb", /Upkeep::Rails\.configure do \|config\|/
-    assert_file "config/initializers/upkeep.rb", /config\.enabled = true/
-    assert_file "config/initializers/upkeep.rb", /config\.subscription_store = :active_record/
-    assert_file "config/initializers/upkeep.rb", /config\.delivery_adapter = :active_job/
-    assert_file "config/initializers/upkeep.rb", /config\.delivery_queue = :upkeep_realtime/
+    assert_file "config/initializers/upkeep.rb", /app_config = Rails\.application\.config\.upkeep/
+    assert_file "config/initializers/upkeep.rb", /config\.enabled = app_config\.fetch\(:enabled, true\)/
+    assert_file "config/initializers/upkeep.rb", /config\.subscription_store = app_config\.fetch\(:subscription_store, Rails\.env\.test\? \? :memory : :active_record\)/
+    assert_file "config/initializers/upkeep.rb", /config\.delivery_adapter = app_config\.fetch\(:delivery_adapter, Rails\.env\.production\? \? :active_job : :async\)/
+    assert_file "config/initializers/upkeep.rb", /config\.delivery_queue = app_config\.fetch\(:delivery_queue, :upkeep_realtime\)/
     assert_file "config/initializers/upkeep.rb", /Delivery setup:/
+    assert_file "config/initializers/upkeep.rb", /Test setup:/
     assert_file "config/initializers/upkeep.rb", /Identity setup:/
     assert_file "config/initializers/upkeep.rb", /config\.identify :viewer, current: \["Current", :user\]/
     assert_file "config/initializers/upkeep.rb", /absent_if/
