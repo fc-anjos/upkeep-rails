@@ -36,7 +36,7 @@ class InstallGeneratorTest < Rails::Generators::TestCase
     assert_file migration, /t\.json :owner_ids_snapshot, null: false/
     assert_file migration, /create_table :upkeep_subscription_shape_index_entries/
     assert_file migration, /t\.string :subscription_shape_key, null: false/
-    assert_file migration, /add_index :upkeep_subscription_shape_index_entries, :subscription_shape_key/
+    assert_file migration, /idx_upkeep_sub_shape_entries_on_shape_key/
     assert_file "config/initializers/upkeep.rb", /Upkeep::Rails\.configure do \|config\|/
     assert_file "config/initializers/upkeep.rb", /config\.enabled = true/
     assert_file "config/initializers/upkeep.rb", /config\.subscription_store = :active_record/

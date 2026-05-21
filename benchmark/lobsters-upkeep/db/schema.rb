@@ -359,8 +359,8 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_14_082331) do
     t.json "owner_ids_snapshot", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index [ "lookup_key_digest" ], name: "index_upkeep_subscription_shape_index_entries_on_lookup_key_digest"
-    t.index [ "subscription_shape_key" ], name: "index_upkeep_subscription_shape_index_entries_on_subscription_shape_key"
+    t.index [ "lookup_key_digest" ], name: "idx_upkeep_sub_shape_entries_on_lookup_digest"
+    t.index [ "subscription_shape_key" ], name: "idx_upkeep_sub_shape_entries_on_shape_key"
   end
 
   add_foreign_key "comments", "comments", column: "parent_comment_id", name: "comments_parent_comment_id_fk"

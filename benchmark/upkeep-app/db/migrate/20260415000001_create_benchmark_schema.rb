@@ -86,7 +86,7 @@ class CreateBenchmarkSchema < ActiveRecord::Migration[8.1]
       t.json :owner_ids_snapshot, null: false
       t.timestamps
     end
-    add_index :upkeep_subscription_shape_index_entries, :subscription_shape_key
-    add_index :upkeep_subscription_shape_index_entries, :lookup_key_digest
+    add_index :upkeep_subscription_shape_index_entries, :subscription_shape_key, name: "idx_upkeep_sub_shape_entries_on_shape_key"
+    add_index :upkeep_subscription_shape_index_entries, :lookup_key_digest, name: "idx_upkeep_sub_shape_entries_on_lookup_digest"
   end
 end
