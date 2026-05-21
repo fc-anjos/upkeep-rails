@@ -149,7 +149,7 @@ module Upkeep
 
         now = Time.now
         subscription_ids = jobs.map { |job| job.subscription.id }.uniq
-        shape_jobs, direct_jobs = jobs.partition { |job| shape_index_key(job) }
+        shape_jobs, direct_jobs = jobs.partition { |job| shape_indexable?(job) }
 
         index_record.where(subscription_id: subscription_ids).delete_all
 
@@ -342,6 +342,10 @@ module Upkeep
 
       def shape_index_key(job)
         metadata_value(job.subscription.metadata, :subscription_shape_key)
+      end
+
+      def shape_indexable?(job)
+        shape_index_key(job) && job.entries.any? && job.entries.all?(&:cohort?)
       end
 
       def metadata_value(metadata, key)
