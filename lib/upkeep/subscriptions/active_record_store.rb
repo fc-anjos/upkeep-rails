@@ -138,6 +138,8 @@ module Upkeep
 
       def fetch(id)
         active_registry.fetch(id) || pending_registry.fetch(id) || persistence.fetch(id)
+      rescue ActiveRecord::RecordNotFound
+        raise NotFound, id
       end
 
       def subscriptions

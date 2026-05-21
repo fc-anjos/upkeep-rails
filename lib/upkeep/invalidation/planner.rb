@@ -10,6 +10,7 @@ module Upkeep
         :subscriber_id,
         :subscriber_ids,
         :target,
+        :shared_stream_target,
         :frame_id,
         :identity_signature,
         :sharing_signature,
@@ -144,6 +145,11 @@ module Upkeep
         recipe = subscription.replay_recipe(frame_id)
         return unless recipe
 
+        # The enclosing frame's target is the stream the subscription registered as shared
+        # (see SharedStreams.names_for_graph). Member-level deopts (remove/replace) retarget the
+        # operation at an individual member, so capture the enclosing target now to keep shared
+        # delivery on the same stream the subscribers listen on.
+        shared_stream_target = target
         identity_signature = subscription.identity_signature(frame_id)
         sharing_signature = SharedStreams.signature_for(recipe) if shared_delivery && identity_signature == "public" && frame.payload.fetch(:kind) == "render_site"
         action, recipe, delivery_target, deoptimization_reason = cached_delivery_strategy(frame, recipe, entries, changes, sharing_signature: sharing_signature)
@@ -155,6 +161,7 @@ module Upkeep
           subscription.subscriber_id,
           subscriber_ids,
           target,
+          shared_stream_target,
           frame_id,
           identity_signature,
           sharing_signature,
@@ -327,6 +334,7 @@ module Upkeep
           existing.subscriber_id,
           (existing.subscriber_ids + target.subscriber_ids).uniq.sort_by(&:to_s),
           existing.target,
+          existing.shared_stream_target,
           existing.frame_id,
           existing.identity_signature,
           existing.sharing_signature,

@@ -24,7 +24,7 @@ class SubscriptionStoreTest < Minitest::Test
     pruned = store.prune_stale!(older_than: Time.utc(2026, 1, 2))
 
     assert_equal 1, pruned
-    assert_raises(KeyError) { store.fetch(stale.id) }
+    assert_raises(Upkeep::Subscriptions::NotFound) { store.fetch(stale.id) }
     assert_equal fresh.id, store.fetch(fresh.id).id
     assert_equal 1, store.summary.fetch(:subscriptions)
     assert_equal 1, store.reverse_index.entries_for([change]).size
@@ -39,7 +39,7 @@ class SubscriptionStoreTest < Minitest::Test
 
     entries = store.reverse_index.entries_for([change])
     assert_equal [retained.id], entries.map(&:subscription_id)
-    assert_raises(KeyError) { store.fetch(removed.id) }
+    assert_raises(Upkeep::Subscriptions::NotFound) { store.fetch(removed.id) }
     assert_equal retained.id, store.fetch(retained.id).id
   end
 

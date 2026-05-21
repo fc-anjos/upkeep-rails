@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-12T09:40:17Z",
+  "generated_at": "2026-05-21T16:09:51Z",
   "summary": {
     "cases": 2,
     "passed": 2,
@@ -26,7 +26,19 @@
           "id": 1,
           "changed_attributes": [
             "name"
-          ]
+          ],
+          "old_values": {
+            "name": "Alice"
+          },
+          "new_values": {
+            "name": "Alice Prime"
+          },
+          "attribute_changes": {
+            "name": {
+              "old": "Alice",
+              "new": "Alice Prime"
+            }
+          }
         }
       ],
       "subscriber_results": [
@@ -38,7 +50,7 @@
               "kind": "page",
               "id": "page:boards/auth_surfaces",
               "reason": "page frame dependency matched committed change",
-              "identity_signature": "52038f7d2e8be963",
+              "identity_signature": "aced8f46ba10f12e",
               "identity_profile": [
                 {
                   "source": "current_attribute",
@@ -70,7 +82,7 @@
                   "source": "session",
                   "key": {
                     "key": "tenant_id",
-                    "value": "c0bea31774a2ba2d"
+                    "value": "492e25a37329c417"
                   },
                   "visibility": "identity_bound",
                   "precision": "identity",
@@ -83,7 +95,7 @@
                   "source": "cookie",
                   "key": {
                     "key": "theme",
-                    "value": "0793e20ac9fdeeb1"
+                    "value": "3add031d87102676"
                   },
                   "visibility": "identity_bound",
                   "precision": "identity",
@@ -96,7 +108,7 @@
                   "source": "request",
                   "key": {
                     "key": "subdomain",
-                    "value": "26e1701086a14320"
+                    "value": "9b496e3bc8b1d845"
                   },
                   "visibility": "identity_bound",
                   "precision": "identity",
@@ -122,6 +134,46 @@
                     "id": 1,
                     "scope": "user"
                   }
+                },
+                {
+                  "source": "Current.user",
+                  "key": {
+                    "key": "id",
+                    "value": 1
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "model": "Upkeep::Domain::User",
+                    "table": "users",
+                    "id": 1
+                  }
+                },
+                {
+                  "source": "current_attribute",
+                  "key": {
+                    "key": "Upkeep::Domain::CurrentContext.account_id",
+                    "value": null
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "owner": "Upkeep::Domain::CurrentContext",
+                    "name": "account_id"
+                  }
+                },
+                {
+                  "source": "current_attribute",
+                  "key": {
+                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
+                    "value": null
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "owner": "Upkeep::Domain::CurrentContext",
+                    "name": "viewer_role"
+                  }
                 }
               ]
             }
@@ -130,9 +182,9 @@
             {
               "kind": "page",
               "id": "page:boards/auth_surfaces",
-              "identity_signature": "52038f7d2e8be963",
-              "html_digest": "7b00b6be919b6b96974c3169c03a7872253938efc3e9ca91ab93e0619d82ea57",
-              "html": "<main data-upkeep-page-frame=\"page:boards/auth_surfaces\">\n  <h1>Launch</h1>\n  <section id=\"ambient_identity\">\n    <span class=\"current-account\">account-a</span>\n    <span class=\"current-role\">manager</span>\n    <span class=\"session-tenant\">tenant-a</span>\n    <span class=\"cookie-theme\">light</span>\n    <span class=\"request-subdomain\">alpha</span>\n    <span class=\"warden-user\">Alice Prime</span>\n  </section>\n  <ul class=\"cards\">\n    <upkeep-render-site data-upkeep-render-site=\"dcb4f43e7cb40353\"><li class=\"card\" id=\"secure_card_1\" data-upkeep-frame=\"fragment:cards/_secure_card:cards:1\" data-upkeep-template=\"74fa0df3fd61475d\">\n  <span class=\"title\">Plan</span>\n  <span class=\"value\">$80</span>\n</li>\n<li class=\"card\" id=\"secure_card_2\" data-upkeep-frame=\"fragment:cards/_secure_card:cards:2\" data-upkeep-template=\"74fa0df3fd61475d\">\n  <span class=\"title\">Build</span>\n  <span class=\"value\">$40</span>\n</li>\n<li class=\"card\" id=\"secure_card_3\" data-upkeep-frame=\"fragment:cards/_secure_card:cards:3\" data-upkeep-template=\"74fa0df3fd61475d\">\n  <span class=\"title\">Review</span>\n  <span class=\"value\">Hidden</span>\n</li>\n</upkeep-render-site>\n  </ul>\n</main>"
+              "identity_signature": "aced8f46ba10f12e",
+              "html_digest": "e9458edf803924c1ca9e74cc5235075b82555b0a8c13b7b3ae7f64530a11d7cd",
+              "html": "<main data-upkeep-page-frame=\"page:boards/auth_surfaces\">\n  <h1>Launch</h1>\n  <section id=\"ambient_identity\">\n    <span class=\"current-account\">account-a</span>\n    <span class=\"current-role\">manager</span>\n    <span class=\"session-tenant\">tenant-a</span>\n    <span class=\"cookie-theme\">light</span>\n    <span class=\"request-subdomain\">alpha</span>\n    <span class=\"warden-user\">Alice Prime</span>\n  </section>\n  <ul class=\"cards\">\n    <upkeep-render-site data-upkeep-render-site=\"fd31777e47e4ef85\"><li data-upkeep-frame=\"fragment:cards/_secure_card:cards:1\" data-upkeep-template=\"74fa0df3fd61475d\" class=\"card\" id=\"secure_card_1\">\n  <span class=\"title\">Plan</span>\n  <span class=\"value\">$80</span>\n</li>\n<li data-upkeep-frame=\"fragment:cards/_secure_card:cards:2\" data-upkeep-template=\"74fa0df3fd61475d\" class=\"card\" id=\"secure_card_2\">\n  <span class=\"title\">Build</span>\n  <span class=\"value\">$40</span>\n</li>\n<li data-upkeep-frame=\"fragment:cards/_secure_card:cards:3\" data-upkeep-template=\"74fa0df3fd61475d\" class=\"card\" id=\"secure_card_3\">\n  <span class=\"title\">Review</span>\n  <span class=\"value\">Hidden</span>\n</li>\n</upkeep-render-site>\n  </ul>\n</main>"
             }
           ],
           "patched_equals_full": true,
@@ -141,6 +193,7 @@
               "nodes": 30,
               "edges": 40,
               "frames": 5,
+              "manifest_attached_frames": 5,
               "dependencies": 24,
               "containment_edges": 5,
               "dependency_edges": 35,
@@ -166,8 +219,10 @@
                 "id": "page:boards/auth_surfaces",
                 "kind": "page",
                 "template": "boards/auth_surfaces",
+                "manifest_path": "boards/auth_surfaces",
+                "manifest_fingerprint": "77637c61633e7ef4",
                 "contains": [
-                  "site:dcb4f43e7cb40353"
+                  "site:fd31777e47e4ef85"
                 ],
                 "dependencies": [
                   {
@@ -213,7 +268,7 @@
                     "source": "session",
                     "key": {
                       "key": "tenant_id",
-                      "value": "c0bea31774a2ba2d"
+                      "value": "492e25a37329c417"
                     },
                     "visibility": "identity_bound",
                     "precision": "identity",
@@ -226,7 +281,7 @@
                     "source": "cookie",
                     "key": {
                       "key": "theme",
-                      "value": "0793e20ac9fdeeb1"
+                      "value": "3add031d87102676"
                     },
                     "visibility": "identity_bound",
                     "precision": "identity",
@@ -239,7 +294,7 @@
                     "source": "request",
                     "key": {
                       "key": "subdomain",
-                      "value": "26e1701086a14320"
+                      "value": "9b496e3bc8b1d845"
                     },
                     "visibility": "identity_bound",
                     "precision": "identity",
@@ -295,22 +350,22 @@
                 ],
                 "replay_recipe": {
                   "kind": "page",
-                  "frame_id": "page:boards/auth_surfaces",
                   "target_kind": "page",
                   "target_id": "page:boards/auth_surfaces",
                   "template": "boards/auth_surfaces",
-                  "metadata": {
-                    "user": {
-                      "table": "users",
-                      "id": 1
-                    }
+                  "replay": {
+                    "keys": [],
+                    "bytes": 2,
+                    "digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
                   }
                 }
               },
               {
-                "id": "site:dcb4f43e7cb40353",
+                "id": "site:fd31777e47e4ef85",
                 "kind": "render_site",
-                "site_id": "dcb4f43e7cb40353",
+                "site_id": "fd31777e47e4ef85",
+                "manifest_path": "boards/auth_surfaces",
+                "manifest_fingerprint": "77637c61633e7ef4",
                 "contains": [
                   "fragment:cards/_secure_card:cards:1",
                   "fragment:cards/_secure_card:cards:2",
@@ -335,7 +390,17 @@
                         ]
                       },
                       "coverage": "columns",
-                      "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC"
+                      "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC",
+                      "predicates": [
+                        {
+                          "table": "cards",
+                          "column": "board_id",
+                          "operator": "eq",
+                          "values": [
+                            1
+                          ]
+                        }
+                      ]
                     }
                   },
                   {
@@ -380,11 +445,12 @@
                 ],
                 "replay_recipe": {
                   "kind": "render_site",
-                  "frame_id": "site:dcb4f43e7cb40353",
                   "target_kind": "render_site",
-                  "target_id": "dcb4f43e7cb40353",
-                  "metadata": {
-                    "site_id": "dcb4f43e7cb40353"
+                  "target_id": "fd31777e47e4ef85",
+                  "replay": {
+                    "keys": [],
+                    "bytes": 2,
+                    "digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
                   }
                 }
               },
@@ -392,6 +458,8 @@
                 "id": "fragment:cards/_secure_card:cards:1",
                 "kind": "fragment",
                 "template": "cards/_secure_card",
+                "manifest_path": "cards/_secure_card",
+                "manifest_fingerprint": "31eb8b20d5514b1c",
                 "locals": {
                   "card": {
                     "table": "cards",
@@ -482,17 +550,13 @@
                 ],
                 "replay_recipe": {
                   "kind": "fragment",
-                  "frame_id": "fragment:cards/_secure_card:cards:1",
                   "target_kind": "fragment",
                   "target_id": "fragment:cards/_secure_card:cards:1",
                   "template": "cards/_secure_card",
-                  "metadata": {
-                    "locals": {
-                      "card": {
-                        "table": "cards",
-                        "id": 1
-                      }
-                    }
+                  "replay": {
+                    "keys": [],
+                    "bytes": 2,
+                    "digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
                   }
                 }
               },
@@ -500,6 +564,8 @@
                 "id": "fragment:cards/_secure_card:cards:2",
                 "kind": "fragment",
                 "template": "cards/_secure_card",
+                "manifest_path": "cards/_secure_card",
+                "manifest_fingerprint": "31eb8b20d5514b1c",
                 "locals": {
                   "card": {
                     "table": "cards",
@@ -590,17 +656,13 @@
                 ],
                 "replay_recipe": {
                   "kind": "fragment",
-                  "frame_id": "fragment:cards/_secure_card:cards:2",
                   "target_kind": "fragment",
                   "target_id": "fragment:cards/_secure_card:cards:2",
                   "template": "cards/_secure_card",
-                  "metadata": {
-                    "locals": {
-                      "card": {
-                        "table": "cards",
-                        "id": 2
-                      }
-                    }
+                  "replay": {
+                    "keys": [],
+                    "bytes": 2,
+                    "digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
                   }
                 }
               },
@@ -608,6 +670,8 @@
                 "id": "fragment:cards/_secure_card:cards:3",
                 "kind": "fragment",
                 "template": "cards/_secure_card",
+                "manifest_path": "cards/_secure_card",
+                "manifest_fingerprint": "31eb8b20d5514b1c",
                 "locals": {
                   "card": {
                     "table": "cards",
@@ -698,17 +762,13 @@
                 ],
                 "replay_recipe": {
                   "kind": "fragment",
-                  "frame_id": "fragment:cards/_secure_card:cards:3",
                   "target_kind": "fragment",
                   "target_id": "fragment:cards/_secure_card:cards:3",
                   "template": "cards/_secure_card",
-                  "metadata": {
-                    "locals": {
-                      "card": {
-                        "table": "cards",
-                        "id": 3
-                      }
-                    }
+                  "replay": {
+                    "keys": [],
+                    "bytes": 2,
+                    "digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
                   }
                 }
               }
@@ -716,59 +776,9 @@
             "dependencies": [
               {
                 "id": [
-                  "current_attribute",
-                  {
-                    "key": "Upkeep::Domain::CurrentContext.account_id",
-                    "value": null
-                  }
-                ],
-                "dependency": {
-                  "source": "current_attribute",
-                  "key": {
-                    "key": "Upkeep::Domain::CurrentContext.account_id",
-                    "value": null
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "owner": "Upkeep::Domain::CurrentContext",
-                    "name": "account_id"
-                  }
-                },
-                "owners": [
-                  "request"
-                ]
-              },
-              {
-                "id": [
-                  "current_attribute",
-                  {
-                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
-                    "value": null
-                  }
-                ],
-                "dependency": {
-                  "source": "current_attribute",
-                  "key": {
-                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
-                    "value": null
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "owner": "Upkeep::Domain::CurrentContext",
-                    "name": "viewer_role"
-                  }
-                },
-                "owners": [
-                  "request"
-                ]
-              },
-              {
-                "id": [
                   "active_record_attribute",
                   {
-                    "table": "boards",
+                    "table": "cards",
                     "id": 1,
                     "attribute": "id"
                   }
@@ -776,18 +786,45 @@
                 "dependency": {
                   "source": "active_record_attribute",
                   "key": {
-                    "table": "boards",
+                    "table": "cards",
                     "id": 1,
                     "attribute": "id"
                   },
                   "visibility": "public",
                   "precision": "record_attribute",
                   "metadata": {
-                    "model": "Upkeep::Domain::Board"
+                    "model": "Upkeep::Domain::Card"
                   }
                 },
                 "owners": [
-                  "request"
+                  "fragment:cards/_secure_card:cards:1",
+                  "site:fd31777e47e4ef85"
+                ]
+              },
+              {
+                "id": [
+                  "active_record_attribute",
+                  {
+                    "table": "cards",
+                    "id": 1,
+                    "attribute": "title"
+                  }
+                ],
+                "dependency": {
+                  "source": "active_record_attribute",
+                  "key": {
+                    "table": "cards",
+                    "id": 1,
+                    "attribute": "title"
+                  },
+                  "visibility": "public",
+                  "precision": "record_attribute",
+                  "metadata": {
+                    "model": "Upkeep::Domain::Card"
+                  }
+                },
+                "owners": [
+                  "fragment:cards/_secure_card:cards:1"
                 ]
               },
               {
@@ -813,307 +850,11 @@
                   }
                 },
                 "owners": [
-                  "request",
-                  "page:boards/auth_surfaces",
                   "fragment:cards/_secure_card:cards:1",
                   "fragment:cards/_secure_card:cards:2",
-                  "fragment:cards/_secure_card:cards:3"
-                ]
-              },
-              {
-                "id": [
-                  "active_record_attribute",
-                  {
-                    "table": "boards",
-                    "id": 1,
-                    "attribute": "name"
-                  }
-                ],
-                "dependency": {
-                  "source": "active_record_attribute",
-                  "key": {
-                    "table": "boards",
-                    "id": 1,
-                    "attribute": "name"
-                  },
-                  "visibility": "public",
-                  "precision": "record_attribute",
-                  "metadata": {
-                    "model": "Upkeep::Domain::Board"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "current_attribute",
-                  {
-                    "key": "Upkeep::Domain::CurrentContext.account_id",
-                    "value": "account-a"
-                  }
-                ],
-                "dependency": {
-                  "source": "current_attribute",
-                  "key": {
-                    "key": "Upkeep::Domain::CurrentContext.account_id",
-                    "value": "account-a"
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "owner": "Upkeep::Domain::CurrentContext",
-                    "name": "account_id"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "current_attribute",
-                  {
-                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
-                    "value": "manager"
-                  }
-                ],
-                "dependency": {
-                  "source": "current_attribute",
-                  "key": {
-                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
-                    "value": "manager"
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "owner": "Upkeep::Domain::CurrentContext",
-                    "name": "viewer_role"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "session",
-                  {
-                    "key": "tenant_id",
-                    "value": "c0bea31774a2ba2d"
-                  }
-                ],
-                "dependency": {
-                  "source": "session",
-                  "key": {
-                    "key": "tenant_id",
-                    "value": "c0bea31774a2ba2d"
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "key": "tenant_id",
-                    "value_class": "String"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "cookie",
-                  {
-                    "key": "theme",
-                    "value": "0793e20ac9fdeeb1"
-                  }
-                ],
-                "dependency": {
-                  "source": "cookie",
-                  "key": {
-                    "key": "theme",
-                    "value": "0793e20ac9fdeeb1"
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "key": "theme",
-                    "value_class": "String"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "request",
-                  {
-                    "key": "subdomain",
-                    "value": "26e1701086a14320"
-                  }
-                ],
-                "dependency": {
-                  "source": "request",
-                  "key": {
-                    "key": "subdomain",
-                    "value": "26e1701086a14320"
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "key": "subdomain",
-                    "value_class": "String"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "warden_user",
-                  {
-                    "key": "user",
-                    "value": {
-                      "model": "Upkeep::Domain::User",
-                      "id": 1
-                    }
-                  }
-                ],
-                "dependency": {
-                  "source": "warden_user",
-                  "key": {
-                    "key": "user",
-                    "value": {
-                      "model": "Upkeep::Domain::User",
-                      "id": 1
-                    }
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "model": "Upkeep::Domain::User",
-                    "table": "users",
-                    "id": 1,
-                    "scope": "user"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "active_record_attribute",
-                  {
-                    "table": "users",
-                    "id": 1,
-                    "attribute": "name"
-                  }
-                ],
-                "dependency": {
-                  "source": "active_record_attribute",
-                  "key": {
-                    "table": "users",
-                    "id": 1,
-                    "attribute": "name"
-                  },
-                  "visibility": "public",
-                  "precision": "record_attribute",
-                  "metadata": {
-                    "model": "Upkeep::Domain::User"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "active_record_collection",
-                  {
-                    "table": "cards",
-                    "predicate_digest": "c9472e0f607e2bca"
-                  }
-                ],
-                "dependency": {
-                  "source": "active_record_collection",
-                  "key": {
-                    "table": "cards",
-                    "predicate_digest": "c9472e0f607e2bca"
-                  },
-                  "visibility": "public",
-                  "precision": "collection_predicate",
-                  "metadata": {
-                    "primary_table": "cards",
-                    "table_columns": {
-                      "cards": [
-                        "board_id",
-                        "id",
-                        "position"
-                      ]
-                    },
-                    "coverage": "columns",
-                    "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC"
-                  }
-                },
-                "owners": [
-                  "site:dcb4f43e7cb40353"
-                ]
-              },
-              {
-                "id": [
-                  "active_record_attribute",
-                  {
-                    "table": "cards",
-                    "id": 1,
-                    "attribute": "id"
-                  }
-                ],
-                "dependency": {
-                  "source": "active_record_attribute",
-                  "key": {
-                    "table": "cards",
-                    "id": 1,
-                    "attribute": "id"
-                  },
-                  "visibility": "public",
-                  "precision": "record_attribute",
-                  "metadata": {
-                    "model": "Upkeep::Domain::Card"
-                  }
-                },
-                "owners": [
-                  "site:dcb4f43e7cb40353",
-                  "fragment:cards/_secure_card:cards:1"
-                ]
-              },
-              {
-                "id": [
-                  "active_record_attribute",
-                  {
-                    "table": "cards",
-                    "id": 1,
-                    "attribute": "title"
-                  }
-                ],
-                "dependency": {
-                  "source": "active_record_attribute",
-                  "key": {
-                    "table": "cards",
-                    "id": 1,
-                    "attribute": "title"
-                  },
-                  "visibility": "public",
-                  "precision": "record_attribute",
-                  "metadata": {
-                    "model": "Upkeep::Domain::Card"
-                  }
-                },
-                "owners": [
-                  "fragment:cards/_secure_card:cards:1"
+                  "fragment:cards/_secure_card:cards:3",
+                  "page:boards/auth_surfaces",
+                  "request"
                 ]
               },
               {
@@ -1221,8 +962,8 @@
                   }
                 },
                 "owners": [
-                  "site:dcb4f43e7cb40353",
-                  "fragment:cards/_secure_card:cards:2"
+                  "fragment:cards/_secure_card:cards:2",
+                  "site:fd31777e47e4ef85"
                 ]
               },
               {
@@ -1300,8 +1041,8 @@
                   }
                 },
                 "owners": [
-                  "site:dcb4f43e7cb40353",
-                  "fragment:cards/_secure_card:cards:3"
+                  "fragment:cards/_secure_card:cards:3",
+                  "site:fd31777e47e4ef85"
                 ]
               },
               {
@@ -1355,63 +1096,52 @@
                 "owners": [
                   "fragment:cards/_secure_card:cards:3"
                 ]
-              }
-            ],
-            "edges": [
+              },
               {
-                "from": "request",
-                "to": [
-                  "current_attribute",
+                "id": [
+                  "active_record_collection",
                   {
-                    "key": "Upkeep::Domain::CurrentContext.account_id",
-                    "value": null
+                    "table": "cards",
+                    "predicate_digest": "c9472e0f607e2bca"
                   }
                 ],
-                "reason": "depends_on"
-              },
-              {
-                "from": "request",
-                "to": [
-                  "current_attribute",
-                  {
-                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
-                    "value": null
+                "dependency": {
+                  "source": "active_record_collection",
+                  "key": {
+                    "table": "cards",
+                    "predicate_digest": "c9472e0f607e2bca"
+                  },
+                  "visibility": "public",
+                  "precision": "collection_predicate",
+                  "metadata": {
+                    "primary_table": "cards",
+                    "table_columns": {
+                      "cards": [
+                        "board_id",
+                        "id",
+                        "position"
+                      ]
+                    },
+                    "coverage": "columns",
+                    "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC",
+                    "predicates": [
+                      {
+                        "table": "cards",
+                        "column": "board_id",
+                        "operator": "eq",
+                        "values": [
+                          1
+                        ]
+                      }
+                    ]
                   }
-                ],
-                "reason": "depends_on"
+                },
+                "owners": [
+                  "site:fd31777e47e4ef85"
+                ]
               },
               {
-                "from": "request",
-                "to": [
-                  "active_record_attribute",
-                  {
-                    "table": "boards",
-                    "id": 1,
-                    "attribute": "id"
-                  }
-                ],
-                "reason": "depends_on"
-              },
-              {
-                "from": "request",
-                "to": [
-                  "active_record_attribute",
-                  {
-                    "table": "users",
-                    "id": 1,
-                    "attribute": "id"
-                  }
-                ],
-                "reason": "depends_on"
-              },
-              {
-                "from": "request",
-                "to": "page:boards/auth_surfaces",
-                "reason": "contains"
-              },
-              {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "active_record_attribute",
                   {
                     "table": "boards",
@@ -1419,78 +1149,150 @@
                     "attribute": "name"
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "active_record_attribute",
+                  "key": {
+                    "table": "boards",
+                    "id": 1,
+                    "attribute": "name"
+                  },
+                  "visibility": "public",
+                  "precision": "record_attribute",
+                  "metadata": {
+                    "model": "Upkeep::Domain::Board"
+                  }
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "current_attribute",
                   {
                     "key": "Upkeep::Domain::CurrentContext.account_id",
                     "value": "account-a"
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "current_attribute",
+                  "key": {
+                    "key": "Upkeep::Domain::CurrentContext.account_id",
+                    "value": "account-a"
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "owner": "Upkeep::Domain::CurrentContext",
+                    "name": "account_id"
+                  }
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "current_attribute",
                   {
                     "key": "Upkeep::Domain::CurrentContext.viewer_role",
                     "value": "manager"
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "current_attribute",
+                  "key": {
+                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
+                    "value": "manager"
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "owner": "Upkeep::Domain::CurrentContext",
+                    "name": "viewer_role"
+                  }
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "session",
                   {
                     "key": "tenant_id",
-                    "value": "c0bea31774a2ba2d"
+                    "value": "492e25a37329c417"
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "session",
+                  "key": {
+                    "key": "tenant_id",
+                    "value": "492e25a37329c417"
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "key": "tenant_id",
+                    "value_class": "String"
+                  }
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "cookie",
                   {
                     "key": "theme",
-                    "value": "0793e20ac9fdeeb1"
+                    "value": "3add031d87102676"
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "cookie",
+                  "key": {
+                    "key": "theme",
+                    "value": "3add031d87102676"
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "key": "theme",
+                    "value_class": "String"
+                  }
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "request",
                   {
                     "key": "subdomain",
-                    "value": "26e1701086a14320"
+                    "value": "9b496e3bc8b1d845"
                   }
                 ],
-                "reason": "depends_on"
-              },
-              {
-                "from": "page:boards/auth_surfaces",
-                "to": [
-                  "active_record_attribute",
-                  {
-                    "table": "users",
-                    "id": 1,
-                    "attribute": "id"
+                "dependency": {
+                  "source": "request",
+                  "key": {
+                    "key": "subdomain",
+                    "value": "9b496e3bc8b1d845"
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "key": "subdomain",
+                    "value_class": "String"
                   }
-                ],
-                "reason": "depends_on"
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "warden_user",
                   {
                     "key": "user",
@@ -1500,11 +1302,30 @@
                     }
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "warden_user",
+                  "key": {
+                    "key": "user",
+                    "value": {
+                      "model": "Upkeep::Domain::User",
+                      "id": 1
+                    }
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "model": "Upkeep::Domain::User",
+                    "table": "users",
+                    "id": 1,
+                    "scope": "user"
+                  }
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "active_record_attribute",
                   {
                     "table": "users",
@@ -1512,38 +1333,113 @@
                     "attribute": "name"
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "active_record_attribute",
+                  "key": {
+                    "table": "users",
+                    "id": 1,
+                    "attribute": "name"
+                  },
+                  "visibility": "public",
+                  "precision": "record_attribute",
+                  "metadata": {
+                    "model": "Upkeep::Domain::User"
+                  }
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": "site:dcb4f43e7cb40353",
-                "reason": "contains"
-              },
-              {
-                "from": "site:dcb4f43e7cb40353",
-                "to": [
-                  "active_record_collection",
+                "id": [
+                  "current_attribute",
                   {
-                    "table": "cards",
-                    "predicate_digest": "c9472e0f607e2bca"
+                    "key": "Upkeep::Domain::CurrentContext.account_id",
+                    "value": null
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "current_attribute",
+                  "key": {
+                    "key": "Upkeep::Domain::CurrentContext.account_id",
+                    "value": null
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "owner": "Upkeep::Domain::CurrentContext",
+                    "name": "account_id"
+                  }
+                },
+                "owners": [
+                  "request"
+                ]
               },
               {
-                "from": "site:dcb4f43e7cb40353",
-                "to": [
+                "id": [
+                  "current_attribute",
+                  {
+                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
+                    "value": null
+                  }
+                ],
+                "dependency": {
+                  "source": "current_attribute",
+                  "key": {
+                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
+                    "value": null
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "owner": "Upkeep::Domain::CurrentContext",
+                    "name": "viewer_role"
+                  }
+                },
+                "owners": [
+                  "request"
+                ]
+              },
+              {
+                "id": [
                   "active_record_attribute",
                   {
-                    "table": "cards",
+                    "table": "boards",
                     "id": 1,
                     "attribute": "id"
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "active_record_attribute",
+                  "key": {
+                    "table": "boards",
+                    "id": 1,
+                    "attribute": "id"
+                  },
+                  "visibility": "public",
+                  "precision": "record_attribute",
+                  "metadata": {
+                    "model": "Upkeep::Domain::Board"
+                  }
+                },
+                "owners": [
+                  "request"
+                ]
+              }
+            ],
+            "edges": [
+              {
+                "from": "request",
+                "to": "page:boards/auth_surfaces",
+                "reason": "contains"
               },
               {
-                "from": "site:dcb4f43e7cb40353",
+                "from": "page:boards/auth_surfaces",
+                "to": "site:fd31777e47e4ef85",
+                "reason": "contains"
+              },
+              {
+                "from": "site:fd31777e47e4ef85",
                 "to": "fragment:cards/_secure_card:cards:1",
                 "reason": "contains"
               },
@@ -1619,19 +1515,7 @@
                 "reason": "depends_on"
               },
               {
-                "from": "site:dcb4f43e7cb40353",
-                "to": [
-                  "active_record_attribute",
-                  {
-                    "table": "cards",
-                    "id": 2,
-                    "attribute": "id"
-                  }
-                ],
-                "reason": "depends_on"
-              },
-              {
-                "from": "site:dcb4f43e7cb40353",
+                "from": "site:fd31777e47e4ef85",
                 "to": "fragment:cards/_secure_card:cards:2",
                 "reason": "contains"
               },
@@ -1707,19 +1591,7 @@
                 "reason": "depends_on"
               },
               {
-                "from": "site:dcb4f43e7cb40353",
-                "to": [
-                  "active_record_attribute",
-                  {
-                    "table": "cards",
-                    "id": 3,
-                    "attribute": "id"
-                  }
-                ],
-                "reason": "depends_on"
-              },
-              {
-                "from": "site:dcb4f43e7cb40353",
+                "from": "site:fd31777e47e4ef85",
                 "to": "fragment:cards/_secure_card:cards:3",
                 "reason": "contains"
               },
@@ -1793,6 +1665,204 @@
                   }
                 ],
                 "reason": "depends_on"
+              },
+              {
+                "from": "site:fd31777e47e4ef85",
+                "to": [
+                  "active_record_collection",
+                  {
+                    "table": "cards",
+                    "predicate_digest": "c9472e0f607e2bca"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "site:fd31777e47e4ef85",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "cards",
+                    "id": 1,
+                    "attribute": "id"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "site:fd31777e47e4ef85",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "cards",
+                    "id": 2,
+                    "attribute": "id"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "site:fd31777e47e4ef85",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "cards",
+                    "id": 3,
+                    "attribute": "id"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "boards",
+                    "id": 1,
+                    "attribute": "name"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "current_attribute",
+                  {
+                    "key": "Upkeep::Domain::CurrentContext.account_id",
+                    "value": "account-a"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "current_attribute",
+                  {
+                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
+                    "value": "manager"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "session",
+                  {
+                    "key": "tenant_id",
+                    "value": "492e25a37329c417"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "cookie",
+                  {
+                    "key": "theme",
+                    "value": "3add031d87102676"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "request",
+                  {
+                    "key": "subdomain",
+                    "value": "9b496e3bc8b1d845"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "users",
+                    "id": 1,
+                    "attribute": "id"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "warden_user",
+                  {
+                    "key": "user",
+                    "value": {
+                      "model": "Upkeep::Domain::User",
+                      "id": 1
+                    }
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "users",
+                    "id": 1,
+                    "attribute": "name"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "request",
+                "to": [
+                  "current_attribute",
+                  {
+                    "key": "Upkeep::Domain::CurrentContext.account_id",
+                    "value": null
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "request",
+                "to": [
+                  "current_attribute",
+                  {
+                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
+                    "value": null
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "request",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "boards",
+                    "id": 1,
+                    "attribute": "id"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "request",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "users",
+                    "id": 1,
+                    "attribute": "id"
+                  }
+                ],
+                "reason": "depends_on"
               }
             ]
           }
@@ -1808,6 +1878,7 @@
               "nodes": 30,
               "edges": 40,
               "frames": 5,
+              "manifest_attached_frames": 5,
               "dependencies": 24,
               "containment_edges": 5,
               "dependency_edges": 35,
@@ -1833,8 +1904,10 @@
                 "id": "page:boards/auth_surfaces",
                 "kind": "page",
                 "template": "boards/auth_surfaces",
+                "manifest_path": "boards/auth_surfaces",
+                "manifest_fingerprint": "77637c61633e7ef4",
                 "contains": [
-                  "site:dcb4f43e7cb40353"
+                  "site:fd31777e47e4ef85"
                 ],
                 "dependencies": [
                   {
@@ -1880,7 +1953,7 @@
                     "source": "session",
                     "key": {
                       "key": "tenant_id",
-                      "value": "9baf0b078358d7d6"
+                      "value": "2100d5b8a0e7bd3d"
                     },
                     "visibility": "identity_bound",
                     "precision": "identity",
@@ -1893,7 +1966,7 @@
                     "source": "cookie",
                     "key": {
                       "key": "theme",
-                      "value": "db2457c04e58a424"
+                      "value": "05a6196560b6f6d4"
                     },
                     "visibility": "identity_bound",
                     "precision": "identity",
@@ -1906,7 +1979,7 @@
                     "source": "request",
                     "key": {
                       "key": "subdomain",
-                      "value": "0aa850c12cafa824"
+                      "value": "88450ffdf06ce2ad"
                     },
                     "visibility": "identity_bound",
                     "precision": "identity",
@@ -1962,22 +2035,22 @@
                 ],
                 "replay_recipe": {
                   "kind": "page",
-                  "frame_id": "page:boards/auth_surfaces",
                   "target_kind": "page",
                   "target_id": "page:boards/auth_surfaces",
                   "template": "boards/auth_surfaces",
-                  "metadata": {
-                    "user": {
-                      "table": "users",
-                      "id": 2
-                    }
+                  "replay": {
+                    "keys": [],
+                    "bytes": 2,
+                    "digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
                   }
                 }
               },
               {
-                "id": "site:dcb4f43e7cb40353",
+                "id": "site:fd31777e47e4ef85",
                 "kind": "render_site",
-                "site_id": "dcb4f43e7cb40353",
+                "site_id": "fd31777e47e4ef85",
+                "manifest_path": "boards/auth_surfaces",
+                "manifest_fingerprint": "77637c61633e7ef4",
                 "contains": [
                   "fragment:cards/_secure_card:cards:1",
                   "fragment:cards/_secure_card:cards:2",
@@ -2002,7 +2075,17 @@
                         ]
                       },
                       "coverage": "columns",
-                      "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC"
+                      "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC",
+                      "predicates": [
+                        {
+                          "table": "cards",
+                          "column": "board_id",
+                          "operator": "eq",
+                          "values": [
+                            1
+                          ]
+                        }
+                      ]
                     }
                   },
                   {
@@ -2047,11 +2130,12 @@
                 ],
                 "replay_recipe": {
                   "kind": "render_site",
-                  "frame_id": "site:dcb4f43e7cb40353",
                   "target_kind": "render_site",
-                  "target_id": "dcb4f43e7cb40353",
-                  "metadata": {
-                    "site_id": "dcb4f43e7cb40353"
+                  "target_id": "fd31777e47e4ef85",
+                  "replay": {
+                    "keys": [],
+                    "bytes": 2,
+                    "digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
                   }
                 }
               },
@@ -2059,6 +2143,8 @@
                 "id": "fragment:cards/_secure_card:cards:1",
                 "kind": "fragment",
                 "template": "cards/_secure_card",
+                "manifest_path": "cards/_secure_card",
+                "manifest_fingerprint": "31eb8b20d5514b1c",
                 "locals": {
                   "card": {
                     "table": "cards",
@@ -2149,17 +2235,13 @@
                 ],
                 "replay_recipe": {
                   "kind": "fragment",
-                  "frame_id": "fragment:cards/_secure_card:cards:1",
                   "target_kind": "fragment",
                   "target_id": "fragment:cards/_secure_card:cards:1",
                   "template": "cards/_secure_card",
-                  "metadata": {
-                    "locals": {
-                      "card": {
-                        "table": "cards",
-                        "id": 1
-                      }
-                    }
+                  "replay": {
+                    "keys": [],
+                    "bytes": 2,
+                    "digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
                   }
                 }
               },
@@ -2167,6 +2249,8 @@
                 "id": "fragment:cards/_secure_card:cards:2",
                 "kind": "fragment",
                 "template": "cards/_secure_card",
+                "manifest_path": "cards/_secure_card",
+                "manifest_fingerprint": "31eb8b20d5514b1c",
                 "locals": {
                   "card": {
                     "table": "cards",
@@ -2257,17 +2341,13 @@
                 ],
                 "replay_recipe": {
                   "kind": "fragment",
-                  "frame_id": "fragment:cards/_secure_card:cards:2",
                   "target_kind": "fragment",
                   "target_id": "fragment:cards/_secure_card:cards:2",
                   "template": "cards/_secure_card",
-                  "metadata": {
-                    "locals": {
-                      "card": {
-                        "table": "cards",
-                        "id": 2
-                      }
-                    }
+                  "replay": {
+                    "keys": [],
+                    "bytes": 2,
+                    "digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
                   }
                 }
               },
@@ -2275,6 +2355,8 @@
                 "id": "fragment:cards/_secure_card:cards:3",
                 "kind": "fragment",
                 "template": "cards/_secure_card",
+                "manifest_path": "cards/_secure_card",
+                "manifest_fingerprint": "31eb8b20d5514b1c",
                 "locals": {
                   "card": {
                     "table": "cards",
@@ -2365,17 +2447,13 @@
                 ],
                 "replay_recipe": {
                   "kind": "fragment",
-                  "frame_id": "fragment:cards/_secure_card:cards:3",
                   "target_kind": "fragment",
                   "target_id": "fragment:cards/_secure_card:cards:3",
                   "template": "cards/_secure_card",
-                  "metadata": {
-                    "locals": {
-                      "card": {
-                        "table": "cards",
-                        "id": 3
-                      }
-                    }
+                  "replay": {
+                    "keys": [],
+                    "bytes": 2,
+                    "digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
                   }
                 }
               }
@@ -2383,59 +2461,9 @@
             "dependencies": [
               {
                 "id": [
-                  "current_attribute",
-                  {
-                    "key": "Upkeep::Domain::CurrentContext.account_id",
-                    "value": null
-                  }
-                ],
-                "dependency": {
-                  "source": "current_attribute",
-                  "key": {
-                    "key": "Upkeep::Domain::CurrentContext.account_id",
-                    "value": null
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "owner": "Upkeep::Domain::CurrentContext",
-                    "name": "account_id"
-                  }
-                },
-                "owners": [
-                  "request"
-                ]
-              },
-              {
-                "id": [
-                  "current_attribute",
-                  {
-                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
-                    "value": null
-                  }
-                ],
-                "dependency": {
-                  "source": "current_attribute",
-                  "key": {
-                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
-                    "value": null
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "owner": "Upkeep::Domain::CurrentContext",
-                    "name": "viewer_role"
-                  }
-                },
-                "owners": [
-                  "request"
-                ]
-              },
-              {
-                "id": [
                   "active_record_attribute",
                   {
-                    "table": "boards",
+                    "table": "cards",
                     "id": 1,
                     "attribute": "id"
                   }
@@ -2443,18 +2471,45 @@
                 "dependency": {
                   "source": "active_record_attribute",
                   "key": {
-                    "table": "boards",
+                    "table": "cards",
                     "id": 1,
                     "attribute": "id"
                   },
                   "visibility": "public",
                   "precision": "record_attribute",
                   "metadata": {
-                    "model": "Upkeep::Domain::Board"
+                    "model": "Upkeep::Domain::Card"
                   }
                 },
                 "owners": [
-                  "request"
+                  "fragment:cards/_secure_card:cards:1",
+                  "site:fd31777e47e4ef85"
+                ]
+              },
+              {
+                "id": [
+                  "active_record_attribute",
+                  {
+                    "table": "cards",
+                    "id": 1,
+                    "attribute": "title"
+                  }
+                ],
+                "dependency": {
+                  "source": "active_record_attribute",
+                  "key": {
+                    "table": "cards",
+                    "id": 1,
+                    "attribute": "title"
+                  },
+                  "visibility": "public",
+                  "precision": "record_attribute",
+                  "metadata": {
+                    "model": "Upkeep::Domain::Card"
+                  }
+                },
+                "owners": [
+                  "fragment:cards/_secure_card:cards:1"
                 ]
               },
               {
@@ -2480,307 +2535,11 @@
                   }
                 },
                 "owners": [
-                  "request",
-                  "page:boards/auth_surfaces",
                   "fragment:cards/_secure_card:cards:1",
                   "fragment:cards/_secure_card:cards:2",
-                  "fragment:cards/_secure_card:cards:3"
-                ]
-              },
-              {
-                "id": [
-                  "active_record_attribute",
-                  {
-                    "table": "boards",
-                    "id": 1,
-                    "attribute": "name"
-                  }
-                ],
-                "dependency": {
-                  "source": "active_record_attribute",
-                  "key": {
-                    "table": "boards",
-                    "id": 1,
-                    "attribute": "name"
-                  },
-                  "visibility": "public",
-                  "precision": "record_attribute",
-                  "metadata": {
-                    "model": "Upkeep::Domain::Board"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "current_attribute",
-                  {
-                    "key": "Upkeep::Domain::CurrentContext.account_id",
-                    "value": "account-b"
-                  }
-                ],
-                "dependency": {
-                  "source": "current_attribute",
-                  "key": {
-                    "key": "Upkeep::Domain::CurrentContext.account_id",
-                    "value": "account-b"
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "owner": "Upkeep::Domain::CurrentContext",
-                    "name": "account_id"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "current_attribute",
-                  {
-                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
-                    "value": "viewer"
-                  }
-                ],
-                "dependency": {
-                  "source": "current_attribute",
-                  "key": {
-                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
-                    "value": "viewer"
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "owner": "Upkeep::Domain::CurrentContext",
-                    "name": "viewer_role"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "session",
-                  {
-                    "key": "tenant_id",
-                    "value": "9baf0b078358d7d6"
-                  }
-                ],
-                "dependency": {
-                  "source": "session",
-                  "key": {
-                    "key": "tenant_id",
-                    "value": "9baf0b078358d7d6"
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "key": "tenant_id",
-                    "value_class": "String"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "cookie",
-                  {
-                    "key": "theme",
-                    "value": "db2457c04e58a424"
-                  }
-                ],
-                "dependency": {
-                  "source": "cookie",
-                  "key": {
-                    "key": "theme",
-                    "value": "db2457c04e58a424"
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "key": "theme",
-                    "value_class": "String"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "request",
-                  {
-                    "key": "subdomain",
-                    "value": "0aa850c12cafa824"
-                  }
-                ],
-                "dependency": {
-                  "source": "request",
-                  "key": {
-                    "key": "subdomain",
-                    "value": "0aa850c12cafa824"
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "key": "subdomain",
-                    "value_class": "String"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "warden_user",
-                  {
-                    "key": "user",
-                    "value": {
-                      "model": "Upkeep::Domain::User",
-                      "id": 2
-                    }
-                  }
-                ],
-                "dependency": {
-                  "source": "warden_user",
-                  "key": {
-                    "key": "user",
-                    "value": {
-                      "model": "Upkeep::Domain::User",
-                      "id": 2
-                    }
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "model": "Upkeep::Domain::User",
-                    "table": "users",
-                    "id": 2,
-                    "scope": "user"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "active_record_attribute",
-                  {
-                    "table": "users",
-                    "id": 2,
-                    "attribute": "name"
-                  }
-                ],
-                "dependency": {
-                  "source": "active_record_attribute",
-                  "key": {
-                    "table": "users",
-                    "id": 2,
-                    "attribute": "name"
-                  },
-                  "visibility": "public",
-                  "precision": "record_attribute",
-                  "metadata": {
-                    "model": "Upkeep::Domain::User"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "active_record_collection",
-                  {
-                    "table": "cards",
-                    "predicate_digest": "c9472e0f607e2bca"
-                  }
-                ],
-                "dependency": {
-                  "source": "active_record_collection",
-                  "key": {
-                    "table": "cards",
-                    "predicate_digest": "c9472e0f607e2bca"
-                  },
-                  "visibility": "public",
-                  "precision": "collection_predicate",
-                  "metadata": {
-                    "primary_table": "cards",
-                    "table_columns": {
-                      "cards": [
-                        "board_id",
-                        "id",
-                        "position"
-                      ]
-                    },
-                    "coverage": "columns",
-                    "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC"
-                  }
-                },
-                "owners": [
-                  "site:dcb4f43e7cb40353"
-                ]
-              },
-              {
-                "id": [
-                  "active_record_attribute",
-                  {
-                    "table": "cards",
-                    "id": 1,
-                    "attribute": "id"
-                  }
-                ],
-                "dependency": {
-                  "source": "active_record_attribute",
-                  "key": {
-                    "table": "cards",
-                    "id": 1,
-                    "attribute": "id"
-                  },
-                  "visibility": "public",
-                  "precision": "record_attribute",
-                  "metadata": {
-                    "model": "Upkeep::Domain::Card"
-                  }
-                },
-                "owners": [
-                  "site:dcb4f43e7cb40353",
-                  "fragment:cards/_secure_card:cards:1"
-                ]
-              },
-              {
-                "id": [
-                  "active_record_attribute",
-                  {
-                    "table": "cards",
-                    "id": 1,
-                    "attribute": "title"
-                  }
-                ],
-                "dependency": {
-                  "source": "active_record_attribute",
-                  "key": {
-                    "table": "cards",
-                    "id": 1,
-                    "attribute": "title"
-                  },
-                  "visibility": "public",
-                  "precision": "record_attribute",
-                  "metadata": {
-                    "model": "Upkeep::Domain::Card"
-                  }
-                },
-                "owners": [
-                  "fragment:cards/_secure_card:cards:1"
+                  "fragment:cards/_secure_card:cards:3",
+                  "page:boards/auth_surfaces",
+                  "request"
                 ]
               },
               {
@@ -2888,8 +2647,8 @@
                   }
                 },
                 "owners": [
-                  "site:dcb4f43e7cb40353",
-                  "fragment:cards/_secure_card:cards:2"
+                  "fragment:cards/_secure_card:cards:2",
+                  "site:fd31777e47e4ef85"
                 ]
               },
               {
@@ -2967,8 +2726,8 @@
                   }
                 },
                 "owners": [
-                  "site:dcb4f43e7cb40353",
-                  "fragment:cards/_secure_card:cards:3"
+                  "fragment:cards/_secure_card:cards:3",
+                  "site:fd31777e47e4ef85"
                 ]
               },
               {
@@ -3022,63 +2781,52 @@
                 "owners": [
                   "fragment:cards/_secure_card:cards:3"
                 ]
-              }
-            ],
-            "edges": [
+              },
               {
-                "from": "request",
-                "to": [
-                  "current_attribute",
+                "id": [
+                  "active_record_collection",
                   {
-                    "key": "Upkeep::Domain::CurrentContext.account_id",
-                    "value": null
+                    "table": "cards",
+                    "predicate_digest": "c9472e0f607e2bca"
                   }
                 ],
-                "reason": "depends_on"
-              },
-              {
-                "from": "request",
-                "to": [
-                  "current_attribute",
-                  {
-                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
-                    "value": null
+                "dependency": {
+                  "source": "active_record_collection",
+                  "key": {
+                    "table": "cards",
+                    "predicate_digest": "c9472e0f607e2bca"
+                  },
+                  "visibility": "public",
+                  "precision": "collection_predicate",
+                  "metadata": {
+                    "primary_table": "cards",
+                    "table_columns": {
+                      "cards": [
+                        "board_id",
+                        "id",
+                        "position"
+                      ]
+                    },
+                    "coverage": "columns",
+                    "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC",
+                    "predicates": [
+                      {
+                        "table": "cards",
+                        "column": "board_id",
+                        "operator": "eq",
+                        "values": [
+                          1
+                        ]
+                      }
+                    ]
                   }
-                ],
-                "reason": "depends_on"
+                },
+                "owners": [
+                  "site:fd31777e47e4ef85"
+                ]
               },
               {
-                "from": "request",
-                "to": [
-                  "active_record_attribute",
-                  {
-                    "table": "boards",
-                    "id": 1,
-                    "attribute": "id"
-                  }
-                ],
-                "reason": "depends_on"
-              },
-              {
-                "from": "request",
-                "to": [
-                  "active_record_attribute",
-                  {
-                    "table": "users",
-                    "id": 2,
-                    "attribute": "id"
-                  }
-                ],
-                "reason": "depends_on"
-              },
-              {
-                "from": "request",
-                "to": "page:boards/auth_surfaces",
-                "reason": "contains"
-              },
-              {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "active_record_attribute",
                   {
                     "table": "boards",
@@ -3086,78 +2834,150 @@
                     "attribute": "name"
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "active_record_attribute",
+                  "key": {
+                    "table": "boards",
+                    "id": 1,
+                    "attribute": "name"
+                  },
+                  "visibility": "public",
+                  "precision": "record_attribute",
+                  "metadata": {
+                    "model": "Upkeep::Domain::Board"
+                  }
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "current_attribute",
                   {
                     "key": "Upkeep::Domain::CurrentContext.account_id",
                     "value": "account-b"
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "current_attribute",
+                  "key": {
+                    "key": "Upkeep::Domain::CurrentContext.account_id",
+                    "value": "account-b"
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "owner": "Upkeep::Domain::CurrentContext",
+                    "name": "account_id"
+                  }
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "current_attribute",
                   {
                     "key": "Upkeep::Domain::CurrentContext.viewer_role",
                     "value": "viewer"
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "current_attribute",
+                  "key": {
+                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
+                    "value": "viewer"
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "owner": "Upkeep::Domain::CurrentContext",
+                    "name": "viewer_role"
+                  }
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "session",
                   {
                     "key": "tenant_id",
-                    "value": "9baf0b078358d7d6"
+                    "value": "2100d5b8a0e7bd3d"
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "session",
+                  "key": {
+                    "key": "tenant_id",
+                    "value": "2100d5b8a0e7bd3d"
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "key": "tenant_id",
+                    "value_class": "String"
+                  }
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "cookie",
                   {
                     "key": "theme",
-                    "value": "db2457c04e58a424"
+                    "value": "05a6196560b6f6d4"
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "cookie",
+                  "key": {
+                    "key": "theme",
+                    "value": "05a6196560b6f6d4"
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "key": "theme",
+                    "value_class": "String"
+                  }
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "request",
                   {
                     "key": "subdomain",
-                    "value": "0aa850c12cafa824"
+                    "value": "88450ffdf06ce2ad"
                   }
                 ],
-                "reason": "depends_on"
-              },
-              {
-                "from": "page:boards/auth_surfaces",
-                "to": [
-                  "active_record_attribute",
-                  {
-                    "table": "users",
-                    "id": 2,
-                    "attribute": "id"
+                "dependency": {
+                  "source": "request",
+                  "key": {
+                    "key": "subdomain",
+                    "value": "88450ffdf06ce2ad"
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "key": "subdomain",
+                    "value_class": "String"
                   }
-                ],
-                "reason": "depends_on"
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "warden_user",
                   {
                     "key": "user",
@@ -3167,11 +2987,30 @@
                     }
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "warden_user",
+                  "key": {
+                    "key": "user",
+                    "value": {
+                      "model": "Upkeep::Domain::User",
+                      "id": 2
+                    }
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "model": "Upkeep::Domain::User",
+                    "table": "users",
+                    "id": 2,
+                    "scope": "user"
+                  }
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "active_record_attribute",
                   {
                     "table": "users",
@@ -3179,38 +3018,113 @@
                     "attribute": "name"
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "active_record_attribute",
+                  "key": {
+                    "table": "users",
+                    "id": 2,
+                    "attribute": "name"
+                  },
+                  "visibility": "public",
+                  "precision": "record_attribute",
+                  "metadata": {
+                    "model": "Upkeep::Domain::User"
+                  }
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": "site:dcb4f43e7cb40353",
-                "reason": "contains"
-              },
-              {
-                "from": "site:dcb4f43e7cb40353",
-                "to": [
-                  "active_record_collection",
+                "id": [
+                  "current_attribute",
                   {
-                    "table": "cards",
-                    "predicate_digest": "c9472e0f607e2bca"
+                    "key": "Upkeep::Domain::CurrentContext.account_id",
+                    "value": null
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "current_attribute",
+                  "key": {
+                    "key": "Upkeep::Domain::CurrentContext.account_id",
+                    "value": null
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "owner": "Upkeep::Domain::CurrentContext",
+                    "name": "account_id"
+                  }
+                },
+                "owners": [
+                  "request"
+                ]
               },
               {
-                "from": "site:dcb4f43e7cb40353",
-                "to": [
+                "id": [
+                  "current_attribute",
+                  {
+                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
+                    "value": null
+                  }
+                ],
+                "dependency": {
+                  "source": "current_attribute",
+                  "key": {
+                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
+                    "value": null
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "owner": "Upkeep::Domain::CurrentContext",
+                    "name": "viewer_role"
+                  }
+                },
+                "owners": [
+                  "request"
+                ]
+              },
+              {
+                "id": [
                   "active_record_attribute",
                   {
-                    "table": "cards",
+                    "table": "boards",
                     "id": 1,
                     "attribute": "id"
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "active_record_attribute",
+                  "key": {
+                    "table": "boards",
+                    "id": 1,
+                    "attribute": "id"
+                  },
+                  "visibility": "public",
+                  "precision": "record_attribute",
+                  "metadata": {
+                    "model": "Upkeep::Domain::Board"
+                  }
+                },
+                "owners": [
+                  "request"
+                ]
+              }
+            ],
+            "edges": [
+              {
+                "from": "request",
+                "to": "page:boards/auth_surfaces",
+                "reason": "contains"
               },
               {
-                "from": "site:dcb4f43e7cb40353",
+                "from": "page:boards/auth_surfaces",
+                "to": "site:fd31777e47e4ef85",
+                "reason": "contains"
+              },
+              {
+                "from": "site:fd31777e47e4ef85",
                 "to": "fragment:cards/_secure_card:cards:1",
                 "reason": "contains"
               },
@@ -3286,19 +3200,7 @@
                 "reason": "depends_on"
               },
               {
-                "from": "site:dcb4f43e7cb40353",
-                "to": [
-                  "active_record_attribute",
-                  {
-                    "table": "cards",
-                    "id": 2,
-                    "attribute": "id"
-                  }
-                ],
-                "reason": "depends_on"
-              },
-              {
-                "from": "site:dcb4f43e7cb40353",
+                "from": "site:fd31777e47e4ef85",
                 "to": "fragment:cards/_secure_card:cards:2",
                 "reason": "contains"
               },
@@ -3374,19 +3276,7 @@
                 "reason": "depends_on"
               },
               {
-                "from": "site:dcb4f43e7cb40353",
-                "to": [
-                  "active_record_attribute",
-                  {
-                    "table": "cards",
-                    "id": 3,
-                    "attribute": "id"
-                  }
-                ],
-                "reason": "depends_on"
-              },
-              {
-                "from": "site:dcb4f43e7cb40353",
+                "from": "site:fd31777e47e4ef85",
                 "to": "fragment:cards/_secure_card:cards:3",
                 "reason": "contains"
               },
@@ -3457,6 +3347,204 @@
                     "table": "users",
                     "id": 2,
                     "attribute": "value_limit"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "site:fd31777e47e4ef85",
+                "to": [
+                  "active_record_collection",
+                  {
+                    "table": "cards",
+                    "predicate_digest": "c9472e0f607e2bca"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "site:fd31777e47e4ef85",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "cards",
+                    "id": 1,
+                    "attribute": "id"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "site:fd31777e47e4ef85",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "cards",
+                    "id": 2,
+                    "attribute": "id"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "site:fd31777e47e4ef85",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "cards",
+                    "id": 3,
+                    "attribute": "id"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "boards",
+                    "id": 1,
+                    "attribute": "name"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "current_attribute",
+                  {
+                    "key": "Upkeep::Domain::CurrentContext.account_id",
+                    "value": "account-b"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "current_attribute",
+                  {
+                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
+                    "value": "viewer"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "session",
+                  {
+                    "key": "tenant_id",
+                    "value": "2100d5b8a0e7bd3d"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "cookie",
+                  {
+                    "key": "theme",
+                    "value": "05a6196560b6f6d4"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "request",
+                  {
+                    "key": "subdomain",
+                    "value": "88450ffdf06ce2ad"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "users",
+                    "id": 2,
+                    "attribute": "id"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "warden_user",
+                  {
+                    "key": "user",
+                    "value": {
+                      "model": "Upkeep::Domain::User",
+                      "id": 2
+                    }
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "users",
+                    "id": 2,
+                    "attribute": "name"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "request",
+                "to": [
+                  "current_attribute",
+                  {
+                    "key": "Upkeep::Domain::CurrentContext.account_id",
+                    "value": null
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "request",
+                "to": [
+                  "current_attribute",
+                  {
+                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
+                    "value": null
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "request",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "boards",
+                    "id": 1,
+                    "attribute": "id"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "request",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "users",
+                    "id": 2,
+                    "attribute": "id"
                   }
                 ],
                 "reason": "depends_on"
@@ -3484,7 +3572,19 @@
           "id": 1,
           "changed_attributes": [
             "value"
-          ]
+          ],
+          "old_values": {
+            "value": 80
+          },
+          "new_values": {
+            "value": 90
+          },
+          "attribute_changes": {
+            "value": {
+              "old": 80,
+              "new": 90
+            }
+          }
         }
       ],
       "subscriber_results": [
@@ -3520,8 +3620,8 @@
               "kind": "fragment",
               "id": "fragment:cards/_secure_card:cards:1",
               "identity_signature": "a3b67d858e1b5e49",
-              "html_digest": "4ab538802a6738124ee56f8a378725f3b539303976ad28034156611940228ee1",
-              "html": "<li class=\"card\" id=\"secure_card_1\" data-upkeep-frame=\"fragment:cards/_secure_card:cards:1\" data-upkeep-template=\"74fa0df3fd61475d\">\n  <span class=\"title\">Plan</span>\n  <span class=\"value\">$90</span>\n</li>"
+              "html_digest": "734e888ae270fd3282a9037abd9b6fa54dcee7667c27829b5316717f8fb41daa",
+              "html": "<li data-upkeep-frame=\"fragment:cards/_secure_card:cards:1\" data-upkeep-template=\"74fa0df3fd61475d\" class=\"card\" id=\"secure_card_1\">\n  <span class=\"title\">Plan</span>\n  <span class=\"value\">$90</span>\n</li>"
             }
           ],
           "patched_equals_full": true,
@@ -3530,6 +3630,7 @@
               "nodes": 30,
               "edges": 40,
               "frames": 5,
+              "manifest_attached_frames": 5,
               "dependencies": 24,
               "containment_edges": 5,
               "dependency_edges": 35,
@@ -3555,8 +3656,10 @@
                 "id": "page:boards/auth_surfaces",
                 "kind": "page",
                 "template": "boards/auth_surfaces",
+                "manifest_path": "boards/auth_surfaces",
+                "manifest_fingerprint": "77637c61633e7ef4",
                 "contains": [
-                  "site:dcb4f43e7cb40353"
+                  "site:fd31777e47e4ef85"
                 ],
                 "dependencies": [
                   {
@@ -3602,7 +3705,7 @@
                     "source": "session",
                     "key": {
                       "key": "tenant_id",
-                      "value": "c0bea31774a2ba2d"
+                      "value": "492e25a37329c417"
                     },
                     "visibility": "identity_bound",
                     "precision": "identity",
@@ -3615,7 +3718,7 @@
                     "source": "cookie",
                     "key": {
                       "key": "theme",
-                      "value": "0793e20ac9fdeeb1"
+                      "value": "3add031d87102676"
                     },
                     "visibility": "identity_bound",
                     "precision": "identity",
@@ -3628,7 +3731,7 @@
                     "source": "request",
                     "key": {
                       "key": "subdomain",
-                      "value": "26e1701086a14320"
+                      "value": "9b496e3bc8b1d845"
                     },
                     "visibility": "identity_bound",
                     "precision": "identity",
@@ -3684,22 +3787,22 @@
                 ],
                 "replay_recipe": {
                   "kind": "page",
-                  "frame_id": "page:boards/auth_surfaces",
                   "target_kind": "page",
                   "target_id": "page:boards/auth_surfaces",
                   "template": "boards/auth_surfaces",
-                  "metadata": {
-                    "user": {
-                      "table": "users",
-                      "id": 1
-                    }
+                  "replay": {
+                    "keys": [],
+                    "bytes": 2,
+                    "digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
                   }
                 }
               },
               {
-                "id": "site:dcb4f43e7cb40353",
+                "id": "site:fd31777e47e4ef85",
                 "kind": "render_site",
-                "site_id": "dcb4f43e7cb40353",
+                "site_id": "fd31777e47e4ef85",
+                "manifest_path": "boards/auth_surfaces",
+                "manifest_fingerprint": "77637c61633e7ef4",
                 "contains": [
                   "fragment:cards/_secure_card:cards:1",
                   "fragment:cards/_secure_card:cards:2",
@@ -3724,7 +3827,17 @@
                         ]
                       },
                       "coverage": "columns",
-                      "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC"
+                      "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC",
+                      "predicates": [
+                        {
+                          "table": "cards",
+                          "column": "board_id",
+                          "operator": "eq",
+                          "values": [
+                            1
+                          ]
+                        }
+                      ]
                     }
                   },
                   {
@@ -3769,11 +3882,12 @@
                 ],
                 "replay_recipe": {
                   "kind": "render_site",
-                  "frame_id": "site:dcb4f43e7cb40353",
                   "target_kind": "render_site",
-                  "target_id": "dcb4f43e7cb40353",
-                  "metadata": {
-                    "site_id": "dcb4f43e7cb40353"
+                  "target_id": "fd31777e47e4ef85",
+                  "replay": {
+                    "keys": [],
+                    "bytes": 2,
+                    "digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
                   }
                 }
               },
@@ -3781,6 +3895,8 @@
                 "id": "fragment:cards/_secure_card:cards:1",
                 "kind": "fragment",
                 "template": "cards/_secure_card",
+                "manifest_path": "cards/_secure_card",
+                "manifest_fingerprint": "31eb8b20d5514b1c",
                 "locals": {
                   "card": {
                     "table": "cards",
@@ -3871,17 +3987,13 @@
                 ],
                 "replay_recipe": {
                   "kind": "fragment",
-                  "frame_id": "fragment:cards/_secure_card:cards:1",
                   "target_kind": "fragment",
                   "target_id": "fragment:cards/_secure_card:cards:1",
                   "template": "cards/_secure_card",
-                  "metadata": {
-                    "locals": {
-                      "card": {
-                        "table": "cards",
-                        "id": 1
-                      }
-                    }
+                  "replay": {
+                    "keys": [],
+                    "bytes": 2,
+                    "digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
                   }
                 }
               },
@@ -3889,6 +4001,8 @@
                 "id": "fragment:cards/_secure_card:cards:2",
                 "kind": "fragment",
                 "template": "cards/_secure_card",
+                "manifest_path": "cards/_secure_card",
+                "manifest_fingerprint": "31eb8b20d5514b1c",
                 "locals": {
                   "card": {
                     "table": "cards",
@@ -3979,17 +4093,13 @@
                 ],
                 "replay_recipe": {
                   "kind": "fragment",
-                  "frame_id": "fragment:cards/_secure_card:cards:2",
                   "target_kind": "fragment",
                   "target_id": "fragment:cards/_secure_card:cards:2",
                   "template": "cards/_secure_card",
-                  "metadata": {
-                    "locals": {
-                      "card": {
-                        "table": "cards",
-                        "id": 2
-                      }
-                    }
+                  "replay": {
+                    "keys": [],
+                    "bytes": 2,
+                    "digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
                   }
                 }
               },
@@ -3997,6 +4107,8 @@
                 "id": "fragment:cards/_secure_card:cards:3",
                 "kind": "fragment",
                 "template": "cards/_secure_card",
+                "manifest_path": "cards/_secure_card",
+                "manifest_fingerprint": "31eb8b20d5514b1c",
                 "locals": {
                   "card": {
                     "table": "cards",
@@ -4087,17 +4199,13 @@
                 ],
                 "replay_recipe": {
                   "kind": "fragment",
-                  "frame_id": "fragment:cards/_secure_card:cards:3",
                   "target_kind": "fragment",
                   "target_id": "fragment:cards/_secure_card:cards:3",
                   "template": "cards/_secure_card",
-                  "metadata": {
-                    "locals": {
-                      "card": {
-                        "table": "cards",
-                        "id": 3
-                      }
-                    }
+                  "replay": {
+                    "keys": [],
+                    "bytes": 2,
+                    "digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
                   }
                 }
               }
@@ -4105,59 +4213,9 @@
             "dependencies": [
               {
                 "id": [
-                  "current_attribute",
-                  {
-                    "key": "Upkeep::Domain::CurrentContext.account_id",
-                    "value": null
-                  }
-                ],
-                "dependency": {
-                  "source": "current_attribute",
-                  "key": {
-                    "key": "Upkeep::Domain::CurrentContext.account_id",
-                    "value": null
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "owner": "Upkeep::Domain::CurrentContext",
-                    "name": "account_id"
-                  }
-                },
-                "owners": [
-                  "request"
-                ]
-              },
-              {
-                "id": [
-                  "current_attribute",
-                  {
-                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
-                    "value": null
-                  }
-                ],
-                "dependency": {
-                  "source": "current_attribute",
-                  "key": {
-                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
-                    "value": null
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "owner": "Upkeep::Domain::CurrentContext",
-                    "name": "viewer_role"
-                  }
-                },
-                "owners": [
-                  "request"
-                ]
-              },
-              {
-                "id": [
                   "active_record_attribute",
                   {
-                    "table": "boards",
+                    "table": "cards",
                     "id": 1,
                     "attribute": "id"
                   }
@@ -4165,18 +4223,45 @@
                 "dependency": {
                   "source": "active_record_attribute",
                   "key": {
-                    "table": "boards",
+                    "table": "cards",
                     "id": 1,
                     "attribute": "id"
                   },
                   "visibility": "public",
                   "precision": "record_attribute",
                   "metadata": {
-                    "model": "Upkeep::Domain::Board"
+                    "model": "Upkeep::Domain::Card"
                   }
                 },
                 "owners": [
-                  "request"
+                  "fragment:cards/_secure_card:cards:1",
+                  "site:fd31777e47e4ef85"
+                ]
+              },
+              {
+                "id": [
+                  "active_record_attribute",
+                  {
+                    "table": "cards",
+                    "id": 1,
+                    "attribute": "title"
+                  }
+                ],
+                "dependency": {
+                  "source": "active_record_attribute",
+                  "key": {
+                    "table": "cards",
+                    "id": 1,
+                    "attribute": "title"
+                  },
+                  "visibility": "public",
+                  "precision": "record_attribute",
+                  "metadata": {
+                    "model": "Upkeep::Domain::Card"
+                  }
+                },
+                "owners": [
+                  "fragment:cards/_secure_card:cards:1"
                 ]
               },
               {
@@ -4202,307 +4287,11 @@
                   }
                 },
                 "owners": [
-                  "request",
-                  "page:boards/auth_surfaces",
                   "fragment:cards/_secure_card:cards:1",
                   "fragment:cards/_secure_card:cards:2",
-                  "fragment:cards/_secure_card:cards:3"
-                ]
-              },
-              {
-                "id": [
-                  "active_record_attribute",
-                  {
-                    "table": "boards",
-                    "id": 1,
-                    "attribute": "name"
-                  }
-                ],
-                "dependency": {
-                  "source": "active_record_attribute",
-                  "key": {
-                    "table": "boards",
-                    "id": 1,
-                    "attribute": "name"
-                  },
-                  "visibility": "public",
-                  "precision": "record_attribute",
-                  "metadata": {
-                    "model": "Upkeep::Domain::Board"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "current_attribute",
-                  {
-                    "key": "Upkeep::Domain::CurrentContext.account_id",
-                    "value": "account-a"
-                  }
-                ],
-                "dependency": {
-                  "source": "current_attribute",
-                  "key": {
-                    "key": "Upkeep::Domain::CurrentContext.account_id",
-                    "value": "account-a"
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "owner": "Upkeep::Domain::CurrentContext",
-                    "name": "account_id"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "current_attribute",
-                  {
-                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
-                    "value": "manager"
-                  }
-                ],
-                "dependency": {
-                  "source": "current_attribute",
-                  "key": {
-                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
-                    "value": "manager"
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "owner": "Upkeep::Domain::CurrentContext",
-                    "name": "viewer_role"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "session",
-                  {
-                    "key": "tenant_id",
-                    "value": "c0bea31774a2ba2d"
-                  }
-                ],
-                "dependency": {
-                  "source": "session",
-                  "key": {
-                    "key": "tenant_id",
-                    "value": "c0bea31774a2ba2d"
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "key": "tenant_id",
-                    "value_class": "String"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "cookie",
-                  {
-                    "key": "theme",
-                    "value": "0793e20ac9fdeeb1"
-                  }
-                ],
-                "dependency": {
-                  "source": "cookie",
-                  "key": {
-                    "key": "theme",
-                    "value": "0793e20ac9fdeeb1"
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "key": "theme",
-                    "value_class": "String"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "request",
-                  {
-                    "key": "subdomain",
-                    "value": "26e1701086a14320"
-                  }
-                ],
-                "dependency": {
-                  "source": "request",
-                  "key": {
-                    "key": "subdomain",
-                    "value": "26e1701086a14320"
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "key": "subdomain",
-                    "value_class": "String"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "warden_user",
-                  {
-                    "key": "user",
-                    "value": {
-                      "model": "Upkeep::Domain::User",
-                      "id": 1
-                    }
-                  }
-                ],
-                "dependency": {
-                  "source": "warden_user",
-                  "key": {
-                    "key": "user",
-                    "value": {
-                      "model": "Upkeep::Domain::User",
-                      "id": 1
-                    }
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "model": "Upkeep::Domain::User",
-                    "table": "users",
-                    "id": 1,
-                    "scope": "user"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "active_record_attribute",
-                  {
-                    "table": "users",
-                    "id": 1,
-                    "attribute": "name"
-                  }
-                ],
-                "dependency": {
-                  "source": "active_record_attribute",
-                  "key": {
-                    "table": "users",
-                    "id": 1,
-                    "attribute": "name"
-                  },
-                  "visibility": "public",
-                  "precision": "record_attribute",
-                  "metadata": {
-                    "model": "Upkeep::Domain::User"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "active_record_collection",
-                  {
-                    "table": "cards",
-                    "predicate_digest": "c9472e0f607e2bca"
-                  }
-                ],
-                "dependency": {
-                  "source": "active_record_collection",
-                  "key": {
-                    "table": "cards",
-                    "predicate_digest": "c9472e0f607e2bca"
-                  },
-                  "visibility": "public",
-                  "precision": "collection_predicate",
-                  "metadata": {
-                    "primary_table": "cards",
-                    "table_columns": {
-                      "cards": [
-                        "board_id",
-                        "id",
-                        "position"
-                      ]
-                    },
-                    "coverage": "columns",
-                    "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC"
-                  }
-                },
-                "owners": [
-                  "site:dcb4f43e7cb40353"
-                ]
-              },
-              {
-                "id": [
-                  "active_record_attribute",
-                  {
-                    "table": "cards",
-                    "id": 1,
-                    "attribute": "id"
-                  }
-                ],
-                "dependency": {
-                  "source": "active_record_attribute",
-                  "key": {
-                    "table": "cards",
-                    "id": 1,
-                    "attribute": "id"
-                  },
-                  "visibility": "public",
-                  "precision": "record_attribute",
-                  "metadata": {
-                    "model": "Upkeep::Domain::Card"
-                  }
-                },
-                "owners": [
-                  "site:dcb4f43e7cb40353",
-                  "fragment:cards/_secure_card:cards:1"
-                ]
-              },
-              {
-                "id": [
-                  "active_record_attribute",
-                  {
-                    "table": "cards",
-                    "id": 1,
-                    "attribute": "title"
-                  }
-                ],
-                "dependency": {
-                  "source": "active_record_attribute",
-                  "key": {
-                    "table": "cards",
-                    "id": 1,
-                    "attribute": "title"
-                  },
-                  "visibility": "public",
-                  "precision": "record_attribute",
-                  "metadata": {
-                    "model": "Upkeep::Domain::Card"
-                  }
-                },
-                "owners": [
-                  "fragment:cards/_secure_card:cards:1"
+                  "fragment:cards/_secure_card:cards:3",
+                  "page:boards/auth_surfaces",
+                  "request"
                 ]
               },
               {
@@ -4610,8 +4399,8 @@
                   }
                 },
                 "owners": [
-                  "site:dcb4f43e7cb40353",
-                  "fragment:cards/_secure_card:cards:2"
+                  "fragment:cards/_secure_card:cards:2",
+                  "site:fd31777e47e4ef85"
                 ]
               },
               {
@@ -4689,8 +4478,8 @@
                   }
                 },
                 "owners": [
-                  "site:dcb4f43e7cb40353",
-                  "fragment:cards/_secure_card:cards:3"
+                  "fragment:cards/_secure_card:cards:3",
+                  "site:fd31777e47e4ef85"
                 ]
               },
               {
@@ -4744,63 +4533,52 @@
                 "owners": [
                   "fragment:cards/_secure_card:cards:3"
                 ]
-              }
-            ],
-            "edges": [
+              },
               {
-                "from": "request",
-                "to": [
-                  "current_attribute",
+                "id": [
+                  "active_record_collection",
                   {
-                    "key": "Upkeep::Domain::CurrentContext.account_id",
-                    "value": null
+                    "table": "cards",
+                    "predicate_digest": "c9472e0f607e2bca"
                   }
                 ],
-                "reason": "depends_on"
-              },
-              {
-                "from": "request",
-                "to": [
-                  "current_attribute",
-                  {
-                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
-                    "value": null
+                "dependency": {
+                  "source": "active_record_collection",
+                  "key": {
+                    "table": "cards",
+                    "predicate_digest": "c9472e0f607e2bca"
+                  },
+                  "visibility": "public",
+                  "precision": "collection_predicate",
+                  "metadata": {
+                    "primary_table": "cards",
+                    "table_columns": {
+                      "cards": [
+                        "board_id",
+                        "id",
+                        "position"
+                      ]
+                    },
+                    "coverage": "columns",
+                    "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC",
+                    "predicates": [
+                      {
+                        "table": "cards",
+                        "column": "board_id",
+                        "operator": "eq",
+                        "values": [
+                          1
+                        ]
+                      }
+                    ]
                   }
-                ],
-                "reason": "depends_on"
+                },
+                "owners": [
+                  "site:fd31777e47e4ef85"
+                ]
               },
               {
-                "from": "request",
-                "to": [
-                  "active_record_attribute",
-                  {
-                    "table": "boards",
-                    "id": 1,
-                    "attribute": "id"
-                  }
-                ],
-                "reason": "depends_on"
-              },
-              {
-                "from": "request",
-                "to": [
-                  "active_record_attribute",
-                  {
-                    "table": "users",
-                    "id": 1,
-                    "attribute": "id"
-                  }
-                ],
-                "reason": "depends_on"
-              },
-              {
-                "from": "request",
-                "to": "page:boards/auth_surfaces",
-                "reason": "contains"
-              },
-              {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "active_record_attribute",
                   {
                     "table": "boards",
@@ -4808,78 +4586,150 @@
                     "attribute": "name"
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "active_record_attribute",
+                  "key": {
+                    "table": "boards",
+                    "id": 1,
+                    "attribute": "name"
+                  },
+                  "visibility": "public",
+                  "precision": "record_attribute",
+                  "metadata": {
+                    "model": "Upkeep::Domain::Board"
+                  }
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "current_attribute",
                   {
                     "key": "Upkeep::Domain::CurrentContext.account_id",
                     "value": "account-a"
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "current_attribute",
+                  "key": {
+                    "key": "Upkeep::Domain::CurrentContext.account_id",
+                    "value": "account-a"
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "owner": "Upkeep::Domain::CurrentContext",
+                    "name": "account_id"
+                  }
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "current_attribute",
                   {
                     "key": "Upkeep::Domain::CurrentContext.viewer_role",
                     "value": "manager"
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "current_attribute",
+                  "key": {
+                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
+                    "value": "manager"
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "owner": "Upkeep::Domain::CurrentContext",
+                    "name": "viewer_role"
+                  }
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "session",
                   {
                     "key": "tenant_id",
-                    "value": "c0bea31774a2ba2d"
+                    "value": "492e25a37329c417"
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "session",
+                  "key": {
+                    "key": "tenant_id",
+                    "value": "492e25a37329c417"
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "key": "tenant_id",
+                    "value_class": "String"
+                  }
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "cookie",
                   {
                     "key": "theme",
-                    "value": "0793e20ac9fdeeb1"
+                    "value": "3add031d87102676"
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "cookie",
+                  "key": {
+                    "key": "theme",
+                    "value": "3add031d87102676"
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "key": "theme",
+                    "value_class": "String"
+                  }
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "request",
                   {
                     "key": "subdomain",
-                    "value": "26e1701086a14320"
+                    "value": "9b496e3bc8b1d845"
                   }
                 ],
-                "reason": "depends_on"
-              },
-              {
-                "from": "page:boards/auth_surfaces",
-                "to": [
-                  "active_record_attribute",
-                  {
-                    "table": "users",
-                    "id": 1,
-                    "attribute": "id"
+                "dependency": {
+                  "source": "request",
+                  "key": {
+                    "key": "subdomain",
+                    "value": "9b496e3bc8b1d845"
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "key": "subdomain",
+                    "value_class": "String"
                   }
-                ],
-                "reason": "depends_on"
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "warden_user",
                   {
                     "key": "user",
@@ -4889,11 +4739,30 @@
                     }
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "warden_user",
+                  "key": {
+                    "key": "user",
+                    "value": {
+                      "model": "Upkeep::Domain::User",
+                      "id": 1
+                    }
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "model": "Upkeep::Domain::User",
+                    "table": "users",
+                    "id": 1,
+                    "scope": "user"
+                  }
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "active_record_attribute",
                   {
                     "table": "users",
@@ -4901,38 +4770,113 @@
                     "attribute": "name"
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "active_record_attribute",
+                  "key": {
+                    "table": "users",
+                    "id": 1,
+                    "attribute": "name"
+                  },
+                  "visibility": "public",
+                  "precision": "record_attribute",
+                  "metadata": {
+                    "model": "Upkeep::Domain::User"
+                  }
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": "site:dcb4f43e7cb40353",
-                "reason": "contains"
-              },
-              {
-                "from": "site:dcb4f43e7cb40353",
-                "to": [
-                  "active_record_collection",
+                "id": [
+                  "current_attribute",
                   {
-                    "table": "cards",
-                    "predicate_digest": "c9472e0f607e2bca"
+                    "key": "Upkeep::Domain::CurrentContext.account_id",
+                    "value": null
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "current_attribute",
+                  "key": {
+                    "key": "Upkeep::Domain::CurrentContext.account_id",
+                    "value": null
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "owner": "Upkeep::Domain::CurrentContext",
+                    "name": "account_id"
+                  }
+                },
+                "owners": [
+                  "request"
+                ]
               },
               {
-                "from": "site:dcb4f43e7cb40353",
-                "to": [
+                "id": [
+                  "current_attribute",
+                  {
+                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
+                    "value": null
+                  }
+                ],
+                "dependency": {
+                  "source": "current_attribute",
+                  "key": {
+                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
+                    "value": null
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "owner": "Upkeep::Domain::CurrentContext",
+                    "name": "viewer_role"
+                  }
+                },
+                "owners": [
+                  "request"
+                ]
+              },
+              {
+                "id": [
                   "active_record_attribute",
                   {
-                    "table": "cards",
+                    "table": "boards",
                     "id": 1,
                     "attribute": "id"
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "active_record_attribute",
+                  "key": {
+                    "table": "boards",
+                    "id": 1,
+                    "attribute": "id"
+                  },
+                  "visibility": "public",
+                  "precision": "record_attribute",
+                  "metadata": {
+                    "model": "Upkeep::Domain::Board"
+                  }
+                },
+                "owners": [
+                  "request"
+                ]
+              }
+            ],
+            "edges": [
+              {
+                "from": "request",
+                "to": "page:boards/auth_surfaces",
+                "reason": "contains"
               },
               {
-                "from": "site:dcb4f43e7cb40353",
+                "from": "page:boards/auth_surfaces",
+                "to": "site:fd31777e47e4ef85",
+                "reason": "contains"
+              },
+              {
+                "from": "site:fd31777e47e4ef85",
                 "to": "fragment:cards/_secure_card:cards:1",
                 "reason": "contains"
               },
@@ -5008,19 +4952,7 @@
                 "reason": "depends_on"
               },
               {
-                "from": "site:dcb4f43e7cb40353",
-                "to": [
-                  "active_record_attribute",
-                  {
-                    "table": "cards",
-                    "id": 2,
-                    "attribute": "id"
-                  }
-                ],
-                "reason": "depends_on"
-              },
-              {
-                "from": "site:dcb4f43e7cb40353",
+                "from": "site:fd31777e47e4ef85",
                 "to": "fragment:cards/_secure_card:cards:2",
                 "reason": "contains"
               },
@@ -5096,19 +5028,7 @@
                 "reason": "depends_on"
               },
               {
-                "from": "site:dcb4f43e7cb40353",
-                "to": [
-                  "active_record_attribute",
-                  {
-                    "table": "cards",
-                    "id": 3,
-                    "attribute": "id"
-                  }
-                ],
-                "reason": "depends_on"
-              },
-              {
-                "from": "site:dcb4f43e7cb40353",
+                "from": "site:fd31777e47e4ef85",
                 "to": "fragment:cards/_secure_card:cards:3",
                 "reason": "contains"
               },
@@ -5182,6 +5102,204 @@
                   }
                 ],
                 "reason": "depends_on"
+              },
+              {
+                "from": "site:fd31777e47e4ef85",
+                "to": [
+                  "active_record_collection",
+                  {
+                    "table": "cards",
+                    "predicate_digest": "c9472e0f607e2bca"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "site:fd31777e47e4ef85",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "cards",
+                    "id": 1,
+                    "attribute": "id"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "site:fd31777e47e4ef85",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "cards",
+                    "id": 2,
+                    "attribute": "id"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "site:fd31777e47e4ef85",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "cards",
+                    "id": 3,
+                    "attribute": "id"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "boards",
+                    "id": 1,
+                    "attribute": "name"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "current_attribute",
+                  {
+                    "key": "Upkeep::Domain::CurrentContext.account_id",
+                    "value": "account-a"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "current_attribute",
+                  {
+                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
+                    "value": "manager"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "session",
+                  {
+                    "key": "tenant_id",
+                    "value": "492e25a37329c417"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "cookie",
+                  {
+                    "key": "theme",
+                    "value": "3add031d87102676"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "request",
+                  {
+                    "key": "subdomain",
+                    "value": "9b496e3bc8b1d845"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "users",
+                    "id": 1,
+                    "attribute": "id"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "warden_user",
+                  {
+                    "key": "user",
+                    "value": {
+                      "model": "Upkeep::Domain::User",
+                      "id": 1
+                    }
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "users",
+                    "id": 1,
+                    "attribute": "name"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "request",
+                "to": [
+                  "current_attribute",
+                  {
+                    "key": "Upkeep::Domain::CurrentContext.account_id",
+                    "value": null
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "request",
+                "to": [
+                  "current_attribute",
+                  {
+                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
+                    "value": null
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "request",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "boards",
+                    "id": 1,
+                    "attribute": "id"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "request",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "users",
+                    "id": 1,
+                    "attribute": "id"
+                  }
+                ],
+                "reason": "depends_on"
               }
             ]
           }
@@ -5218,8 +5336,8 @@
               "kind": "fragment",
               "id": "fragment:cards/_secure_card:cards:1",
               "identity_signature": "c7cb10cf8f5cfb3e",
-              "html_digest": "2a6d80a965d78ff8ffd439f00063c61bd92388aab3b97567b6e74dda71d843da",
-              "html": "<li class=\"card\" id=\"secure_card_1\" data-upkeep-frame=\"fragment:cards/_secure_card:cards:1\" data-upkeep-template=\"74fa0df3fd61475d\">\n  <span class=\"title\">Plan</span>\n  <span class=\"value\">Hidden</span>\n</li>"
+              "html_digest": "aa13f27955cbac2809e292092bc3ac0482db2f3ee7abaaef66653750436b8234",
+              "html": "<li data-upkeep-frame=\"fragment:cards/_secure_card:cards:1\" data-upkeep-template=\"74fa0df3fd61475d\" class=\"card\" id=\"secure_card_1\">\n  <span class=\"title\">Plan</span>\n  <span class=\"value\">Hidden</span>\n</li>"
             }
           ],
           "patched_equals_full": true,
@@ -5228,6 +5346,7 @@
               "nodes": 30,
               "edges": 40,
               "frames": 5,
+              "manifest_attached_frames": 5,
               "dependencies": 24,
               "containment_edges": 5,
               "dependency_edges": 35,
@@ -5253,8 +5372,10 @@
                 "id": "page:boards/auth_surfaces",
                 "kind": "page",
                 "template": "boards/auth_surfaces",
+                "manifest_path": "boards/auth_surfaces",
+                "manifest_fingerprint": "77637c61633e7ef4",
                 "contains": [
-                  "site:dcb4f43e7cb40353"
+                  "site:fd31777e47e4ef85"
                 ],
                 "dependencies": [
                   {
@@ -5300,7 +5421,7 @@
                     "source": "session",
                     "key": {
                       "key": "tenant_id",
-                      "value": "9baf0b078358d7d6"
+                      "value": "2100d5b8a0e7bd3d"
                     },
                     "visibility": "identity_bound",
                     "precision": "identity",
@@ -5313,7 +5434,7 @@
                     "source": "cookie",
                     "key": {
                       "key": "theme",
-                      "value": "db2457c04e58a424"
+                      "value": "05a6196560b6f6d4"
                     },
                     "visibility": "identity_bound",
                     "precision": "identity",
@@ -5326,7 +5447,7 @@
                     "source": "request",
                     "key": {
                       "key": "subdomain",
-                      "value": "0aa850c12cafa824"
+                      "value": "88450ffdf06ce2ad"
                     },
                     "visibility": "identity_bound",
                     "precision": "identity",
@@ -5382,22 +5503,22 @@
                 ],
                 "replay_recipe": {
                   "kind": "page",
-                  "frame_id": "page:boards/auth_surfaces",
                   "target_kind": "page",
                   "target_id": "page:boards/auth_surfaces",
                   "template": "boards/auth_surfaces",
-                  "metadata": {
-                    "user": {
-                      "table": "users",
-                      "id": 2
-                    }
+                  "replay": {
+                    "keys": [],
+                    "bytes": 2,
+                    "digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
                   }
                 }
               },
               {
-                "id": "site:dcb4f43e7cb40353",
+                "id": "site:fd31777e47e4ef85",
                 "kind": "render_site",
-                "site_id": "dcb4f43e7cb40353",
+                "site_id": "fd31777e47e4ef85",
+                "manifest_path": "boards/auth_surfaces",
+                "manifest_fingerprint": "77637c61633e7ef4",
                 "contains": [
                   "fragment:cards/_secure_card:cards:1",
                   "fragment:cards/_secure_card:cards:2",
@@ -5422,7 +5543,17 @@
                         ]
                       },
                       "coverage": "columns",
-                      "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC"
+                      "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC",
+                      "predicates": [
+                        {
+                          "table": "cards",
+                          "column": "board_id",
+                          "operator": "eq",
+                          "values": [
+                            1
+                          ]
+                        }
+                      ]
                     }
                   },
                   {
@@ -5467,11 +5598,12 @@
                 ],
                 "replay_recipe": {
                   "kind": "render_site",
-                  "frame_id": "site:dcb4f43e7cb40353",
                   "target_kind": "render_site",
-                  "target_id": "dcb4f43e7cb40353",
-                  "metadata": {
-                    "site_id": "dcb4f43e7cb40353"
+                  "target_id": "fd31777e47e4ef85",
+                  "replay": {
+                    "keys": [],
+                    "bytes": 2,
+                    "digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
                   }
                 }
               },
@@ -5479,6 +5611,8 @@
                 "id": "fragment:cards/_secure_card:cards:1",
                 "kind": "fragment",
                 "template": "cards/_secure_card",
+                "manifest_path": "cards/_secure_card",
+                "manifest_fingerprint": "31eb8b20d5514b1c",
                 "locals": {
                   "card": {
                     "table": "cards",
@@ -5569,17 +5703,13 @@
                 ],
                 "replay_recipe": {
                   "kind": "fragment",
-                  "frame_id": "fragment:cards/_secure_card:cards:1",
                   "target_kind": "fragment",
                   "target_id": "fragment:cards/_secure_card:cards:1",
                   "template": "cards/_secure_card",
-                  "metadata": {
-                    "locals": {
-                      "card": {
-                        "table": "cards",
-                        "id": 1
-                      }
-                    }
+                  "replay": {
+                    "keys": [],
+                    "bytes": 2,
+                    "digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
                   }
                 }
               },
@@ -5587,6 +5717,8 @@
                 "id": "fragment:cards/_secure_card:cards:2",
                 "kind": "fragment",
                 "template": "cards/_secure_card",
+                "manifest_path": "cards/_secure_card",
+                "manifest_fingerprint": "31eb8b20d5514b1c",
                 "locals": {
                   "card": {
                     "table": "cards",
@@ -5677,17 +5809,13 @@
                 ],
                 "replay_recipe": {
                   "kind": "fragment",
-                  "frame_id": "fragment:cards/_secure_card:cards:2",
                   "target_kind": "fragment",
                   "target_id": "fragment:cards/_secure_card:cards:2",
                   "template": "cards/_secure_card",
-                  "metadata": {
-                    "locals": {
-                      "card": {
-                        "table": "cards",
-                        "id": 2
-                      }
-                    }
+                  "replay": {
+                    "keys": [],
+                    "bytes": 2,
+                    "digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
                   }
                 }
               },
@@ -5695,6 +5823,8 @@
                 "id": "fragment:cards/_secure_card:cards:3",
                 "kind": "fragment",
                 "template": "cards/_secure_card",
+                "manifest_path": "cards/_secure_card",
+                "manifest_fingerprint": "31eb8b20d5514b1c",
                 "locals": {
                   "card": {
                     "table": "cards",
@@ -5785,17 +5915,13 @@
                 ],
                 "replay_recipe": {
                   "kind": "fragment",
-                  "frame_id": "fragment:cards/_secure_card:cards:3",
                   "target_kind": "fragment",
                   "target_id": "fragment:cards/_secure_card:cards:3",
                   "template": "cards/_secure_card",
-                  "metadata": {
-                    "locals": {
-                      "card": {
-                        "table": "cards",
-                        "id": 3
-                      }
-                    }
+                  "replay": {
+                    "keys": [],
+                    "bytes": 2,
+                    "digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
                   }
                 }
               }
@@ -5803,59 +5929,9 @@
             "dependencies": [
               {
                 "id": [
-                  "current_attribute",
-                  {
-                    "key": "Upkeep::Domain::CurrentContext.account_id",
-                    "value": null
-                  }
-                ],
-                "dependency": {
-                  "source": "current_attribute",
-                  "key": {
-                    "key": "Upkeep::Domain::CurrentContext.account_id",
-                    "value": null
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "owner": "Upkeep::Domain::CurrentContext",
-                    "name": "account_id"
-                  }
-                },
-                "owners": [
-                  "request"
-                ]
-              },
-              {
-                "id": [
-                  "current_attribute",
-                  {
-                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
-                    "value": null
-                  }
-                ],
-                "dependency": {
-                  "source": "current_attribute",
-                  "key": {
-                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
-                    "value": null
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "owner": "Upkeep::Domain::CurrentContext",
-                    "name": "viewer_role"
-                  }
-                },
-                "owners": [
-                  "request"
-                ]
-              },
-              {
-                "id": [
                   "active_record_attribute",
                   {
-                    "table": "boards",
+                    "table": "cards",
                     "id": 1,
                     "attribute": "id"
                   }
@@ -5863,18 +5939,45 @@
                 "dependency": {
                   "source": "active_record_attribute",
                   "key": {
-                    "table": "boards",
+                    "table": "cards",
                     "id": 1,
                     "attribute": "id"
                   },
                   "visibility": "public",
                   "precision": "record_attribute",
                   "metadata": {
-                    "model": "Upkeep::Domain::Board"
+                    "model": "Upkeep::Domain::Card"
                   }
                 },
                 "owners": [
-                  "request"
+                  "fragment:cards/_secure_card:cards:1",
+                  "site:fd31777e47e4ef85"
+                ]
+              },
+              {
+                "id": [
+                  "active_record_attribute",
+                  {
+                    "table": "cards",
+                    "id": 1,
+                    "attribute": "title"
+                  }
+                ],
+                "dependency": {
+                  "source": "active_record_attribute",
+                  "key": {
+                    "table": "cards",
+                    "id": 1,
+                    "attribute": "title"
+                  },
+                  "visibility": "public",
+                  "precision": "record_attribute",
+                  "metadata": {
+                    "model": "Upkeep::Domain::Card"
+                  }
+                },
+                "owners": [
+                  "fragment:cards/_secure_card:cards:1"
                 ]
               },
               {
@@ -5900,307 +6003,11 @@
                   }
                 },
                 "owners": [
-                  "request",
-                  "page:boards/auth_surfaces",
                   "fragment:cards/_secure_card:cards:1",
                   "fragment:cards/_secure_card:cards:2",
-                  "fragment:cards/_secure_card:cards:3"
-                ]
-              },
-              {
-                "id": [
-                  "active_record_attribute",
-                  {
-                    "table": "boards",
-                    "id": 1,
-                    "attribute": "name"
-                  }
-                ],
-                "dependency": {
-                  "source": "active_record_attribute",
-                  "key": {
-                    "table": "boards",
-                    "id": 1,
-                    "attribute": "name"
-                  },
-                  "visibility": "public",
-                  "precision": "record_attribute",
-                  "metadata": {
-                    "model": "Upkeep::Domain::Board"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "current_attribute",
-                  {
-                    "key": "Upkeep::Domain::CurrentContext.account_id",
-                    "value": "account-b"
-                  }
-                ],
-                "dependency": {
-                  "source": "current_attribute",
-                  "key": {
-                    "key": "Upkeep::Domain::CurrentContext.account_id",
-                    "value": "account-b"
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "owner": "Upkeep::Domain::CurrentContext",
-                    "name": "account_id"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "current_attribute",
-                  {
-                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
-                    "value": "viewer"
-                  }
-                ],
-                "dependency": {
-                  "source": "current_attribute",
-                  "key": {
-                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
-                    "value": "viewer"
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "owner": "Upkeep::Domain::CurrentContext",
-                    "name": "viewer_role"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "session",
-                  {
-                    "key": "tenant_id",
-                    "value": "9baf0b078358d7d6"
-                  }
-                ],
-                "dependency": {
-                  "source": "session",
-                  "key": {
-                    "key": "tenant_id",
-                    "value": "9baf0b078358d7d6"
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "key": "tenant_id",
-                    "value_class": "String"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "cookie",
-                  {
-                    "key": "theme",
-                    "value": "db2457c04e58a424"
-                  }
-                ],
-                "dependency": {
-                  "source": "cookie",
-                  "key": {
-                    "key": "theme",
-                    "value": "db2457c04e58a424"
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "key": "theme",
-                    "value_class": "String"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "request",
-                  {
-                    "key": "subdomain",
-                    "value": "0aa850c12cafa824"
-                  }
-                ],
-                "dependency": {
-                  "source": "request",
-                  "key": {
-                    "key": "subdomain",
-                    "value": "0aa850c12cafa824"
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "key": "subdomain",
-                    "value_class": "String"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "warden_user",
-                  {
-                    "key": "user",
-                    "value": {
-                      "model": "Upkeep::Domain::User",
-                      "id": 2
-                    }
-                  }
-                ],
-                "dependency": {
-                  "source": "warden_user",
-                  "key": {
-                    "key": "user",
-                    "value": {
-                      "model": "Upkeep::Domain::User",
-                      "id": 2
-                    }
-                  },
-                  "visibility": "identity_bound",
-                  "precision": "identity",
-                  "metadata": {
-                    "model": "Upkeep::Domain::User",
-                    "table": "users",
-                    "id": 2,
-                    "scope": "user"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "active_record_attribute",
-                  {
-                    "table": "users",
-                    "id": 2,
-                    "attribute": "name"
-                  }
-                ],
-                "dependency": {
-                  "source": "active_record_attribute",
-                  "key": {
-                    "table": "users",
-                    "id": 2,
-                    "attribute": "name"
-                  },
-                  "visibility": "public",
-                  "precision": "record_attribute",
-                  "metadata": {
-                    "model": "Upkeep::Domain::User"
-                  }
-                },
-                "owners": [
-                  "page:boards/auth_surfaces"
-                ]
-              },
-              {
-                "id": [
-                  "active_record_collection",
-                  {
-                    "table": "cards",
-                    "predicate_digest": "c9472e0f607e2bca"
-                  }
-                ],
-                "dependency": {
-                  "source": "active_record_collection",
-                  "key": {
-                    "table": "cards",
-                    "predicate_digest": "c9472e0f607e2bca"
-                  },
-                  "visibility": "public",
-                  "precision": "collection_predicate",
-                  "metadata": {
-                    "primary_table": "cards",
-                    "table_columns": {
-                      "cards": [
-                        "board_id",
-                        "id",
-                        "position"
-                      ]
-                    },
-                    "coverage": "columns",
-                    "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC"
-                  }
-                },
-                "owners": [
-                  "site:dcb4f43e7cb40353"
-                ]
-              },
-              {
-                "id": [
-                  "active_record_attribute",
-                  {
-                    "table": "cards",
-                    "id": 1,
-                    "attribute": "id"
-                  }
-                ],
-                "dependency": {
-                  "source": "active_record_attribute",
-                  "key": {
-                    "table": "cards",
-                    "id": 1,
-                    "attribute": "id"
-                  },
-                  "visibility": "public",
-                  "precision": "record_attribute",
-                  "metadata": {
-                    "model": "Upkeep::Domain::Card"
-                  }
-                },
-                "owners": [
-                  "site:dcb4f43e7cb40353",
-                  "fragment:cards/_secure_card:cards:1"
-                ]
-              },
-              {
-                "id": [
-                  "active_record_attribute",
-                  {
-                    "table": "cards",
-                    "id": 1,
-                    "attribute": "title"
-                  }
-                ],
-                "dependency": {
-                  "source": "active_record_attribute",
-                  "key": {
-                    "table": "cards",
-                    "id": 1,
-                    "attribute": "title"
-                  },
-                  "visibility": "public",
-                  "precision": "record_attribute",
-                  "metadata": {
-                    "model": "Upkeep::Domain::Card"
-                  }
-                },
-                "owners": [
-                  "fragment:cards/_secure_card:cards:1"
+                  "fragment:cards/_secure_card:cards:3",
+                  "page:boards/auth_surfaces",
+                  "request"
                 ]
               },
               {
@@ -6308,8 +6115,8 @@
                   }
                 },
                 "owners": [
-                  "site:dcb4f43e7cb40353",
-                  "fragment:cards/_secure_card:cards:2"
+                  "fragment:cards/_secure_card:cards:2",
+                  "site:fd31777e47e4ef85"
                 ]
               },
               {
@@ -6387,8 +6194,8 @@
                   }
                 },
                 "owners": [
-                  "site:dcb4f43e7cb40353",
-                  "fragment:cards/_secure_card:cards:3"
+                  "fragment:cards/_secure_card:cards:3",
+                  "site:fd31777e47e4ef85"
                 ]
               },
               {
@@ -6442,63 +6249,52 @@
                 "owners": [
                   "fragment:cards/_secure_card:cards:3"
                 ]
-              }
-            ],
-            "edges": [
+              },
               {
-                "from": "request",
-                "to": [
-                  "current_attribute",
+                "id": [
+                  "active_record_collection",
                   {
-                    "key": "Upkeep::Domain::CurrentContext.account_id",
-                    "value": null
+                    "table": "cards",
+                    "predicate_digest": "c9472e0f607e2bca"
                   }
                 ],
-                "reason": "depends_on"
-              },
-              {
-                "from": "request",
-                "to": [
-                  "current_attribute",
-                  {
-                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
-                    "value": null
+                "dependency": {
+                  "source": "active_record_collection",
+                  "key": {
+                    "table": "cards",
+                    "predicate_digest": "c9472e0f607e2bca"
+                  },
+                  "visibility": "public",
+                  "precision": "collection_predicate",
+                  "metadata": {
+                    "primary_table": "cards",
+                    "table_columns": {
+                      "cards": [
+                        "board_id",
+                        "id",
+                        "position"
+                      ]
+                    },
+                    "coverage": "columns",
+                    "sql": "SELECT \"cards\".* FROM \"cards\" WHERE \"cards\".\"board_id\" = 1 ORDER BY \"cards\".\"position\" ASC",
+                    "predicates": [
+                      {
+                        "table": "cards",
+                        "column": "board_id",
+                        "operator": "eq",
+                        "values": [
+                          1
+                        ]
+                      }
+                    ]
                   }
-                ],
-                "reason": "depends_on"
+                },
+                "owners": [
+                  "site:fd31777e47e4ef85"
+                ]
               },
               {
-                "from": "request",
-                "to": [
-                  "active_record_attribute",
-                  {
-                    "table": "boards",
-                    "id": 1,
-                    "attribute": "id"
-                  }
-                ],
-                "reason": "depends_on"
-              },
-              {
-                "from": "request",
-                "to": [
-                  "active_record_attribute",
-                  {
-                    "table": "users",
-                    "id": 2,
-                    "attribute": "id"
-                  }
-                ],
-                "reason": "depends_on"
-              },
-              {
-                "from": "request",
-                "to": "page:boards/auth_surfaces",
-                "reason": "contains"
-              },
-              {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "active_record_attribute",
                   {
                     "table": "boards",
@@ -6506,78 +6302,150 @@
                     "attribute": "name"
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "active_record_attribute",
+                  "key": {
+                    "table": "boards",
+                    "id": 1,
+                    "attribute": "name"
+                  },
+                  "visibility": "public",
+                  "precision": "record_attribute",
+                  "metadata": {
+                    "model": "Upkeep::Domain::Board"
+                  }
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "current_attribute",
                   {
                     "key": "Upkeep::Domain::CurrentContext.account_id",
                     "value": "account-b"
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "current_attribute",
+                  "key": {
+                    "key": "Upkeep::Domain::CurrentContext.account_id",
+                    "value": "account-b"
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "owner": "Upkeep::Domain::CurrentContext",
+                    "name": "account_id"
+                  }
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "current_attribute",
                   {
                     "key": "Upkeep::Domain::CurrentContext.viewer_role",
                     "value": "viewer"
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "current_attribute",
+                  "key": {
+                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
+                    "value": "viewer"
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "owner": "Upkeep::Domain::CurrentContext",
+                    "name": "viewer_role"
+                  }
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "session",
                   {
                     "key": "tenant_id",
-                    "value": "9baf0b078358d7d6"
+                    "value": "2100d5b8a0e7bd3d"
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "session",
+                  "key": {
+                    "key": "tenant_id",
+                    "value": "2100d5b8a0e7bd3d"
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "key": "tenant_id",
+                    "value_class": "String"
+                  }
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "cookie",
                   {
                     "key": "theme",
-                    "value": "db2457c04e58a424"
+                    "value": "05a6196560b6f6d4"
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "cookie",
+                  "key": {
+                    "key": "theme",
+                    "value": "05a6196560b6f6d4"
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "key": "theme",
+                    "value_class": "String"
+                  }
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "request",
                   {
                     "key": "subdomain",
-                    "value": "0aa850c12cafa824"
+                    "value": "88450ffdf06ce2ad"
                   }
                 ],
-                "reason": "depends_on"
-              },
-              {
-                "from": "page:boards/auth_surfaces",
-                "to": [
-                  "active_record_attribute",
-                  {
-                    "table": "users",
-                    "id": 2,
-                    "attribute": "id"
+                "dependency": {
+                  "source": "request",
+                  "key": {
+                    "key": "subdomain",
+                    "value": "88450ffdf06ce2ad"
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "key": "subdomain",
+                    "value_class": "String"
                   }
-                ],
-                "reason": "depends_on"
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "warden_user",
                   {
                     "key": "user",
@@ -6587,11 +6455,30 @@
                     }
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "warden_user",
+                  "key": {
+                    "key": "user",
+                    "value": {
+                      "model": "Upkeep::Domain::User",
+                      "id": 2
+                    }
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "model": "Upkeep::Domain::User",
+                    "table": "users",
+                    "id": 2,
+                    "scope": "user"
+                  }
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": [
+                "id": [
                   "active_record_attribute",
                   {
                     "table": "users",
@@ -6599,38 +6486,113 @@
                     "attribute": "name"
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "active_record_attribute",
+                  "key": {
+                    "table": "users",
+                    "id": 2,
+                    "attribute": "name"
+                  },
+                  "visibility": "public",
+                  "precision": "record_attribute",
+                  "metadata": {
+                    "model": "Upkeep::Domain::User"
+                  }
+                },
+                "owners": [
+                  "page:boards/auth_surfaces"
+                ]
               },
               {
-                "from": "page:boards/auth_surfaces",
-                "to": "site:dcb4f43e7cb40353",
-                "reason": "contains"
-              },
-              {
-                "from": "site:dcb4f43e7cb40353",
-                "to": [
-                  "active_record_collection",
+                "id": [
+                  "current_attribute",
                   {
-                    "table": "cards",
-                    "predicate_digest": "c9472e0f607e2bca"
+                    "key": "Upkeep::Domain::CurrentContext.account_id",
+                    "value": null
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "current_attribute",
+                  "key": {
+                    "key": "Upkeep::Domain::CurrentContext.account_id",
+                    "value": null
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "owner": "Upkeep::Domain::CurrentContext",
+                    "name": "account_id"
+                  }
+                },
+                "owners": [
+                  "request"
+                ]
               },
               {
-                "from": "site:dcb4f43e7cb40353",
-                "to": [
+                "id": [
+                  "current_attribute",
+                  {
+                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
+                    "value": null
+                  }
+                ],
+                "dependency": {
+                  "source": "current_attribute",
+                  "key": {
+                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
+                    "value": null
+                  },
+                  "visibility": "identity_bound",
+                  "precision": "identity",
+                  "metadata": {
+                    "owner": "Upkeep::Domain::CurrentContext",
+                    "name": "viewer_role"
+                  }
+                },
+                "owners": [
+                  "request"
+                ]
+              },
+              {
+                "id": [
                   "active_record_attribute",
                   {
-                    "table": "cards",
+                    "table": "boards",
                     "id": 1,
                     "attribute": "id"
                   }
                 ],
-                "reason": "depends_on"
+                "dependency": {
+                  "source": "active_record_attribute",
+                  "key": {
+                    "table": "boards",
+                    "id": 1,
+                    "attribute": "id"
+                  },
+                  "visibility": "public",
+                  "precision": "record_attribute",
+                  "metadata": {
+                    "model": "Upkeep::Domain::Board"
+                  }
+                },
+                "owners": [
+                  "request"
+                ]
+              }
+            ],
+            "edges": [
+              {
+                "from": "request",
+                "to": "page:boards/auth_surfaces",
+                "reason": "contains"
               },
               {
-                "from": "site:dcb4f43e7cb40353",
+                "from": "page:boards/auth_surfaces",
+                "to": "site:fd31777e47e4ef85",
+                "reason": "contains"
+              },
+              {
+                "from": "site:fd31777e47e4ef85",
                 "to": "fragment:cards/_secure_card:cards:1",
                 "reason": "contains"
               },
@@ -6706,19 +6668,7 @@
                 "reason": "depends_on"
               },
               {
-                "from": "site:dcb4f43e7cb40353",
-                "to": [
-                  "active_record_attribute",
-                  {
-                    "table": "cards",
-                    "id": 2,
-                    "attribute": "id"
-                  }
-                ],
-                "reason": "depends_on"
-              },
-              {
-                "from": "site:dcb4f43e7cb40353",
+                "from": "site:fd31777e47e4ef85",
                 "to": "fragment:cards/_secure_card:cards:2",
                 "reason": "contains"
               },
@@ -6794,19 +6744,7 @@
                 "reason": "depends_on"
               },
               {
-                "from": "site:dcb4f43e7cb40353",
-                "to": [
-                  "active_record_attribute",
-                  {
-                    "table": "cards",
-                    "id": 3,
-                    "attribute": "id"
-                  }
-                ],
-                "reason": "depends_on"
-              },
-              {
-                "from": "site:dcb4f43e7cb40353",
+                "from": "site:fd31777e47e4ef85",
                 "to": "fragment:cards/_secure_card:cards:3",
                 "reason": "contains"
               },
@@ -6877,6 +6815,204 @@
                     "table": "users",
                     "id": 2,
                     "attribute": "value_limit"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "site:fd31777e47e4ef85",
+                "to": [
+                  "active_record_collection",
+                  {
+                    "table": "cards",
+                    "predicate_digest": "c9472e0f607e2bca"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "site:fd31777e47e4ef85",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "cards",
+                    "id": 1,
+                    "attribute": "id"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "site:fd31777e47e4ef85",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "cards",
+                    "id": 2,
+                    "attribute": "id"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "site:fd31777e47e4ef85",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "cards",
+                    "id": 3,
+                    "attribute": "id"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "boards",
+                    "id": 1,
+                    "attribute": "name"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "current_attribute",
+                  {
+                    "key": "Upkeep::Domain::CurrentContext.account_id",
+                    "value": "account-b"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "current_attribute",
+                  {
+                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
+                    "value": "viewer"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "session",
+                  {
+                    "key": "tenant_id",
+                    "value": "2100d5b8a0e7bd3d"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "cookie",
+                  {
+                    "key": "theme",
+                    "value": "05a6196560b6f6d4"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "request",
+                  {
+                    "key": "subdomain",
+                    "value": "88450ffdf06ce2ad"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "users",
+                    "id": 2,
+                    "attribute": "id"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "warden_user",
+                  {
+                    "key": "user",
+                    "value": {
+                      "model": "Upkeep::Domain::User",
+                      "id": 2
+                    }
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "page:boards/auth_surfaces",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "users",
+                    "id": 2,
+                    "attribute": "name"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "request",
+                "to": [
+                  "current_attribute",
+                  {
+                    "key": "Upkeep::Domain::CurrentContext.account_id",
+                    "value": null
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "request",
+                "to": [
+                  "current_attribute",
+                  {
+                    "key": "Upkeep::Domain::CurrentContext.viewer_role",
+                    "value": null
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "request",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "boards",
+                    "id": 1,
+                    "attribute": "id"
+                  }
+                ],
+                "reason": "depends_on"
+              },
+              {
+                "from": "request",
+                "to": [
+                  "active_record_attribute",
+                  {
+                    "table": "users",
+                    "id": 2,
+                    "attribute": "id"
                   }
                 ],
                 "reason": "depends_on"

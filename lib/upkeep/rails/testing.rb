@@ -19,6 +19,15 @@ module Upkeep
         ([subscription.metadata.fetch(:stream_name)] + subscription.metadata.fetch(:shared_stream_names, [])).uniq
       end
 
+      def activate_upkeep_subscription!(subscription = upkeep_subscription)
+        raise ArgumentError, "no Upkeep subscription is registered" unless subscription
+
+        activated = Upkeep::Rails.subscriptions.activate(subscription.id)
+        raise Upkeep::Subscriptions::NotFound, subscription.id unless activated
+
+        subscription
+      end
+
       def capture_upkeep_broadcasts(subscription = upkeep_subscription, &block)
         raise ArgumentError, "capture_upkeep_broadcasts requires a block" unless block
         raise NoMethodError, "include ActionCable::TestHelper before calling capture_upkeep_broadcasts" unless respond_to?(:capture_broadcasts)

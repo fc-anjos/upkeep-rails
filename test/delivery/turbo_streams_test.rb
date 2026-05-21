@@ -285,6 +285,33 @@ class TurboStreamsDeliveryTest < Minitest::Test
     assert_empty stream.html
   end
 
+  def test_public_collection_member_remove_uses_subscription_shared_stream
+    card = create_delivery_card!("Plan")
+    create_delivery_card!("Build")
+
+    store = Upkeep::Subscriptions::Store.new
+    register_controller_subscription(store, subscriber_id: "subscriber-a")
+    register_controller_subscription(store, subscriber_id: "subscriber-b")
+
+    subscription_shared_streams = store.subscriptions.flat_map do |subscription|
+      Upkeep::SharedStreams.names_for_subscription(subscription)
+    end.uniq
+    refute_empty subscription_shared_streams
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.destroy!
+
+    batch = delivery.build(plan_for(store))
+    stream = batch.streams.first
+
+    assert_equal "remove", stream.action
+    assert_equal ["subscriber-a", "subscriber-b"], stream.subscriber_ids.sort
+    refute_nil stream.shared_stream_name
+    assert_includes subscription_shared_streams, stream.shared_stream_name
+    assert_equal 1, batch.envelopes.size
+    assert_equal stream.shared_stream_name, batch.envelopes.first.stream_name
+  end
+
   def test_collection_update_replaces_existing_member_when_order_is_stable
     create_delivery_card!("Alpha")
     card = create_delivery_card!("Mango")
@@ -369,6 +396,45 @@ class TurboStreamsDeliveryTest < Minitest::Test
     assert_empty batch.streams
   end
 
+  def test_render_failure_for_one_target_is_isolated_and_other_targets_still_deliver
+    card = create_delivery_card!("Plan")
+
+    store = Upkeep::Subscriptions::Store.new
+    register_controller_subscription(store, subscriber_id: "subscriber-a")
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.update!(title: "Plan v2")
+
+    plan = plan_for(store)
+    healthy_target = plan.targets.first
+    refute_nil healthy_target
+
+    failing_target = raising_planned_target
+    augmented_plan = Upkeep::Invalidation::Planner::Plan.new(
+      plan.targets + [failing_target],
+      plan.candidate_entries,
+      plan.matched_entries
+    )
+
+    events = []
+    subscriber = ActiveSupport::Notifications.subscribe("delivery_error.upkeep") { |event| events << event }
+
+    batch = nil
+    batch = delivery.build_many([augmented_plan]) # must not raise
+
+    assert_equal 1, batch.streams.size
+    assert_includes batch.streams.first.html, "Plan v2"
+
+    assert_equal 1, events.size
+    payload = events.first.payload
+    assert_equal "boom", payload.fetch(:error_message)
+    assert_equal "RuntimeError", payload.fetch(:error_class)
+    assert_equal "replace", payload.fetch(:action)
+    assert_equal ["subscriber-z"], payload.fetch(:subscriber_ids)
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
+  end
+
   def test_identity_partitioned_payloads_are_not_cross_delivered
     reset_domain_database
     store = Upkeep::Subscriptions::Store.new
@@ -424,6 +490,32 @@ class TurboStreamsDeliveryTest < Minitest::Test
 
   def plan_for(store)
     Upkeep::Invalidation::Planner.new(store: store).plan(Upkeep::Runtime::ChangeLog.events)
+  end
+
+  def raising_planned_target
+    recipe = Upkeep::Replay::Recipe.new(
+      kind: :fragment,
+      frame_id: "fragment:rails:delivery_cards/_card:boom",
+      target_kind: "fragment",
+      target_id: "fragment:rails:delivery_cards/_card:boom"
+    ) { raise "boom" }
+
+    target = Upkeep::Targeting::Target.new("fragment", "fragment:rails:delivery_cards/_card:boom", "boom")
+
+    Upkeep::Invalidation::Planner::PlannedTarget.new(
+      "subscription-z",
+      "subscriber-z",
+      ["subscriber-z"],
+      target,
+      target,
+      "fragment:rails:delivery_cards/_card:boom",
+      "public",
+      nil,
+      recipe,
+      ["boom"],
+      "replace",
+      nil
+    )
   end
 
   def create_delivery_card!(title, status: "open")

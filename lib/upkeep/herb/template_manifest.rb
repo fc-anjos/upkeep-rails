@@ -161,11 +161,19 @@ module Upkeep
             root_elements: root_elements.size,
             root_types: significant_children.map { |child| child.class.name },
             single_root: significant_children.size == 1 && root_elements.size == 1,
+            single_root_element: root_elements.size == 1,
             multi_root: root_elements.size > 1
           }
 
-          if root_shape.fetch(:single_root)
-            partial_template? ? plan_fragment_root_tag(root_elements.first) : plan_page_root_tag(root_elements.first)
+          if partial_template?
+            plan_fragment_root_tag(root_elements.first) if root_shape.fetch(:single_root)
+          elsif root_shape.fetch(:single_root_element)
+            # A page template's recorded frame target needs a matching DOM marker so it can be
+            # resolved during full-page rerender. Page templates routinely carry non-element
+            # siblings such as `content_for`/`yield :head` ERB statements that produce no enclosing
+            # DOM, so anchor the page-frame marker to the single root element rather than requiring
+            # the element to be the only significant child.
+            plan_page_root_tag(root_elements.first)
           end
 
           super

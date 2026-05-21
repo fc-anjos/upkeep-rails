@@ -401,7 +401,7 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     pruned = store.prune_stale!(older_than: Time.utc(2026, 1, 2))
 
     assert_equal 1, pruned
-    assert_raises(ActiveRecord::RecordNotFound) { store.fetch(stale.id) }
+    assert_raises(Upkeep::Subscriptions::NotFound) { store.fetch(stale.id) }
     assert_equal fresh.id, store.fetch(fresh.id).id
     assert_equal [fresh.id], Upkeep::Subscriptions::ActiveRecordStore::SubscriptionRecord.pluck(:id)
     assert_equal [fresh.id], Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.distinct.pluck(:subscription_id)
@@ -420,7 +420,7 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
 
     assert_equal 0, Upkeep::Subscriptions::ActiveRecordStore::SubscriptionRecord.count
     assert_equal 0, Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.count
-    assert_raises(ActiveRecord::RecordNotFound) { store.fetch(subscription.id) }
+    assert_raises(Upkeep::Subscriptions::NotFound) { store.fetch(subscription.id) }
   end
 
   def test_unregister_deletes_persisted_subscription_and_index_rows
@@ -436,7 +436,7 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
 
     assert_equal 0, Upkeep::Subscriptions::ActiveRecordStore::SubscriptionRecord.count
     assert_equal 0, Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.count
-    assert_raises(ActiveRecord::RecordNotFound) { store.fetch(subscription.id) }
+    assert_raises(Upkeep::Subscriptions::NotFound) { store.fetch(subscription.id) }
   end
 
   def test_active_registry_covers_planning_when_it_matches_persistent_subscription_count

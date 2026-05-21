@@ -9,8 +9,9 @@ rendered frames and delivers Turbo Stream updates over ActionCable.
 
 The design goal is Rails-shaped DX: controllers load state, views render ERB,
 models commit writes, and Upkeep derives the reactive boundary from the Rails
-surfaces it observes. There is no query catalog, no `watch` or `track` DSL, and
-no host-maintained list of identity dimensions.
+surfaces it observes. There is no query catalog and no `watch` or `track` DSL.
+For user-specific pages, apps declare only the bridge between an observed
+render-time identity and the matching ActionCable connection identity.
 
 ## Why Upkeep
 
@@ -78,6 +79,11 @@ public entry points:
   development/test `:memory` storage.
 - `config.upkeep.refused_boundary_behavior` - raise or warn when a reactive
   boundary cannot be proven.
+- `config.upkeep.activation_token_expires_in` - signed marker token lifetime for
+  activating the exact subscription rendered into the HTML response.
+- `Upkeep::Rails.configure { |config| config.identify ... }` - declare each
+  user, account, tenant, or session identity that must be matched again when
+  the browser subscribes over ActionCable.
 - `Upkeep::Rails::Cable::Channel` - the generated browser client subscribes to
   this channel.
 - `Upkeep::Rails::Testing` - integration test helpers.
@@ -122,10 +128,12 @@ A surface describes *when to rerender*.
 
 ### Identity Boundary
 
-An **identity boundary** is observed viewer-specific state: `CurrentAttributes`,
-Warden or Devise users, session values, cookies, request values, and ActionCable
-connection identifiers. Upkeep uses these observed values to decide whether
-work can be shared or must stay partitioned by viewer.
+An **identity boundary** is state that decides who may receive a live update.
+Upkeep records observed CurrentAttributes, Warden, session, cookie, and request
+reads for replay and sharing, but it does not infer user or account identity by
+naming convention. Subscriber identity must be declared with
+`config.identify`, then resolved again from ActionCable when the browser
+subscribes.
 
 An identity boundary describes *who may share a result*.
 
@@ -137,6 +145,12 @@ bootstrap reads that marker, subscribes over ActionCable, and applies received
 Turbo Stream payloads.
 
 A subscription describes *where updates should be sent*.
+
+The marker includes a signed activation token for that subscription. The token
+lets the browser activate the exact rendered response it received on first
+paint without requiring Upkeep to create a guest cookie or infer application
+identity. Identified pages still use declared identity authorization in addition
+to the activation token.
 
 ### Proven Delivery
 
@@ -206,7 +220,61 @@ For more than one Puma worker, configure ActionCable with a shared adapter such
 as Redis or Solid Cable. The subscription store decides which subscribers need
 work; ActionCable decides which worker owns each WebSocket connection.
 
-### 4. Render Normal Rails Views
+The generated subscription marker carries a stateless signed activation token.
+The generated browser client forwards it to ActionCable, where Upkeep verifies
+that the browser is activating the same subscription id that was rendered into
+the response. The default token lifetime is 24 hours and can be adjusted:
+
+```ruby
+config.upkeep.activation_token_expires_in = 12.hours
+```
+
+### 4. Configure Identity For User-Specific Pages
+
+Pages that depend on a user, account, tenant, or other authenticated actor need
+an explicit identity bridge. The `current:` side tells Upkeep which observed
+render-time value is the identity. The `subscribe` side tells Upkeep how to
+resolve the same identity from the ActionCable connection:
+
+```ruby
+# config/initializers/upkeep.rb
+Upkeep::Rails.configure do |config|
+  config.identify :user, current: ["Current", :user] do
+    subscribe { |cable| cable.current_user }
+  end
+end
+```
+
+The matching cable connection must expose that identity:
+
+```ruby
+# app/channels/application_cable/connection.rb
+module ApplicationCable
+  class Connection < ActionCable::Connection::Base
+    identified_by :current_user
+
+    def connect
+      self.current_user = User.find_by(id: request.session[:user_id])
+    end
+  end
+end
+```
+
+Session-backed identity can be declared directly:
+
+```ruby
+Upkeep::Rails.configure do |config|
+  config.identify :user, session: :user_id do
+    subscribe { |cable| cable.request.session[:user_id] }
+  end
+end
+```
+
+If a page reads undeclared `CurrentAttributes` or Warden identity, Upkeep
+refuses live registration and reports `identity_setup_required` /
+`unidentified_identity` rather than guessing.
+
+### 5. Render Normal Rails Views
 
 Controllers keep loading Active Record models and relations:
 
@@ -235,7 +303,7 @@ Successful HTML GET responses are captured automatically. Upkeep records the
 rendered page, render sites, fragments, collection surfaces, identity inputs,
 and request inputs, then injects the subscription marker into the response.
 
-### 5. Keep Write Paths Focused
+### 6. Keep Write Paths Focused
 
 Writes keep doing domain work:
 
@@ -285,7 +353,8 @@ Identity and ambient inputs:
 - Warden and Devise user reads through Warden.
 - Session and cookie reads.
 - Request values such as host, path, params, user agent, and remote IP.
-- ActionCable connection identifiers.
+- Declared Upkeep identities that map observed render-time values to
+  ActionCable subscribe-time values.
 
 ## What Upkeep Cannot Capture
 
@@ -353,9 +422,22 @@ append/remove/prepend planning.
 
 ## Identity And Sharing
 
-Upkeep observes identity only when application code reads identity-shaped state.
-If a page reads `Current.user`, session values, cookies, request values, or
-connection identifiers, delivery is partitioned by those observed values.
+Upkeep observes ambient state while rendering, but subscriber identity is
+explicit. A page that reads `Current.user` is not automatically treated as a
+user page. Declare the identity:
+
+```ruby
+Upkeep::Rails.configure do |config|
+  config.identify :user, current: ["Current", :user] do
+    subscribe { |cable| cable.current_user }
+  end
+end
+```
+
+The symbol, such as `:user`, names the identity component. Common components
+are `:user`, `:account`, `:tenant`, `:organization`, `:role`, `:locale`, and
+`:impersonator`. If a page depends on both `:user` and `:account`, the cable
+subscription must match both before Upkeep authorizes the live stream.
 
 If a page never reads identity state, it can stay anonymous-public. Anonymous
 subscribers with the same subscription shape can share compiled subscription
@@ -363,7 +445,9 @@ structure and update renders. Upkeep does not share initial response HTML.
 
 Session, cookie, and request replay stores only observed values needed to rerun
 the page. Unread session keys, cookies, and request headers are not copied into
-the replay payload.
+the replay payload. Session and cookie reads become subscriber identity only
+when declared with `config.identify`; otherwise they are ambient replay inputs
+and do not authorize an ActionCable subscriber.
 
 ## Refused Boundaries
 

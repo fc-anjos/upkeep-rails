@@ -5,6 +5,8 @@ require "time"
 
 module Upkeep
   module Subscriptions
+    class NotFound < KeyError; end
+
     Subscription = Data.define(:id, :subscriber_id, :recorder, :graph, :metadata) do
       def identity_signature(frame_id)
         recorder.identity_signature(frame_id)
@@ -120,6 +122,8 @@ module Upkeep
 
       def fetch(id)
         @subscriptions.fetch(id)
+      rescue KeyError
+        raise NotFound, id
       end
 
       def subscriptions

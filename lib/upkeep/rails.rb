@@ -4,6 +4,7 @@ require "active_support/notifications"
 require_relative "capture/request"
 require_relative "subscriptions/registrar"
 require_relative "rails/configuration"
+require_relative "rails/activation_token"
 require_relative "rails/replay"
 require_relative "rails/action_view_capture"
 require_relative "rails/cable"
@@ -200,7 +201,8 @@ module Upkeep
           identity_mode: decision.mode,
           anonymous: decision.anonymous,
           anonymous_deopt_reason: decision.deopt_reason,
-          identity_sources: decision.identity_sources
+          identity_sources: decision.identity_sources,
+          identity_names: decision.identity_names
         }.compact
       end
 
@@ -214,7 +216,8 @@ module Upkeep
             identity_mode: decision&.mode,
             anonymous: decision&.anonymous,
             anonymous_deopt_reason: deopt_reason || decision&.deopt_reason,
-            identity_sources: decision&.identity_sources
+            identity_sources: decision&.identity_sources,
+            identity_names: decision&.identity_names
           }.merge(extra)
         )
       end

@@ -41,22 +41,17 @@ module Upkeep
         requested_ids = ids.to_h { |id| [id, true] }
 
         @mutex.synchronize do
-          queued_ids = {}
           removed = 0
           @queue.delete_if do |job|
             id = job.subscription.id
             requested_ids.key?(id).tap do |matched|
-              if matched
-                queued_ids[id] = true
-                removed += 1
-              end
+              removed += 1 if matched
             end
           end
           @pending -= removed
           @drained.broadcast if @pending.zero?
-          persisted_ids = ids.reject { |id| queued_ids[id] }
-          @drained.wait(@mutex) while persisted_ids.any? { |id| @inflight_ids.fetch(id, 0).positive? }
-          persisted_ids
+          @drained.wait(@mutex) while ids.any? { |id| @inflight_ids.fetch(id, 0).positive? }
+          ids
         end
       end
 

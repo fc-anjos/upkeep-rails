@@ -64,6 +64,7 @@ class ControllerRuntimeTest < Minitest::Test
   end
 
   def setup
+    Upkeep::Rails.configuration.clear_identities!
     Upkeep::Rails.reset_runtime!
     Upkeep::Rails::Install.reset!
     Upkeep::Rails::Install.call
@@ -89,6 +90,7 @@ class ControllerRuntimeTest < Minitest::Test
 
   def teardown
     RuntimeDeliveryCurrent.reset
+    Upkeep::Rails.configuration.clear_identities!
     Upkeep::Rails.reset_runtime!
     FileUtils.rm_rf(@database_dir) if @database_dir
   end
@@ -96,6 +98,7 @@ class ControllerRuntimeTest < Minitest::Test
   def test_get_registers_subscription_and_injects_client_marker
     user = RuntimeDeliveryUser.create!(name: "Alice")
     RuntimeDeliveryCard.create!(title: "Plan")
+    configure_current_user_identity
     RuntimeDeliveryCurrent.user = user
 
     events = capture_notifications(Upkeep::Rails::SUBSCRIPTION_IDENTITY) do
@@ -108,13 +111,39 @@ class ControllerRuntimeTest < Minitest::Test
     assert subscription
     assert_equal Upkeep::Rails::Cable::SubscriberIdentity::IDENTIFIED_MODE, subscription.metadata.fetch(:identity_mode)
     assert_equal "identity_dependencies_present", subscription.metadata.fetch(:anonymous_deopt_reason)
-    assert_includes subscription.metadata.fetch(:identity_sources), "current_attribute"
+    assert_includes subscription.metadata.fetch(:identity_sources), "current"
+    assert_equal ["user"], subscription.metadata.fetch(:identity_names)
     assert_equal Upkeep::Rails::Cable::SubscriberIdentity::IDENTIFIED_MODE, events.last.payload.fetch(:identity_mode)
     assert_equal "identity_dependencies_present", events.last.payload.fetch(:anonymous_deopt_reason)
-    assert_equal subscription.subscriber_id, Upkeep::Rails::Cable::SubscriberIdentity.for_identifiers(current_user: user).subscriber_id
+    expected_identity = expected_current_user_identity(user)
+    assert_equal subscription.subscriber_id, expected_identity.subscriber_id
     assert_includes html, "data-upkeep-subscription"
     assert_includes html, subscription.id
-    assert_includes html, Upkeep::Rails::Cable::SubscriberIdentity.for_identifiers(current_user: user).stream_name
+    assert_includes html, expected_identity.stream_name
+    marker_payload = subscription_marker_payload(html)
+    assert Upkeep::Rails::ActivationToken.valid_for_subscription?(
+      marker_payload.fetch("activation_token"),
+      subscription.id
+    )
+  end
+
+  def test_current_attribute_identity_requires_explicit_mapping
+    user = RuntimeDeliveryUser.create!(name: "Alice")
+    RuntimeDeliveryCard.create!(title: "Plan")
+    RuntimeDeliveryCurrent.user = user
+
+    events = capture_notifications(Upkeep::Rails::SUBSCRIPTION_IDENTITY) do
+      _status, _headers, body = RuntimeDeliveryCardsController.action(:index).call(env_for("/cards"))
+      @html = collect_body(body)
+    end
+
+    assert_empty Upkeep::Rails.subscriptions.subscriptions
+    refute_includes @html, "data-upkeep-subscription"
+    assert_equal false, events.last.payload.fetch(:registered)
+    assert_equal Upkeep::Rails::Cable::SubscriberIdentity::IDENTIFIED_MODE, events.last.payload.fetch(:identity_mode)
+    assert_equal "unidentified_identity", events.last.payload.fetch(:anonymous_deopt_reason)
+    assert_includes events.last.payload.fetch(:identity_sources), "current_attribute"
+    assert_match(/declared Upkeep identity mapping/, events.last.payload.fetch(:error))
   end
 
   def test_anonymous_get_registers_subscription_and_injects_client_marker
@@ -136,6 +165,11 @@ class ControllerRuntimeTest < Minitest::Test
     assert_includes html, "data-upkeep-subscription"
     assert_includes html, subscription.id
     assert_includes html, subscription.metadata.fetch(:stream_name)
+    marker_payload = subscription_marker_payload(html)
+    assert Upkeep::Rails::ActivationToken.valid_for_subscription?(
+      marker_payload.fetch("activation_token"),
+      subscription.id
+    )
   end
 
   def test_identity_free_get_reuses_subscription_shape_without_reusing_response_html
@@ -233,6 +267,7 @@ class ControllerRuntimeTest < Minitest::Test
     Upkeep::Rails.configuration.refused_boundary_behavior = :warn
     user = RuntimeDeliveryUser.create!(name: "Alice")
     RuntimeDeliveryCard.create!(title: "Plan")
+    configure_current_user_identity
     RuntimeDeliveryCurrent.user = user
 
     _status, _headers, body = RuntimeDeliveryCardsController.action(:raw).call(env_for("/cards/raw"))
@@ -259,6 +294,7 @@ class ControllerRuntimeTest < Minitest::Test
   def test_mutation_request_delivers_planned_streams_to_connected_subscriber
     user = RuntimeDeliveryUser.create!(name: "Alice")
     card = RuntimeDeliveryCard.create!(title: "Plan")
+    configure_current_user_identity
     RuntimeDeliveryCurrent.user = user
 
     _status, _headers, body = RuntimeDeliveryCardsController.action(:index).call(env_for("/cards"))
@@ -303,6 +339,7 @@ class ControllerRuntimeTest < Minitest::Test
   def test_controller_page_replay_does_not_register_another_subscription
     user = RuntimeDeliveryUser.create!(name: "Alice")
     RuntimeDeliveryCard.create!(title: "Plan")
+    configure_current_user_identity
     RuntimeDeliveryCurrent.user = user
 
     _status, _headers, body = RuntimeDeliveryCardsController.action(:index).call(env_for("/cards"))
@@ -341,6 +378,13 @@ class ControllerRuntimeTest < Minitest::Test
     body.close if body.respond_to?(:close)
   end
 
+  def subscription_marker_payload(html)
+    marker = html.match(%r{<script type="application/json" data-upkeep-subscription>(.*?)</script>}m)
+    raise "missing Upkeep subscription marker" unless marker
+
+    JSON.parse(marker[1])
+  end
+
   def delivery_change(table:)
     {
       type: "update",
@@ -360,6 +404,25 @@ class ControllerRuntimeTest < Minitest::Test
     events
   ensure
     ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
+  end
+
+  def configure_current_user_identity
+    Upkeep::Rails.configuration.identify :user, current: [RuntimeDeliveryCurrent, :user] do
+      subscribe { |cable| cable.current_user }
+    end
+  end
+
+  def expected_current_user_identity(user)
+    Upkeep::Rails::Cable::SubscriberIdentity.for_components([
+      {
+        name: "user",
+        kind: "identity",
+        value: {
+          "id" => user.id,
+          "model" => "RuntimeDeliveryUser"
+        }
+      }
+    ])
   end
 
   def resolver

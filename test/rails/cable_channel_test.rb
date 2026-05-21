@@ -49,14 +49,20 @@ class CableChannelTest < ActionCable::Channel::TestCase
 
   def setup
     super
+    Upkeep::Rails.configuration.clear_identities!
     Upkeep::Rails.reset_runtime!
+  end
+
+  def teardown
+    Upkeep::Rails.configuration.clear_identities!
+    super
   end
 
   def test_subscribes_to_server_subscription_stream
     subscription_record = registered_subscription(stream_name: "upkeep:test:user-1")
     stub_connection(current_user: "user-1")
 
-    subscribe subscription_id: subscription_record.id, client_subscriber_id: "attacker"
+    subscribe subscription_params(subscription_record, client_subscriber_id: "attacker")
 
     assert subscription.confirmed?
     assert_has_stream "upkeep:test:user-1"
@@ -68,7 +74,7 @@ class CableChannelTest < ActionCable::Channel::TestCase
     Upkeep::Rails.subscriptions.touch(subscription_record.id, now: Time.utc(2026, 1, 1))
     stub_connection(current_user: "user-1")
 
-    subscribe subscription_id: subscription_record.id
+    subscribe subscription_params(subscription_record)
 
     assert subscription.confirmed?
     assert_equal "2026-01-01T00:00:00Z",
@@ -84,7 +90,7 @@ class CableChannelTest < ActionCable::Channel::TestCase
     end
     stub_connection(current_user: "user-1")
 
-    subscribe subscription_id: subscription_record.id
+    subscribe subscription_params(subscription_record)
 
     assert subscription.confirmed?
     assert_equal [subscription_record.id], activated_ids
@@ -98,7 +104,7 @@ class CableChannelTest < ActionCable::Channel::TestCase
 
     assert_empty store.reverse_index.entries_for([lookup_change])
 
-    subscribe subscription_id: subscription_record.id
+    subscribe subscription_params(subscription_record)
 
     assert subscription.confirmed?
     assert_equal [subscription_record.id], store.reverse_index.entries_for([lookup_change]).map(&:subscription_id)
@@ -109,7 +115,7 @@ class CableChannelTest < ActionCable::Channel::TestCase
     shared_stream_name = Upkeep::SharedStreams.names_for_subscription(subscription_record).first
     stub_connection(current_user: "user-1")
 
-    subscribe subscription_id: subscription_record.id
+    subscribe subscription_params(subscription_record)
 
     assert subscription.confirmed?
     assert_has_stream "upkeep:test:user-1"
@@ -126,22 +132,49 @@ class CableChannelTest < ActionCable::Channel::TestCase
     )
     stub_connection(current_user: nil)
 
-    subscribe subscription_id: subscription_record.id
+    subscribe subscription_params(subscription_record)
 
     assert subscription.confirmed?
     assert_has_stream "upkeep:test:anonymous"
   end
 
   def test_rejects_identified_subscription_when_connection_identity_does_not_match
-    alice = Upkeep::Rails::Cable::SubscriberIdentity.for_identifiers(current_user: "alice")
+    configure_user_identity
+    alice = Upkeep::Rails::Cable::SubscriberIdentity.for_components([
+      { name: "user", kind: "identity", value: "alice" }
+    ])
     subscription_record = registered_subscription(
       subscriber_id: alice.subscriber_id,
       stream_name: alice.stream_name,
-      metadata: { identity_mode: Upkeep::Rails::Cable::SubscriberIdentity::IDENTIFIED_MODE }
+      metadata: {
+        identity_mode: Upkeep::Rails::Cable::SubscriberIdentity::IDENTIFIED_MODE,
+        identity_names: ["user"]
+      }
     )
     stub_connection(current_user: "bob")
 
+    subscribe subscription_params(subscription_record)
+
+    assert subscription.rejected?
+    assert_no_streams
+  end
+
+  def test_rejects_subscription_with_missing_activation_token
+    subscription_record = registered_subscription(stream_name: "upkeep:test:user-1")
+    stub_connection(current_user: "user-1")
+
     subscribe subscription_id: subscription_record.id
+
+    assert subscription.rejected?
+    assert_no_streams
+  end
+
+  def test_rejects_subscription_with_mismatched_activation_token
+    subscription_record = registered_subscription(stream_name: "upkeep:test:user-1")
+    stub_connection(current_user: "user-1")
+
+    subscribe subscription_id: subscription_record.id,
+      activation_token: Upkeep::Rails::ActivationToken.generate("subscription-other")
 
     assert subscription.rejected?
     assert_no_streams
@@ -150,18 +183,19 @@ class CableChannelTest < ActionCable::Channel::TestCase
   def test_unsubscribe_keeps_subscription_state_out_of_transport
     subscription_record = registered_subscription(stream_name: "upkeep:test:user-1")
     stub_connection(current_user: "user-1")
-    subscribe subscription_id: subscription_record.id
+    subscribe subscription_params(subscription_record)
 
     unsubscribe
 
     refute Upkeep::Rails.transport.connected?(subscription_record.subscriber_id)
-    assert_raises(KeyError) { Upkeep::Rails.subscriptions.fetch(subscription_record.id) }
+    assert_raises(Upkeep::Subscriptions::NotFound) { Upkeep::Rails.subscriptions.fetch(subscription_record.id) }
   end
 
   def test_rejects_subscriptions_without_server_record
     stub_connection(current_user: "user-1")
 
-    subscribe subscription_id: "missing"
+    subscribe subscription_id: "missing",
+      activation_token: Upkeep::Rails::ActivationToken.generate("missing")
 
     assert subscription.rejected?
     assert_no_streams
@@ -181,12 +215,25 @@ class CableChannelTest < ActionCable::Channel::TestCase
 
   private
 
+  def configure_user_identity
+    Upkeep::Rails.configuration.identify :user, current: ["Current", :user] do
+      subscribe { |cable| cable.current_user }
+    end
+  end
+
   def registered_subscription(stream_name:, subscriber_id: nil, metadata: {})
     Upkeep::Rails.subscriptions.register(
       subscriber_id: subscriber_id || "subscriber-#{stream_name}",
       recorder: Upkeep::Runtime::Recorder.new,
       metadata: { stream_name: stream_name }.merge(metadata)
     )
+  end
+
+  def subscription_params(subscription, **extra)
+    {
+      subscription_id: subscription.id,
+      activation_token: Upkeep::Rails::ActivationToken.generate(subscription)
+    }.merge(extra)
   end
 
   def registered_subscription_with_public_frame(stream_name:)

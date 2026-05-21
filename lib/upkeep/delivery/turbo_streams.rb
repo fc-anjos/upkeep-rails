@@ -6,6 +6,8 @@ require "cgi"
 module Upkeep
   module Delivery
     class TurboStreams
+      DELIVERY_ERROR = "delivery_error.upkeep"
+
       Stream = Data.define(
         :action,
         :target,
@@ -129,7 +131,7 @@ module Upkeep
         }
 
         ActiveSupport::Notifications.instrument("build_turbo_streams.upkeep", payload) do
-          streams = plans.flat_map { |plan| stream_targets(plan.targets) }
+          streams = plans.flat_map { |plan| stream_targets(plan.targets) }.compact
           batch = Batch.new(merge_streams(streams))
           payload.merge!(payload_for(batch, rendered_streams: streams))
           batch
@@ -165,7 +167,25 @@ module Upkeep
         end
       end
 
+      # The write that produced these changes has already committed; an isolated render/targeting
+      # failure for one target must never propagate back into the writer's request. Rescue per
+      # target, surface the failure via instrumentation, and keep delivering the other targets.
       def stream_for(planned_target, subscriber_ids: planned_target.subscriber_ids, matched_dependency_keys: planned_target.matched_dependency_keys)
+        build_stream(planned_target, subscriber_ids: subscriber_ids, matched_dependency_keys: matched_dependency_keys)
+      rescue StandardError => error
+        ActiveSupport::Notifications.instrument(
+          DELIVERY_ERROR,
+          target: planned_target.target.to_h,
+          action: planned_target.action,
+          subscription_id: planned_target.subscription_id,
+          subscriber_ids: subscriber_ids.uniq.sort_by(&:to_s),
+          error_class: error.class.name,
+          error_message: error.message
+        )
+        nil
+      end
+
+      def build_stream(planned_target, subscriber_ids:, matched_dependency_keys:)
         html, render_duration_ms = render_target(planned_target)
 
         Stream.new(
@@ -246,7 +266,7 @@ module Upkeep
         return unless subscriber_ids.uniq.size > 1
 
         SharedStreams.stream_name(
-          target: planned_target.target,
+          target: planned_target.shared_stream_target,
           identity_signature: planned_target.identity_signature,
           sharing_signature: planned_target.sharing_signature
         )
