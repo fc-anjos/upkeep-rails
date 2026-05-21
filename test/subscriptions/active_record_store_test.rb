@@ -570,6 +570,49 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     assert_raises(Upkeep::Subscriptions::NotFound) { store.fetch(subscription.id) }
   end
 
+  def test_batched_durable_lifecycle_survives_reload_lookup_and_prune
+    card = create_subscription_card!("Plan")
+    create_subscription_card!("Build")
+
+    store = active_record_store
+    subscriptions = 12.times.map do |index|
+      _html, recorder = capture_controller_request("/cards?status=open")
+      subscription = store.register(
+        subscriber_id: "subscriber-#{index}",
+        recorder: recorder,
+        metadata: { stream_name: "stream-#{index}", subscription_shape_key: "shape:cards:open" }
+      )
+      store.activate(subscription.id)
+      subscription
+    end
+    removed = subscriptions.values_at(1, 5, 9)
+
+    assert_equal removed.size, store.unregister(removed.map(&:id))
+    store.drain
+
+    kept_subscriptions = subscriptions - removed
+    assert_equal kept_subscriptions.map(&:id).sort,
+      Upkeep::Subscriptions::ActiveRecordStore::SubscriptionRecord.pluck(:id).sort
+
+    reloaded_store = active_record_store
+    Upkeep::Runtime::ChangeLog.reset
+    card.update!(title: "Plan v2")
+
+    plan = Upkeep::Invalidation::Planner.new(store: reloaded_store).plan(Upkeep::Runtime::ChangeLog.events)
+
+    assert_equal kept_subscriptions.map(&:subscriber_id).sort,
+      plan.targets.flat_map(&:subscriber_ids).uniq.sort
+    assert_equal kept_subscriptions.size, plan.summary.fetch(:represented_subscribers)
+
+    stale_subscription = kept_subscriptions.first
+    reloaded_store.touch(stale_subscription.id, now: Time.utc(2026, 1, 1))
+    assert_equal 1, reloaded_store.prune_stale!(older_than: Time.utc(2026, 1, 2))
+
+    assert_raises(Upkeep::Subscriptions::NotFound) { active_record_store.fetch(stale_subscription.id) }
+    assert_equal (kept_subscriptions.map(&:id) - [stale_subscription.id]).sort,
+      Upkeep::Subscriptions::ActiveRecordStore::SubscriptionRecord.pluck(:id).sort
+  end
+
   def test_active_registry_covers_planning_when_it_matches_persistent_subscription_count
     card = PersistentSubscriptionCard.create!(title: "Plan", status: "open")
 
