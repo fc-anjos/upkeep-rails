@@ -198,15 +198,13 @@ module Upkeep
 
       def subscription_ids_by_shape_key(shape_keys)
         shape_key_lookup = shape_keys.to_h { |shape_key| [shape_key, []] }
-        subscription_record.pluck(:id, :metadata).each do |id, metadata|
-          shape_key = metadata_value(metadata, :subscription_shape_key)
-          shape_key_lookup[shape_key] << id if shape_key_lookup.key?(shape_key)
-        end
+        subscription_record
+          .where(subscription_shape_key: shape_keys)
+          .pluck(:subscription_shape_key, :id)
+          .each do |shape_key, id|
+            shape_key_lookup[shape_key] << id if shape_key_lookup.key?(shape_key)
+          end
         shape_key_lookup.transform_values { |ids| ids.sort_by(&:to_s) }
-      end
-
-      def metadata_value(metadata, key)
-        metadata.to_h[key] || metadata.to_h[key.to_s]
       end
     end
   end

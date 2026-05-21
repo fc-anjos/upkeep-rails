@@ -27,6 +27,7 @@ module Upkeep
           "subscriber_id" => :string,
           "recorder_snapshot" => :json,
           "metadata" => :json,
+          "subscription_shape_key" => :string,
           "created_at" => :datetime,
           "updated_at" => :datetime
         },

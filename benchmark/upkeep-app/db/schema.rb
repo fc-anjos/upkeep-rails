@@ -123,8 +123,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_29_000004) do
     t.json "metadata"
     t.json "recorder_snapshot", null: false
     t.string "subscriber_id", null: false
+    t.string "subscription_shape_key"
     t.datetime "updated_at", null: false
     t.index ["subscriber_id"], name: "index_upkeep_subscriptions_on_subscriber_id"
+    t.index ["subscription_shape_key"], name: "idx_upkeep_subscriptions_on_shape_key"
   end
 
   create_table "users", force: :cascade do |t|
