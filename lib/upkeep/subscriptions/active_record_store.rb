@@ -21,6 +21,30 @@ module Upkeep
       PERSIST_NOTIFICATION = ActiveRecordSubscriptionPersistence::PERSIST_NOTIFICATION
       DURABILITY_MODE = "async_subscription_row_index_on_subscribe"
       INDEX_DURABILITY = "on_subscribe"
+      REQUIRED_SCHEMA = {
+        "upkeep_subscriptions" => {
+          "id" => :string,
+          "subscriber_id" => :string,
+          "recorder_snapshot" => :json,
+          "metadata" => :json,
+          "created_at" => :datetime,
+          "updated_at" => :datetime
+        },
+        "upkeep_subscription_index_entries" => {
+          "subscription_id" => :string,
+          "lookup_key_digest" => :string,
+          "dependency_source" => :string,
+          "lookup_table" => :string,
+          "lookup_record_id_snapshot" => :json,
+          "lookup_attribute" => :string,
+          "dependency_table" => :string,
+          "dependency_predicate_digest" => :string,
+          "dependency_metadata_snapshot" => :json,
+          "owner_ids_snapshot" => :json,
+          "created_at" => :datetime,
+          "updated_at" => :datetime
+        }
+      }.freeze
 
       class SubscriptionRecord < ActiveRecord::Base
         self.table_name = "upkeep_subscriptions"
@@ -72,14 +96,55 @@ module Upkeep
       end
 
       def self.available?(connect: false)
-        return false unless ActiveRecord::Base.connected? || connect
+        schema_errors(connect: connect).empty?
+      end
+
+      def self.schema_errors(connect: false)
+        return ["Active Record is not connected"] unless ActiveRecord::Base.connected? || connect
 
         connection = ActiveRecord::Base.connection
-        connection.data_source_exists?("upkeep_subscriptions") &&
-          connection.data_source_exists?("upkeep_subscription_index_entries")
-      rescue ActiveRecord::ConnectionNotEstablished, ActiveRecord::NoDatabaseError, ActiveRecord::StatementInvalid
-        false
+        REQUIRED_SCHEMA.flat_map { |table, columns| schema_errors_for_table(connection, table, columns) }
+      rescue ActiveRecord::ConnectionNotEstablished, ActiveRecord::NoDatabaseError => error
+        [error.message]
+      rescue ActiveRecord::StatementInvalid => error
+        ["database schema could not be inspected: #{error.message}"]
       end
+
+      def self.schema_errors_for_table(connection, table, required_columns)
+        unless connection.data_source_exists?(table)
+          return ["missing table #{table}"]
+        end
+
+        columns = connection.columns(table).to_h { |column| [column.name, column] }
+        required_columns.filter_map do |column_name, expected_type|
+          column = columns[column_name]
+          if column.nil?
+            "missing column #{table}.#{column_name}"
+          elsif !compatible_column_type?(column, expected_type)
+            "#{table}.#{column_name} must be #{expected_column_description(expected_type)}, found #{column.sql_type.inspect}"
+          end
+        end
+      end
+      private_class_method :schema_errors_for_table
+
+      def self.compatible_column_type?(column, expected_type)
+        case expected_type
+        when :json
+          [:json, :jsonb].include?(column.type) || column.sql_type.to_s.downcase.include?("json")
+        when :string
+          [:string, :text].include?(column.type)
+        when :datetime
+          [:datetime, :time, :date].include?(column.type)
+        else
+          column.type == expected_type
+        end
+      end
+      private_class_method :compatible_column_type?
+
+      def self.expected_column_description(expected_type)
+        expected_type == :json ? "json/jsonb" : expected_type.to_s
+      end
+      private_class_method :expected_column_description
 
       def register(subscriber_id:, recorder:, metadata: {}, entries: nil)
         if ActiveSupport::Notifications.notifier.listening?(REGISTER_NOTIFICATION)

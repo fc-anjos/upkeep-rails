@@ -20,11 +20,11 @@ module Upkeep
       attr_reader :manifest
 
       def replacements_for(source)
-        render_site_replacements + root_marker_replacements(source)
+        render_site_replacements + marker_replacements(source)
       end
 
       def render_site_replacements
-        manifest.render_nodes.select { |render_node| render_node.fetch(:collection) }.map do |render_node|
+        manifest.render_nodes.select { |render_node| render_node.fetch(:render_site_container) }.map do |render_node|
           [
             render_node.fetch(:start_offset),
             render_node.fetch(:end_offset),
@@ -33,9 +33,9 @@ module Upkeep
         end
       end
 
-      def root_marker_replacements(source)
+      def marker_replacements(source)
         manifest.frontend_tag_plan
-          .select { |entry| %w[fragment_root page_root].include?(entry.fetch(:kind)) }
+          .select { |entry| %w[fragment_root page_root render_site].include?(entry.fetch(:kind)) }
           .filter_map { |tag| root_marker_replacement(source, tag) }
       end
 

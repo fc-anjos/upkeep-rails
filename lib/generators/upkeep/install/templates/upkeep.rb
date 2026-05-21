@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
-Rails.application.configure do
-  config.upkeep.enabled = true
-  config.upkeep.subscription_store = :active_record
-  config.upkeep.delivery_adapter = :active_job
-  config.upkeep.delivery_queue = :upkeep_realtime
+Upkeep::Rails.configure do |config|
+  config.enabled = true
+  config.subscription_store = :active_record
+  config.delivery_adapter = :active_job
+  config.delivery_queue = :upkeep_realtime
 
   # Delivery setup:
   # Upkeep uses Active Job for committed-change delivery in production. Configure
@@ -13,23 +13,22 @@ Rails.application.configure do
   # or PostgreSQL so worker broadcasts can reach web socket connections.
 
   # Identity setup:
-  # Upkeep does not infer user/account identity by naming convention. Declare
-  # each identity that should partition live updates, and resolve the same
-  # identity from ActionCable when the browser subscribes.
+  # Upkeep does not infer subscriber identity by naming convention. Declare each
+  # identity boundary that should partition live updates, and resolve the same
+  # boundary from ActionCable when the browser subscribes.
   #
   # Example for Current.user plus ApplicationCable identified_by :current_user:
   #
-  # Upkeep::Rails.configure do |upkeep|
-  #   upkeep.identify :user, current: ["Current", :user] do
-  #     subscribe { |cable| cable.current_user }
-  #   end
+  # config.identify :viewer, current: ["Current", :user] do
+  #   subscribe { |connection| connection.current_user }
   # end
   #
   # Example for session-backed authentication:
   #
-  # Upkeep::Rails.configure do |upkeep|
-  #   upkeep.identify :user, session: :user_id do
-  #     subscribe { |cable| cable.request.session[:user_id] }
-  #   end
+  # config.identify :viewer, session: :user_id do
+  #   # nil means this identity boundary is absent. Use absent_if for any
+  #   # additional app-specific sentinel, such as false or "guest".
+  #   # absent_if { |value| value.nil? || value == false }
+  #   subscribe { |connection| connection.session[:user_id] }
   # end
 end

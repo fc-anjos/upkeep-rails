@@ -144,6 +144,7 @@ module Upkeep
           @frontend_tag_plan = []
           @render_nodes = []
           @helper_lowered_elements = []
+          @html_stack = []
           @root_shape = nil
           @line_offsets = build_line_offsets(source)
         end
@@ -184,7 +185,7 @@ module Upkeep
           render_node = render_node_payload(node, keywords)
 
           @render_nodes << render_node
-          @frontend_tag_plan << render_site_tag(render_node)
+          @frontend_tag_plan << render_site_tag(render_node) if render_node.fetch(:render_site_container)
 
           super
         end
@@ -198,12 +199,17 @@ module Upkeep
             }
           end
 
-          super
+          @html_stack.push(node)
+          begin
+            super
+          ensure
+            @html_stack.pop
+          end
         end
 
         private
 
-        attr_reader :path, :line_offsets
+        attr_reader :path, :line_offsets, :html_stack
 
         def build_line_offsets(source)
           offsets = [0]
@@ -232,7 +238,8 @@ module Upkeep
             object: token_value(keywords&.object),
             as: token_value(keywords&.as_name),
             locals: Array(keywords&.locals).map { |local| token_value(local.name) },
-            block_arguments: Array(node.block_arguments).map { |argument| token_value(argument.name) }
+            block_arguments: Array(node.block_arguments).map { |argument| token_value(argument.name) },
+            render_site_container: render_site_container_for(node, keywords)
           }
         end
 
@@ -273,10 +280,13 @@ module Upkeep
         end
 
         def render_site_tag(render_node)
+          container = render_node.fetch(:render_site_container)
+
           {
             kind: "render_site",
-            target: render_node.fetch(:kind) == "partial" && render_node.fetch(:collection) ? "collection_region" : "opaque_render_output",
-            location: render_node.fetch(:location),
+            target: "container_element",
+            location: container.fetch(:location),
+            tag_name: container.fetch(:tag_name),
             site_id: render_node.fetch(:site_id),
             attributes: [
               {
@@ -296,11 +306,33 @@ module Upkeep
         end
 
         def render_site_update_role(render_node)
-          if render_node.fetch(:kind) == "partial" && render_node.fetch(:collection)
+          if render_node.fetch(:render_site_container)
             "anchor collection membership while child partial roots carry per-record frame tags"
           else
             "record where ActionView runtime must confirm the rendered frame target"
           end
+        end
+
+        def render_site_container_for(node, keywords)
+          return unless token_value(keywords&.collection)
+
+          container = html_stack.last
+          return unless container
+          return unless safe_collection_container?(container, node)
+
+          {
+            location: location_payload(container.location),
+            tag_name: token_value(container.tag_name)
+          }
+        end
+
+        def safe_collection_container?(container, render_node)
+          children = meaningful_children(container)
+          children.one? && children.first.equal?(render_node)
+        end
+
+        def meaningful_children(node)
+          Array(node.body).reject { |child| insignificant_document_child?(child) }
         end
 
         def render_kind(keywords)

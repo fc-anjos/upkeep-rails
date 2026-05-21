@@ -44,9 +44,9 @@ module Upkeep
       say "\nIdentity setup required", :yellow
       say "Upkeep found request-side identity usage:"
       usages.each { |usage| say "  #{usage}" }
-      say "Upkeep does not infer user/account identity by naming convention."
+      say "Upkeep does not infer subscriber identity by naming convention."
       say "Add an explicit Upkeep::Rails.configure identity mapping in config/initializers/upkeep.rb."
-      say "Pages that depend on undeclared CurrentAttributes or Warden identities are refused for live updates."
+      say "Pages that depend on undeclared non-absent CurrentAttributes or Warden identities are refused for live updates."
       say ""
     end
 

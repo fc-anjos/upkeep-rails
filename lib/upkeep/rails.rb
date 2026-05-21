@@ -270,11 +270,10 @@ module Upkeep
       def build_subscription_store
         case configuration.subscription_store
         when :active_record
-          unless Subscriptions::ActiveRecordStore.available?(connect: true)
+          schema_errors = Subscriptions::ActiveRecordStore.schema_errors(connect: true)
+          unless schema_errors.empty?
             raise ConfigurationError,
-              "Upkeep subscription_store=:active_record requires the upkeep_subscriptions and " \
-              "upkeep_subscription_index_entries tables. Run bin/rails generate upkeep:install " \
-              "and bin/rails db:migrate, or set config.upkeep.subscription_store = :memory in development/test."
+              active_record_subscription_store_error(schema_errors)
           end
 
           Subscriptions::ActiveRecordStore.new
@@ -293,11 +292,24 @@ module Upkeep
 
         return true unless production_environment?(environment)
         return true unless configuration.subscription_store == :active_record
-        return true if Subscriptions::ActiveRecordStore.available?(connect: true)
+        schema_errors = Subscriptions::ActiveRecordStore.schema_errors(connect: true)
+        return true if schema_errors.empty?
 
-        raise ConfigurationError,
-          "Upkeep production boot requires the upkeep_subscriptions and " \
-          "upkeep_subscription_index_entries tables for subscription_store=:active_record."
+        raise ConfigurationError, active_record_subscription_store_error(schema_errors, production: true)
+      end
+
+      def active_record_subscription_store_error(schema_errors, production: false)
+        prefix = if production
+          "Upkeep production boot requires compatible upkeep_subscriptions and " \
+            "upkeep_subscription_index_entries tables for subscription_store=:active_record."
+        else
+          "Upkeep subscription_store=:active_record requires compatible upkeep_subscriptions and " \
+            "upkeep_subscription_index_entries tables."
+        end
+
+        "#{prefix} Schema errors: #{schema_errors.join("; ")}. Run bin/rails generate upkeep:install " \
+          "and bin/rails db:migrate, rebuild stale development/test databases, or set " \
+          "config.upkeep.subscription_store = :memory in development/test."
       end
 
       def production_environment?(environment)

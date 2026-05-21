@@ -22,14 +22,21 @@ module Upkeep
         :render_duration_ms
       ) do
         def to_html
+          return %(<turbo-stream action="refresh" method="morph" scroll="preserve"></turbo-stream>) if action == "refresh"
+
           attributes = %(action="#{CGI.escapeHTML(action)}" targets="#{CGI.escapeHTML(target_selector)}")
+          attributes = %(#{attributes} method="morph") if morph_action?
           return %(<turbo-stream #{attributes}></turbo-stream>) if action == "remove"
 
           %(<turbo-stream #{attributes}><template>#{html}</template></turbo-stream>)
         end
 
         def rendered?
-          action != "remove"
+          !%w[remove refresh].include?(action)
+        end
+
+        def morph_action?
+          %w[replace update].include?(action)
         end
 
         def for_subscriber?(subscriber_id)
@@ -204,7 +211,7 @@ module Upkeep
       end
 
       def render_target(planned_target)
-        return ["", 0.0] if planned_target.action == "remove"
+        return ["", 0.0] if %w[remove refresh].include?(planned_target.action)
 
         started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         html = planned_target.render
@@ -279,7 +286,7 @@ module Upkeep
         when "fragment"
           %([data-upkeep-frame="#{css_escape(target.id)}"])
         when "render_site"
-          %[upkeep-render-site[data-upkeep-render-site="#{css_escape(target.id)}"]]
+          %([data-upkeep-render-site="#{css_escape(target.id)}"])
         when "dom_id"
           %[##{css_escape(target.id)}]
         else

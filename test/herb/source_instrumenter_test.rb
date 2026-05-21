@@ -18,8 +18,8 @@ class HerbSourceInstrumenterTest < Minitest::Test
     assert_equal '<li class="card">Plan</li>', strip_upkeep_attributes(html)
   end
 
-  def test_wraps_render_sites_using_manifest_offsets
-    source = '<main><%= render partial: "cards/card", collection: cards, as: :card %></main>'
+  def test_marks_render_site_container_using_manifest_offsets
+    source = '<main><ul><%= render partial: "cards/card", collection: cards, as: :card %></ul></main>'
     manifest = build_manifest(path: "boards/show", source: source)
     render_site_id = manifest.render_nodes.first.fetch(:site_id)
 
@@ -29,7 +29,18 @@ class HerbSourceInstrumenterTest < Minitest::Test
     assert_equal [render_site_id], context.render_site_ids
     assert_equal [manifest.path], context.manifest_paths
     assert_equal [manifest.fingerprint], context.manifest_fingerprints
-    assert_includes html, %(<upkeep-render-site data-upkeep-render-site="#{render_site_id}"><li>Plan</li></upkeep-render-site>)
+    assert_equal %(<main data-upkeep-page-frame="page:boards/show"><ul data-upkeep-render-site="#{render_site_id}"><li>Plan</li></ul></main>), html
+  end
+
+  def test_does_not_create_render_site_when_collection_has_static_siblings
+    source = '<main><ul><li>Header</li><%= render partial: "cards/card", collection: cards, as: :card %></ul></main>'
+    manifest = build_manifest(path: "boards/show", source: source)
+
+    context = RenderSiteContext.new
+    html = render_erb(instrument(manifest, source), context)
+
+    assert_empty context.render_site_ids
+    assert_equal '<main data-upkeep-page-frame="page:boards/show"><ul><li>Header</li><li>Plan</li></ul></main>', html
   end
 
   def test_inserts_page_root_marker_in_source
@@ -137,7 +148,7 @@ class HerbSourceInstrumenterTest < Minitest::Test
       render_site_ids << site_id
       manifest_paths << manifest_path
       manifest_fingerprints << manifest_fingerprint
-      %(<upkeep-render-site data-upkeep-render-site="#{site_id}">#{yield}</upkeep-render-site>)
+      yield
     end
   end
 end

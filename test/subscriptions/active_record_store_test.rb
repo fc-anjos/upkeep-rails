@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "fileutils"
+require "stringio"
 require "tmpdir"
 
 class PersistentSubscriptionCard < ActiveRecord::Base
@@ -360,6 +361,27 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
       events.map { |event| event.payload.fetch(:index_rows) }
   end
 
+  def test_persistence_does_not_log_subscription_snapshots
+    create_subscription_card!("Plan")
+
+    _html, recorder = capture_controller_request("/cards?status=open")
+    store = active_record_store
+    previous_logger = ActiveRecord::Base.logger
+    io = StringIO.new
+    logger = ActiveSupport::Logger.new(io)
+    logger.level = Logger::DEBUG
+    ActiveRecord::Base.logger = logger
+
+    subscription = store.register(subscriber_id: "subscriber-a", recorder: recorder, metadata: { stream_name: "stream-a" })
+    store.activate(subscription.id)
+    store.drain
+
+    refute_includes io.string, "upkeep_subscriptions"
+    refute_includes io.string, "recorder_snapshot"
+  ensure
+    ActiveRecord::Base.logger = previous_logger
+  end
+
   def test_touch_updates_persistent_subscription_timestamp
     create_subscription_card!("Plan")
 
@@ -481,6 +503,45 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     end
 
     assert_match(/upkeep_subscriptions/, error.message)
+  end
+
+  def test_active_record_subscription_store_rejects_legacy_blob_schema
+    connection = ActiveRecord::Base.connection
+    connection.drop_table(:upkeep_subscription_index_entries)
+    connection.drop_table(:upkeep_subscriptions)
+
+    ActiveRecord::Schema.define do
+      create_table :upkeep_subscriptions, id: :string, force: true do |table|
+        table.string :subscriber_id, null: false
+        table.binary :recorder_snapshot, null: false
+        table.json :metadata
+        table.timestamps
+      end
+
+      create_table :upkeep_subscription_index_entries, force: true do |table|
+        table.string :subscription_id, null: false
+        table.string :lookup_key_digest, null: false
+        table.binary :lookup_key_snapshot, null: false
+        table.binary :owner_id_snapshot, null: false
+        table.binary :dependency_cache_key_snapshot, null: false
+        table.binary :dependency_snapshot, null: false
+        table.timestamps
+      end
+    end
+
+    refute Upkeep::Subscriptions::ActiveRecordStore.available?(connect: true)
+
+    schema_errors = Upkeep::Subscriptions::ActiveRecordStore.schema_errors(connect: true).join("\n")
+    assert_match(/upkeep_subscriptions\.recorder_snapshot must be json\/jsonb/, schema_errors)
+    assert_match(/missing column upkeep_subscription_index_entries\.dependency_source/, schema_errors)
+
+    error = assert_raises(Upkeep::Rails::ConfigurationError) do
+      Upkeep::Rails.reset_runtime!
+    end
+
+    assert_match(/requires compatible upkeep_subscriptions/, error.message)
+    assert_match(/recorder_snapshot must be json\/jsonb/, error.message)
+    assert_match(/rebuild stale development\/test databases/, error.message)
   end
 
   def test_production_rejects_memory_subscription_store

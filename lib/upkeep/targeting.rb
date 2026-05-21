@@ -101,7 +101,7 @@ module Upkeep
         when "fragment"
           fragment.at_css(%([data-upkeep-frame="#{css_escape(target.id)}"]))
         when "render_site"
-          fragment.at_css(%(upkeep-render-site[data-upkeep-render-site="#{css_escape(target.id)}"]))
+          fragment.at_css(%([data-upkeep-render-site="#{css_escape(target.id)}"]))
         end
       end
 

@@ -1,107 +1,99 @@
 import { createConsumer } from "@rails/actioncable"
 import { Turbo } from "@hotwired/turbo-rails"
 
-const MARKER_SELECTOR = "script[data-upkeep-subscription]"
+const SOURCE_ELEMENT = "upkeep-subscription-source"
+const SOURCE_SELECTOR = `${SOURCE_ELEMENT}[data-upkeep-subscription]`
 
 let consumer
-const subscriptions = new Map()
 
 function cableConsumer() {
   consumer ||= createConsumer()
   return consumer
 }
 
-function markerPayloads() {
-  return Array.from(document.querySelectorAll(MARKER_SELECTOR)).map((marker) =>
-    JSON.parse(marker.textContent || "{}")
-  )
-}
-
-function currentSubscriptionIds() {
-  return new Set(markerPayloads().map((payload) => payload.subscription_id).filter(Boolean))
-}
-
-function applyTurboStreams(html) {
-  if (applyDocumentPageStream(html)) return
-
-  if (Turbo?.renderStreamMessage) {
-    Turbo.renderStreamMessage(String(html))
-    return
-  }
-
-  const template = document.createElement("template")
-  template.innerHTML = String(html)
-
-  template.content.querySelectorAll("turbo-stream").forEach((stream) => {
-    document.body.appendChild(stream)
-  })
-}
-
-function applyDocumentPageStream(html) {
-  const template = document.createElement("template")
-  template.innerHTML = String(html)
-
-  const stream = Array.from(template.content.querySelectorAll("turbo-stream")).find((candidate) =>
-    targetsDocumentElement(candidate)
-  )
-  if (!stream) return false
-
-  const nextDocument = stream.querySelector("template")?.innerHTML
-  if (!nextDocument) return false
-
-  document.open()
-  document.write(nextDocument)
-  document.close()
-  return true
-}
-
-function targetsDocumentElement(stream) {
-  const selector = stream.getAttribute("targets") || stream.getAttribute("target")
-  if (!selector) return false
-
+function parsePayload(element) {
   try {
-    return Array.from(document.querySelectorAll(selector)).includes(document.documentElement)
+    return JSON.parse(element.textContent || "{}")
   } catch {
-    return false
+    return {}
   }
 }
 
-function subscribe(payload) {
-  if (!payload.subscription_id || subscriptions.has(payload.subscription_id)) return
-
-  const subscription = cableConsumer().subscriptions.create(
-    {
-      channel: payload.channel || "Upkeep::Rails::Cable::Channel",
-      subscription_id: payload.subscription_id
-    },
-    {
-      received(data) {
-        applyTurboStreams(data)
-      }
-    }
-  )
-
-  subscriptions.set(payload.subscription_id, subscription)
+function renderStreamMessage(data) {
+  if (Turbo?.renderStreamMessage) {
+    Turbo.renderStreamMessage(String(data))
+  }
 }
 
-function unsubscribeMissing() {
-  const liveIds = currentSubscriptionIds()
+class UpkeepSubscriptionSourceElement extends HTMLElement {
+  connectedCallback() {
+    this.connectStreamSource()
+    this.subscribe()
+  }
 
-  subscriptions.forEach((subscription, subscriptionId) => {
-    if (liveIds.has(subscriptionId)) return
+  disconnectedCallback() {
+    this.unsubscribe()
+    this.disconnectStreamSource()
+  }
 
-    subscription.unsubscribe()
-    subscriptions.delete(subscriptionId)
-  })
+  connectStreamSource() {
+    if (this.streamSourceConnected) return
+    if (!Turbo?.session?.connectStreamSource) return
+
+    Turbo.session.connectStreamSource(this)
+    this.streamSourceConnected = true
+  }
+
+  disconnectStreamSource() {
+    if (!this.streamSourceConnected) return
+
+    Turbo.session.disconnectStreamSource(this)
+    this.streamSourceConnected = false
+  }
+
+  subscribe() {
+    const payload = parsePayload(this)
+    if (!payload.subscription_id || this.subscription) return
+
+    this.subscription = cableConsumer().subscriptions.create(
+      {
+        channel: payload.channel || "Upkeep::Rails::Cable::Channel",
+        subscription_id: payload.subscription_id,
+        activation_token: payload.activation_token
+      },
+      {
+        received: (data) => this.receive(data),
+
+        rejected: () => {
+          console.error(
+            "[upkeep] subscription rejected by the server; refresh app/javascript/upkeep/subscription.js if this started after upgrading upkeep-rails",
+            { subscription_id: payload.subscription_id, channel: payload.channel || "Upkeep::Rails::Cable::Channel" }
+          )
+        }
+      }
+    )
+  }
+
+  unsubscribe() {
+    if (!this.subscription) return
+
+    this.subscription.unsubscribe()
+    this.subscription = null
+  }
+
+  receive(data) {
+    if (this.streamSourceConnected) {
+      this.dispatchEvent(new MessageEvent("message", { data: String(data) }))
+    } else {
+      renderStreamMessage(data)
+    }
+  }
+}
+
+if (!customElements.get(SOURCE_ELEMENT)) {
+  customElements.define(SOURCE_ELEMENT, UpkeepSubscriptionSourceElement)
 }
 
 export function connectUpkeepSubscriptions() {
-  markerPayloads().forEach(subscribe)
-  unsubscribeMissing()
+  document.querySelectorAll(SOURCE_SELECTOR).forEach((source) => source.subscribe?.())
 }
-
-document.addEventListener("DOMContentLoaded", connectUpkeepSubscriptions)
-document.addEventListener("turbo:load", connectUpkeepSubscriptions)
-document.addEventListener("turbo:render", connectUpkeepSubscriptions)
-
-connectUpkeepSubscriptions()

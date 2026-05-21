@@ -4,7 +4,7 @@ module Upkeep
   module Rails
     module Testing
       def assert_upkeep_subscription_registered(message = nil)
-        assert_select "script[data-upkeep-subscription]"
+        assert_select "upkeep-subscription-source[data-upkeep-subscription]"
         assert Upkeep::Rails.subscriptions.subscriptions.any?,
           message || "expected Upkeep to register at least one subscription"
       end

@@ -55,6 +55,7 @@ class CableChannelTest < ActionCable::Channel::TestCase
 
   def teardown
     Upkeep::Rails.configuration.clear_identities!
+    Upkeep::Rails.reset_runtime!
     super
   end
 
@@ -162,22 +163,32 @@ class CableChannelTest < ActionCable::Channel::TestCase
   def test_rejects_subscription_with_missing_activation_token
     subscription_record = registered_subscription(stream_name: "upkeep:test:user-1")
     stub_connection(current_user: "user-1")
+    events = []
+    listener = ActiveSupport::Notifications.subscribe("subscribe_channel.upkeep") { |event| events << event }
 
     subscribe subscription_id: subscription_record.id
 
     assert subscription.rejected?
     assert_no_streams
+    assert_equal "missing_activation_token", events.first.payload.fetch(:reject_reason)
+  ensure
+    ActiveSupport::Notifications.unsubscribe(listener) if listener
   end
 
   def test_rejects_subscription_with_mismatched_activation_token
     subscription_record = registered_subscription(stream_name: "upkeep:test:user-1")
     stub_connection(current_user: "user-1")
+    events = []
+    listener = ActiveSupport::Notifications.subscribe("subscribe_channel.upkeep") { |event| events << event }
 
     subscribe subscription_id: subscription_record.id,
       activation_token: Upkeep::Rails::ActivationToken.generate("subscription-other")
 
     assert subscription.rejected?
     assert_no_streams
+    assert_equal "invalid_activation_token", events.first.payload.fetch(:reject_reason)
+  ensure
+    ActiveSupport::Notifications.unsubscribe(listener) if listener
   end
 
   def test_unsubscribe_keeps_subscription_state_out_of_transport
@@ -217,7 +228,7 @@ class CableChannelTest < ActionCable::Channel::TestCase
 
   def configure_user_identity
     Upkeep::Rails.configuration.identify :user, current: ["Current", :user] do
-      subscribe { |cable| cable.current_user }
+      subscribe { |connection| connection.current_user }
     end
   end
 
