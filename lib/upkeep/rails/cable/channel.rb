@@ -19,7 +19,7 @@ module Upkeep
 
         def unsubscribed
           Upkeep::Rails.subscriptions.unregister(subscription_id)
-        rescue KeyError, ActiveRecord::RecordNotFound
+        rescue KeyError
           nil
         end
 
@@ -35,6 +35,12 @@ module Upkeep
         def subscribe_without_instrumentation(payload: nil)
           id = subscription_id
           payload[:subscription_id] = id if payload
+          unless measure(payload, :activation_token_ms) { valid_activation_token?(id) }
+            payload[:rejected] = true if payload
+            payload[:reject_reason] = "invalid_activation_token" if payload
+            return reject
+          end
+
           subscription = measure(payload, :fetch_ms) { Upkeep::Rails.subscriptions.fetch(id) }
           authorized = measure(payload, :authorization_ms) { authorized_subscription?(subscription) }
           unless authorized
@@ -45,7 +51,7 @@ module Upkeep
           measure(payload, :activation_ms) { Upkeep::Rails.subscriptions.activate(id) }
           stream_count = measure(payload, :stream_attach_ms) { attach_streams(subscription) }
           payload[:stream_count] = stream_count if payload
-        rescue KeyError, ActiveRecord::RecordNotFound, UnidentifiedSubscriber
+        rescue KeyError, UnidentifiedSubscriber
           payload[:rejected] = true if payload
           reject
         end
@@ -79,12 +85,19 @@ module Upkeep
           params.fetch(:subscription_id)
         end
 
+        def activation_token
+          params.fetch(:activation_token)
+        end
+
+        def valid_activation_token?(id)
+          ActivationToken.valid_for_subscription?(activation_token, id)
+        end
+
         def authorized_subscription?(subscription)
           return true if anonymous_public_subscription?(subscription)
           return true unless metadata_value(subscription, :identity_mode)
 
-          SubscriberIdentity.derive_all(connection)
-            .any? { |identity| identity.subscriber_id == subscription.subscriber_id }
+          SubscriberIdentity.derive_for_subscription(connection, subscription).subscriber_id == subscription.subscriber_id
         end
 
         def anonymous_public_subscription?(subscription)

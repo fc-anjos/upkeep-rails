@@ -12,6 +12,7 @@ class SubscriptionShapeCacheTest < Minitest::Test
       Upkeep::Rails::Cable::SubscriberIdentity::ANONYMOUS_PUBLIC_MODE,
       true,
       nil,
+      [],
       []
     )
     cache = Upkeep::Subscriptions::ShapeCache.new

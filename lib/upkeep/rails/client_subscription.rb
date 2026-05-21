@@ -20,6 +20,7 @@ module Upkeep
         payload = JSON.generate(
           channel: CHANNEL,
           subscription_id: subscription.id,
+          activation_token: ActivationToken.generate(subscription),
           stream_name: identity.stream_name
         ).gsub("</", '<\/')
 

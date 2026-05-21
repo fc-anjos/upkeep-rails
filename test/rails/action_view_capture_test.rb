@@ -550,6 +550,31 @@ class ActionViewCaptureTest < Minitest::Test
     Upkeep::Rails.configuration.refused_boundary_behavior = previous_behavior if previous_behavior
   end
 
+  def test_page_level_dependency_with_content_for_resolves_and_updates
+    card = create_card!("Plan")
+
+    html, recorder = capture_render("boards/stats", card: card)
+
+    assert_includes html, 'data-upkeep-page-frame="page:rails:boards/stats"'
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.update!(title: "Plan v2")
+
+    targets = Upkeep::Targeting::Selector.new.select(recorder, Upkeep::Runtime::ChangeLog.events)
+
+    assert_equal [["page", "page:rails:boards/stats"]], targets.map { |target| [target.kind, target.id] }
+
+    recipe = recorder.graph.node(Upkeep::Targeting::Extraction.frame_id_for(targets.first)).payload.fetch(:recipe)
+    full_html = recipe.render
+
+    target_html = nil
+    target_html = Upkeep::Targeting::Extraction.extract_target_html(full_html, targets.first)
+
+    refute_nil target_html
+    assert_includes target_html, "Plan v2"
+    refute_includes target_html, ">Plan<"
+  end
+
   def test_record_attribute_change_walks_dependency_to_fragment_and_replays_record
     card = create_card!("Plan")
 
@@ -628,6 +653,13 @@ class ActionViewCaptureTest < Minitest::Test
           <%= render partial: "cards/card", locals: { card: explicit_card } %>
           <%= render "cards/card", card: shorthand_card %>
           <%= render object_card %>
+        </main>
+      ERB
+      "boards/stats.html.erb" => <<~ERB,
+        <% content_for :title, "\#{card.title} stats" %>
+        <main>
+          <h1><%= card.title %> &mdash; status</h1>
+          <p id="status"><%= card.status %></p>
         </main>
       ERB
       "boards/collection.html.erb" => <<~ERB,

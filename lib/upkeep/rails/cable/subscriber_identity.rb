@@ -10,12 +10,12 @@ module Upkeep
       class UnidentifiedSubscriber < StandardError; end
 
       Identity = Data.define(:subscriber_id, :stream_name, :components)
-      Decision = Data.define(:mode, :anonymous, :deopt_reason, :identity_sources)
+      Decision = Data.define(:mode, :anonymous, :deopt_reason, :identity_sources, :identity_names)
 
       module SubscriberIdentity
         ANONYMOUS_PUBLIC_MODE = "anonymous_public"
         IDENTIFIED_MODE = "identified"
-        CONNECTION_IDENTITY_SOURCES = %w[Current.user cookie current_attribute session warden_user].freeze
+        DECLARATION_REQUIRED_SOURCES = %w[Current.user current_attribute warden_user].freeze
 
         module_function
 
@@ -24,44 +24,63 @@ module Upkeep
         end
 
         def derive_all(connection)
-          identities = []
-          request_components = request_components(connection.request) if connection.respond_to?(:request)
-          identifier_components = identifier_components(connection)
+          components = subscribe_components(connection, configuration.identity_definitions)
+          raise UnidentifiedSubscriber, "ActionCable connection has no declared Upkeep identities" if components.empty?
 
-          identities << for_components(request_components) if request_components&.any?
-          identities << for_components(Array(request_components) + identifier_components) if identifier_components.any?
-          identities = identities.uniq(&:subscriber_id)
+          [for_components(components)]
+        end
 
-          raise UnidentifiedSubscriber, "ActionCable connection has no server identifiers" if identities.empty?
+        def derive_for_subscription(connection, subscription)
+          names = metadata_value(subscription, :identity_names) || []
+          definitions = names.map { |name| configuration.identity_definition(name) }
+          components = subscribe_components(connection, definitions)
+          raise UnidentifiedSubscriber, "ActionCable connection did not resolve subscription identities #{names.inspect}" if components.empty?
 
-          identities
+          for_components(components)
         end
 
         def derive_from_request(request, recorder:, decision: decision_for(request, recorder: recorder))
           components = if decision.anonymous
             anonymous_components
           else
-            request_components(request) + recorder_components(recorder)
+            recorder_components(recorder)
           end
 
           if components.empty?
             raise UnidentifiedSubscriber,
-              "subscription has identity dependencies but no canonical request or recorder identity"
+              "subscription has identity dependencies but no declared Upkeep identity mapping"
           end
 
           for_components(components)
         end
 
         def decision_for(_request = nil, recorder:)
-          dependencies = identity_dependencies(recorder)
-          if dependencies.empty?
-            Decision.new(ANONYMOUS_PUBLIC_MODE, true, nil, [])
-          else
+          configured_dependencies = configured_identity_dependencies(recorder)
+          undeclared_dependencies = undeclared_identity_dependencies(recorder)
+
+          if configured_dependencies.any?
             Decision.new(
               IDENTIFIED_MODE,
               false,
               "identity_dependencies_present",
-              dependencies.map { |dependency| dependency.source.to_s }.uniq.sort
+              configured_dependencies.map { |definition, _dependency| definition.source.to_s }.uniq.sort,
+              configured_dependencies.map { |definition, _dependency| definition.name.to_s }.uniq.sort
+            )
+          elsif undeclared_dependencies.any?
+            Decision.new(
+              IDENTIFIED_MODE,
+              false,
+              "identity_setup_required",
+              undeclared_dependencies.map { |dependency| dependency.source.to_s }.uniq.sort,
+              []
+            )
+          else
+            Decision.new(
+              ANONYMOUS_PUBLIC_MODE,
+              true,
+              nil,
+              [],
+              []
             )
           end
         end
@@ -69,13 +88,6 @@ module Upkeep
         def identifier_components(connection)
           identifiers = Array(connection.identifiers)
           identifiers.map { |name| component_for(name, connection.public_send(name)) }
-        end
-
-        def request_components(request)
-          session_id = session_id_for(request)
-          return [] unless session_id
-
-          [scalar_component(:rails_session, session_id)]
         end
 
         def for_identifiers(identifiers)
@@ -94,9 +106,20 @@ module Upkeep
         end
 
         def recorder_components(recorder)
-          identity_dependencies(recorder)
-            .filter_map { |dependency| component_for_dependency(dependency) }
-            .uniq
+          components_by_name = Hash.new { |hash, key| hash[key] = [] }
+          configured_identity_dependencies(recorder).each do |definition, dependency|
+            component = component_for_dependency(definition, dependency)
+            components_by_name[definition.name] << component if component
+          end
+
+          components_by_name.map do |name, components|
+            unique_components = components.uniq
+            if unique_components.size > 1
+              raise UnidentifiedSubscriber, "captured identity :#{name} changed during request"
+            end
+
+            unique_components.first
+          end.compact
         end
 
         def anonymous_components
@@ -109,26 +132,112 @@ module Upkeep
           recorder.graph.dependency_nodes
             .map(&:payload)
             .select(&:identity?)
-            .select { |dependency| connection_identity_dependency?(dependency) }
             .uniq(&:cache_key)
         end
 
-        def connection_identity_dependency?(dependency)
-          CONNECTION_IDENTITY_SOURCES.include?(dependency.source.to_s)
-        end
+        def configured_identity_dependencies(recorder)
+          definitions = configuration.identity_definitions
+          return [] if definitions.empty?
 
-        def component_for_dependency(dependency)
-          if dependency.source == :current_attribute && current_user_dependency?(dependency)
-            model_component(:current_user, dependency.key.fetch(:value))
-          elsif dependency.source == "Current.user"
-            model_component(:current_user, dependency.metadata)
-          elsif dependency.source == :warden_user
-            model_component(:"warden_#{dependency.metadata.fetch(:scope)}", dependency.key.fetch(:value))
+          identity_dependencies(recorder).flat_map do |dependency|
+            definitions.select { |definition| definition.matches_dependency?(dependency) }
+              .map { |definition| [definition, dependency] }
           end
         end
 
-        def current_user_dependency?(dependency)
-          dependency.metadata.fetch(:name) == "user"
+        def undeclared_identity_dependencies(recorder)
+          identity_dependencies(recorder).select do |dependency|
+            declaration_required_dependency?(dependency) &&
+              configured_identity_dependencies_for_dependency(dependency).empty?
+          end
+        end
+
+        def configured_identity_dependencies_for_dependency(dependency)
+          configuration.identity_definitions.select { |definition| definition.matches_dependency?(dependency) }
+        end
+
+        def declaration_required_dependency?(dependency)
+          DECLARATION_REQUIRED_SOURCES.include?(dependency.source.to_s)
+        end
+
+        def component_for_dependency(definition, dependency)
+          if dependency_nil?(dependency)
+            raise UnidentifiedSubscriber, "captured identity :#{definition.name} from #{definition.source_label} is nil"
+          end
+
+          identity_component(definition.name, dependency.key.fetch(:value))
+        end
+
+        def subscribe_components(connection, definitions)
+          definitions.filter_map do |definition|
+            value = call_subscribe_block(definition, connection)
+            if value.nil?
+              raise UnidentifiedSubscriber, "subscribe identity :#{definition.name} from #{definition.source_label} is nil"
+            end
+
+            identity_component(definition.name, subscribe_identity_value(definition, value))
+          end
+        end
+
+        def call_subscribe_block(definition, connection)
+          block = definition.subscribe_block
+          block.arity == 1 ? block.call(connection) : connection.instance_exec(&block)
+        end
+
+        def subscribe_identity_value(definition, value)
+          case definition.source
+          when :session, :cookie
+            Dependencies.private_fingerprint(value)
+          else
+            canonical_identity_value(value)
+          end
+        end
+
+        def identity_component(name, value)
+          {
+            name: name.to_s,
+            kind: "identity",
+            value: normalize_component_value(value)
+          }
+        end
+
+        def canonical_identity_value(value)
+          case value
+          when nil, true, false, Numeric, String, Symbol
+            value
+          when Array
+            value.map { |item| canonical_identity_value(item) }
+          when Hash
+            value.keys.sort_by(&:to_s).to_h { |key| [key.to_s, canonical_identity_value(value.fetch(key))] }
+          else
+            model_identity = Dependencies.model_identity(value)
+            return model_identity if model_identity
+
+            return { global_id: value.to_gid_param } if value.respond_to?(:to_gid_param)
+
+            raise UnidentifiedSubscriber, "identity value #{value.class.name} has no canonical identity"
+          end
+        end
+
+        def normalize_component_value(value)
+          case value
+          when Hash
+            value.keys.sort_by(&:to_s).to_h { |key| [key.to_s, normalize_component_value(value.fetch(key))] }
+          when Array
+            value.map { |item| normalize_component_value(item) }
+          when Symbol
+            value.to_s
+          else
+            value
+          end
+        end
+
+        def dependency_nil?(dependency)
+          value = dependency.key.fetch(:value)
+          return true if value.nil?
+
+          dependency.metadata[:value_class].to_s == "NilClass" ||
+            dependency.metadata["value_class"].to_s == "NilClass"
         end
 
         def model_component(name, identity)
@@ -191,22 +300,12 @@ module Upkeep
           }
         end
 
-        def session_id_for(request)
-          return unless request&.respond_to?(:session)
-
-          session = request.session
-          session_id = session.id if session.respond_to?(:id)
-          session_id = session_id.public_id if session_id.respond_to?(:public_id)
-          session_id = session_id.private_id if session_id.respond_to?(:private_id)
-          session_id = session[:session_id] if blank?(session_id) && session.respond_to?(:[])
-
-          session_id.to_s unless blank?(session_id)
-        rescue StandardError
-          nil
+        def metadata_value(subscription, key)
+          subscription.metadata[key] || subscription.metadata[key.to_s]
         end
 
-        def blank?(value)
-          value.nil? || value == ""
+        def configuration
+          Upkeep::Rails.configuration
         end
       end
     end
