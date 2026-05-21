@@ -13,9 +13,10 @@ module Upkeep
       PERSIST_NOTIFICATION = "persist_subscription_store.upkeep"
       INDEX_ENTRIES_SNAPSHOT_KEY = "__upkeep_index_entries"
 
-      def initialize(subscription_record:, index_record:, index_builder:)
+      def initialize(subscription_record:, index_record:, shape_index_record:, index_builder:)
         @subscription_record = subscription_record
         @index_record = index_record
+        @shape_index_record = shape_index_record
         @index_builder = index_builder
         @count_mutex = Mutex.new
         @count_cache = nil
@@ -66,8 +67,10 @@ module Upkeep
         silence_active_record_logging do
           ActiveRecord::Base.connection_pool.with_connection do
             ActiveRecord::Base.transaction do
+              shape_keys = shape_keys_for_subscriptions(ids)
               index_record.where(subscription_id: ids).delete_all
               deleted = subscription_record.where(id: ids).delete_all
+              delete_orphaned_shape_index_rows(shape_keys)
               decrement_count_cache(deleted)
             end
           end
@@ -90,6 +93,7 @@ module Upkeep
 
       def reset
         index_record.delete_all
+        shape_index_record.delete_all
         subscription_record.delete_all
         write_count_cache(0)
       end
@@ -102,7 +106,7 @@ module Upkeep
 
       private
 
-      attr_reader :subscription_record, :index_record, :index_builder
+      attr_reader :subscription_record, :index_record, :shape_index_record, :index_builder
 
       def persist_jobs_without_instrumentation(jobs)
         subscription_jobs = jobs.select { |job| persist_subscription?(job) }
@@ -144,6 +148,18 @@ module Upkeep
         return 0 if jobs.empty?
 
         now = Time.now
+        subscription_ids = jobs.map { |job| job.subscription.id }.uniq
+        shape_jobs, direct_jobs = jobs.partition { |job| shape_index_key(job) }
+
+        index_record.where(subscription_id: subscription_ids).delete_all
+
+        index_direct_subscriptions(direct_jobs, now: now) +
+          index_shape_subscriptions(shape_jobs, now: now)
+      end
+
+      def index_direct_subscriptions(jobs, now:)
+        return 0 if jobs.empty?
+
         grouped_rows = {}
 
         jobs.each do |job|
@@ -167,8 +183,40 @@ module Upkeep
           row.merge(owner_ids_snapshot: dump(row.delete(:owner_ids).uniq))
         end
 
-        index_record.where(subscription_id: jobs.map { |job| job.subscription.id }.uniq).delete_all
         index_record.insert_all!(rows) if rows.any?
+        rows.size
+      end
+
+      def index_shape_subscriptions(jobs, now:)
+        return 0 if jobs.empty?
+
+        grouped_rows = {}
+        shape_keys = jobs.map { |job| shape_index_key(job) }.compact.uniq
+
+        jobs.each do |job|
+          shape_key = shape_index_key(job)
+          job.entries.each do |entry|
+            index_builder.lookup_keys_for_dependency(entry.dependency).each do |lookup_key|
+              lookup_attributes = typed_lookup_attributes(entry.dependency, lookup_key)
+              key = [shape_key, lookup_attributes]
+              row = grouped_rows[key] ||= {
+                subscription_shape_key: shape_key,
+                lookup_key_digest: PersistentReverseIndex.digest(lookup_key),
+                owner_ids: [],
+                created_at: now,
+                updated_at: now
+              }.merge(lookup_attributes)
+              row.fetch(:owner_ids) << entry.owner_id
+            end
+          end
+        end
+
+        rows = grouped_rows.values.map do |row|
+          row.merge(owner_ids_snapshot: dump(row.delete(:owner_ids).uniq))
+        end
+
+        shape_index_record.where(subscription_shape_key: shape_keys).delete_all
+        shape_index_record.insert_all!(rows) if rows.any?
         rows.size
       end
 
@@ -278,6 +326,26 @@ module Upkeep
 
       def write_count_cache(value)
         @count_mutex.synchronize { @count_cache = value }
+      end
+
+      def shape_keys_for_subscriptions(ids)
+        subscription_record.where(id: ids).pluck(:metadata).filter_map { |metadata| metadata_value(metadata, :subscription_shape_key) }.uniq
+      end
+
+      def delete_orphaned_shape_index_rows(shape_keys)
+        shape_keys.each do |shape_key|
+          next if subscription_record.pluck(:metadata).any? { |metadata| metadata_value(metadata, :subscription_shape_key) == shape_key }
+
+          shape_index_record.where(subscription_shape_key: shape_key).delete_all
+        end
+      end
+
+      def shape_index_key(job)
+        metadata_value(job.subscription.metadata, :subscription_shape_key)
+      end
+
+      def metadata_value(metadata, key)
+        metadata.to_h[key] || metadata.to_h[key.to_s]
       end
 
       def persist_subscription?(job)

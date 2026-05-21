@@ -63,6 +63,23 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
 
       add_index :upkeep_subscription_index_entries, :lookup_key_digest
       add_index :upkeep_subscription_index_entries, :subscription_id
+
+      create_table :upkeep_subscription_shape_index_entries, force: true do |table|
+        table.string :subscription_shape_key, null: false
+        table.string :lookup_key_digest, null: false
+        table.string :dependency_source, null: false
+        table.string :lookup_table, null: false
+        table.json :lookup_record_id_snapshot
+        table.string :lookup_attribute, null: false
+        table.string :dependency_table, null: false
+        table.string :dependency_predicate_digest
+        table.json :dependency_metadata_snapshot
+        table.json :owner_ids_snapshot, null: false
+        table.timestamps
+      end
+
+      add_index :upkeep_subscription_shape_index_entries, :lookup_key_digest
+      add_index :upkeep_subscription_shape_index_entries, :subscription_shape_key
     end
 
     Upkeep::Rails.configure do |config|
@@ -191,6 +208,36 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     assert_equal ["subscriber-a", "subscriber-b"], plan.targets.flat_map(&:subscriber_ids).uniq.sort
     assert_equal 2, plan.summary.fetch(:represented_subscribers)
     assert_equal 1, plan.candidate_entries.size
+  end
+
+  def test_identity_free_persistent_index_rows_are_shared_by_shape
+    card = create_subscription_card!("Plan")
+    create_subscription_card!("Build")
+
+    store = active_record_store
+    _html, first_recorder = capture_controller_request("/cards?status=open")
+    first_subscription = store.register(subscriber_id: "subscriber-a", recorder: first_recorder, metadata: { stream_name: "stream-a", subscription_shape_key: "shape:cards:open" })
+    store.activate(first_subscription.id)
+    store.drain
+    first_index_rows = persistent_index_row_count
+
+    _html, second_recorder = capture_controller_request("/cards?status=open")
+    second_subscription = store.register(subscriber_id: "subscriber-b", recorder: second_recorder, metadata: { stream_name: "stream-b", subscription_shape_key: "shape:cards:open" })
+    store.activate(second_subscription.id)
+    store.drain
+
+    assert_operator first_index_rows, :>, 0
+    assert_equal first_index_rows, persistent_index_row_count
+    assert_operator Upkeep::Subscriptions::ActiveRecordStore::ShapeIndexEntryRecord.count, :>, 0
+
+    reloaded_store = active_record_store
+    Upkeep::Runtime::ChangeLog.reset
+    card.update!(title: "Plan v2")
+
+    plan = Upkeep::Invalidation::Planner.new(store: reloaded_store).plan(Upkeep::Runtime::ChangeLog.events)
+
+    assert_equal ["subscriber-a", "subscriber-b"], plan.targets.flat_map(&:subscriber_ids).uniq.sort
+    assert_equal 2, plan.summary.fetch(:represented_subscribers)
   end
 
   def test_reloaded_store_can_activate_index_from_persisted_subscription_row
@@ -573,6 +620,11 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
 
   def create_subscription_card!(title, status: "open")
     PersistentSubscriptionCard.create!(title: title, status: status)
+  end
+
+  def persistent_index_row_count
+    Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.count +
+      Upkeep::Subscriptions::ActiveRecordStore::ShapeIndexEntryRecord.count
   end
 
   def recorder_with_dependency

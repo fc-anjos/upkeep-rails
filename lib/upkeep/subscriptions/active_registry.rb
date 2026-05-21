@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require_relative "reverse_index"
-require_relative "store"
 
 module Upkeep
   module Subscriptions
@@ -47,13 +46,7 @@ module Upkeep
           subscription = @subscriptions[id]
           return false unless subscription
 
-          @subscriptions[id] = Subscription.new(
-            subscription.id,
-            subscription.subscriber_id,
-            subscription.recorder,
-            subscription.graph,
-            subscription.metadata.merge(metadata)
-          )
+          @subscriptions[id] = subscription.with(metadata: subscription.metadata.merge(metadata))
           true
         end
       end

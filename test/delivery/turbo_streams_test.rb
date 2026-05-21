@@ -580,7 +580,9 @@ class TurboStreamsDeliveryTest < Minitest::Test
 
   def register_controller_subscription(store, subscriber_id:, path: "/cards?status=open", action: :index)
     _html, recorder = capture_controller_request(path, action: action)
-    store.register(subscriber_id: subscriber_id, recorder: recorder)
+    subscription = store.register(subscriber_id: subscriber_id, recorder: recorder)
+    store.activate(subscription.id)
+    subscription
   end
 
   def capture_controller_request(path, action: :index)
@@ -595,7 +597,9 @@ class TurboStreamsDeliveryTest < Minitest::Test
   def render_identity_subscription(store, subscriber_id:, user_name:)
     user = Upkeep::Domain::User.find_by!(name: user_name)
     result = renderer.render_request("boards/identity_collection", method(:domain_request), user: user)
-    store.register(subscriber_id: subscriber_id, recorder: result.recorder)
+    subscription = store.register(subscriber_id: subscriber_id, recorder: result.recorder)
+    store.activate(subscription.id)
+    subscription
   end
 
   def reset_domain_database

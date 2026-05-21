@@ -305,6 +305,7 @@ class ControllerRuntimeTest < Minitest::Test
     _status, _headers, body = RuntimeDeliveryCardsController.action(:index).call(env_for("/cards"))
     collect_body(body)
     subscription = Upkeep::Rails.subscriptions.subscriptions.first
+    Upkeep::Rails.subscriptions.activate(subscription.id)
     adapter = RecordingAdapter.new
     Upkeep::Rails.transport.connect(subscriber_id: subscription.subscriber_id, adapter: adapter)
     subscription.metadata.fetch(:shared_stream_names, []).each do |stream_name|
@@ -329,7 +330,8 @@ class ControllerRuntimeTest < Minitest::Test
 
     Upkeep::Rails.deliver_changes_now!([
       delivery_change(table: "upkeep_subscriptions"),
-      delivery_change(table: "upkeep_subscription_index_entries")
+      delivery_change(table: "upkeep_subscription_index_entries"),
+      delivery_change(table: "upkeep_subscription_shape_index_entries")
     ])
     Upkeep::Rails.deliver_changes!([delivery_change(table: "upkeep_subscriptions")])
     Upkeep::Rails.drain_delivery!
