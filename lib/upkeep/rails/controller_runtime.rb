@@ -49,28 +49,77 @@ module Upkeep
         return action.call if ControllerRuntime.suppressed?
         return action.call if Upkeep::Runtime::Observation.recorder
 
-        Upkeep::Rails.deliver_changes_now!
+        payload = {
+          controller: self.class.name,
+          action: action_name,
+          method: request.request_method,
+          path: request.fullpath,
+          subscription_request: upkeep_subscription_request?
+        }
+        ActiveSupport::Notifications.instrument(Upkeep::Rails::REQUEST_CAPTURE, payload) do
+          upkeep_capture_request_with_timing(action, payload)
+        end
+      end
+
+      def upkeep_capture_request_with_timing(action, payload)
+        measure_phase(payload, :deliver_pending_ms) { Upkeep::Rails.deliver_changes_now! }
 
         result = nil
         capture = nil
-        _captured, changes = Upkeep::Runtime::ChangeLog.capture do
-          if upkeep_subscription_request?
-            capture = Upkeep::Capture::Request.call(self) { action.call }
-            result = capture.action_result
-          else
-            result = action.call
+        changes = []
+        measure_phase(payload, :change_capture_ms) do
+          _captured, changes = Upkeep::Runtime::ChangeLog.capture do
+            if payload.fetch(:subscription_request)
+              capture = Upkeep::Capture::Request.call(self) { action.call }
+              result = capture.action_result
+            else
+              result = action.call
+            end
           end
         end
-        if capture && (registration = Upkeep::Rails.register_controller_subscription(self, capture))
-          response.body = Upkeep::Rails::ClientSubscription.inject(
-            capture.html,
-            identity: registration.identity,
-            subscription: registration.subscription
-          )
+        record_capture_payload(payload, capture) if capture
+
+        registration = nil
+        if capture
+          measure_phase(payload, :register_ms) do
+            registration = Upkeep::Rails.register_controller_subscription(self, capture)
+          end
         end
-        Upkeep::Rails.deliver_changes!(changes)
+        payload[:registered] = !!registration
+        if capture && registration
+          measure_phase(payload, :inject_ms) do
+            response.body = Upkeep::Rails::ClientSubscription.inject(
+              capture.html,
+              identity: registration.identity,
+              subscription: registration.subscription
+            )
+          end
+          payload[:subscription_id] = registration.subscription.id
+        end
+        measure_phase(payload, :deliver_changes_ms) { Upkeep::Rails.deliver_changes!(changes) }
 
         result
+      end
+
+      def record_capture_payload(payload, capture)
+        payload[:response_status] = capture.response_status
+        payload[:response_content_type] = capture.response_content_type
+        payload[:response_media_type] = capture.response_media_type
+        payload[:html_response] = capture.html_response?
+        payload[:response_successful] = capture.successful?
+        payload[:html_bytes] = capture.html.bytesize
+        payload[:graph_frames] = capture.recorder.graph.frame_nodes.size
+        payload[:graph_dependencies] = capture.recorder.graph.dependency_nodes.size
+        capture.timings.each do |phase, ms|
+          payload[:"capture_#{phase}"] = ms
+        end
+      end
+
+      def measure_phase(payload, key)
+        started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        yield
+      ensure
+        payload[key] = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at) * 1000.0).round(3)
       end
 
       def upkeep_subscription_request?

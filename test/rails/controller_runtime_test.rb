@@ -157,6 +157,25 @@ class ControllerRuntimeTest < Minitest::Test
     assert_includes @second_html, subscriptions.last.id
   end
 
+  def test_get_reports_request_capture_phase_timings
+    RuntimeDeliveryCard.create!(title: "Plan")
+
+    events = capture_notifications(Upkeep::Rails::REQUEST_CAPTURE) do
+      _status, _headers, body = RuntimeDeliveryCardsController.action(:anonymous).call(env_for("/cards"))
+      collect_body(body)
+    end
+    payload = events.last.payload
+
+    assert_equal true, payload.fetch(:subscription_request)
+    assert_equal true, payload.fetch(:registered)
+    assert_operator payload.fetch(:capture_action_ms), :>=, 0
+    assert_operator payload.fetch(:change_capture_ms), :>=, 0
+    assert_operator payload.fetch(:register_ms), :>=, 0
+    assert_operator payload.fetch(:inject_ms), :>=, 0
+    assert_operator payload.fetch(:deliver_changes_ms), :>=, 0
+    assert_operator payload.fetch(:graph_frames), :>, 0
+  end
+
   def test_identity_free_get_stays_anonymous_even_when_session_exists
     RuntimeDeliveryCard.create!(title: "Plan")
     env = env_for("/cards")

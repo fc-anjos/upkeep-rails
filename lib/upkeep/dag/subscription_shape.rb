@@ -12,20 +12,49 @@ module Upkeep
       attr_reader :signature
 
       def self.from_graph(graph, request_signature: nil)
-        new(signature: signature_for(request_signature, graph_component(graph)))
+        new(signature: signature_for_terms(request_signature, graph_terms(graph)))
       end
 
       def self.from_components(graph_component, request_signature: nil)
-        new(signature: signature_for(request_signature, graph_component))
+        new(signature: signature_for_terms(request_signature, terms_for_component(graph_component)))
       end
 
-      def self.signature_for(request_signature, graph_component)
-        Digest::SHA256.hexdigest([
-          DIGEST_SCOPE,
-          Upkeep::VERSION,
-          request_signature_component(request_signature),
-          graph_component
-        ].inspect)
+      def self.from_terms(graph_terms, request_signature: nil)
+        new(signature: signature_for_terms(request_signature, graph_terms))
+      end
+
+      def self.from_trace_digest(trace_digest, request_signature: nil)
+        new(signature: signature_for_trace_digest(request_signature, trace_digest))
+      end
+
+      def self.signature_for_terms(request_signature, graph_terms)
+        digest = Digest::SHA256.new
+        digest.update(DIGEST_SCOPE)
+        digest.update("\0")
+        digest.update(Upkeep::VERSION)
+        digest.update("\0")
+        digest.update(canonical_value(request_signature_component(request_signature)))
+        %i[frames dependencies contains].each do |group|
+          digest.update("\0")
+          digest.update(group.to_s)
+          Array(graph_terms[group]).each do |term|
+            digest.update("\0")
+            digest.update(term)
+          end
+        end
+        digest.hexdigest
+      end
+
+      def self.signature_for_trace_digest(request_signature, trace_digest)
+        digest = Digest::SHA256.new
+        digest.update(DIGEST_SCOPE)
+        digest.update("\0")
+        digest.update(Upkeep::VERSION)
+        digest.update("\0")
+        digest.update(canonical_value(request_signature_component(request_signature)))
+        digest.update("\0")
+        digest.update(trace_digest)
+        digest.hexdigest
       end
 
       def self.request_signature_component(signature)
@@ -45,11 +74,35 @@ module Upkeep
         }
       end
 
+      def self.graph_terms(graph)
+        {
+          frames: graph.frame_nodes.map { |node| frame_term(node.id, node.payload) },
+          dependencies: graph.dependency_nodes.map { |node| dependency_term(node.id, node.payload, graph.dependency_owner_ids(node.id)) },
+          contains: graph.edges
+            .select { |edge| edge.reason == :contains }
+            .map { |edge| contains_term(edge.from, edge.to) }
+        }
+      end
+
+      def self.terms_for_component(graph_component)
+        {
+          frames: graph_component.fetch(:frames).map { |component| canonical_term(:frame, component.fetch(:id), component.fetch(:payload)) },
+          dependencies: graph_component.fetch(:dependencies).map do |component|
+            canonical_term(:dependency, component.fetch(:id), component.fetch(:dependency), component.fetch(:owners))
+          end,
+          contains: graph_component.fetch(:contains).map { |from, to| contains_term(from, to) }
+        }
+      end
+
       def self.frame_component(id, payload)
         {
           id: id,
           payload: frame_payload_component(payload)
         }
+      end
+
+      def self.frame_term(id, payload)
+        canonical_term(:frame, id, frame_payload_component(payload))
       end
 
       def self.frame_payload_component(payload)
@@ -71,6 +124,14 @@ module Upkeep
         }
       end
 
+      def self.dependency_term(id, dependency, owners)
+        canonical_term(:dependency, id, dependency.to_h, owners.sort_by(&:to_s))
+      end
+
+      def self.contains_term(from, to)
+        canonical_term(:contains, from, to)
+      end
+
       def self.shape_value(value)
         case value
         when Hash
@@ -80,6 +141,14 @@ module Upkeep
         else
           value.respond_to?(:to_h) ? shape_value(value.to_h) : value
         end
+      end
+
+      def self.canonical_term(*parts)
+        parts.map { |part| canonical_value(part) }.join("\0")
+      end
+
+      def self.canonical_value(value)
+        shape_value(value).inspect
       end
 
       def initialize(signature:)
@@ -93,6 +162,11 @@ module Upkeep
           @dependencies = {}
           @dependency_owner_ids_by_key = Hash.new { |owners, dependency_key| owners[dependency_key] = {} }
           @contains = {}
+          @frame_terms_by_id = {}
+          @dependency_payloads_by_key = {}
+          @contains_terms_by_edge = {}
+          @digest = Digest::SHA256.new
+          @digest.update("subscription-shape-trace")
           @invalid = false
         end
 
@@ -109,6 +183,14 @@ module Upkeep
 
           @frames[frame_id] ||= SubscriptionShape.frame_component(frame_id, metadata)
           @contains[[parent_id, frame_id]] = true
+          unless @frame_terms_by_id.key?(frame_id)
+            @frame_terms_by_id[frame_id] = SubscriptionShape.frame_term(frame_id, metadata)
+            record_digest_term(:frame, @frame_terms_by_id.fetch(frame_id))
+          end
+          unless @contains_terms_by_edge.key?([parent_id, frame_id])
+            @contains_terms_by_edge[[parent_id, frame_id]] = SubscriptionShape.contains_term(parent_id, frame_id)
+            record_digest_term(:contains, @contains_terms_by_edge.fetch([parent_id, frame_id]))
+          end
           @graph_version = graph_version
         end
 
@@ -116,11 +198,19 @@ module Upkeep
           return if @invalid
 
           dependency_cache_key = dependency.cache_key
+          dependency_payload = SubscriptionShape.shape_value(dependency.to_h)
           @dependencies[dependency_cache_key] ||= {
             id: dependency_cache_key,
-            dependency: SubscriptionShape.shape_value(dependency.to_h)
+            dependency: dependency_payload
           }
-          @dependency_owner_ids_by_key[dependency_cache_key][owner_id] = true
+          unless @dependency_payloads_by_key.key?(dependency_cache_key)
+            @dependency_payloads_by_key[dependency_cache_key] = dependency_payload
+            record_digest_term(:dependency, SubscriptionShape.canonical_term(:dependency, dependency_cache_key, dependency_payload))
+          end
+          unless @dependency_owner_ids_by_key[dependency_cache_key].key?(owner_id)
+            @dependency_owner_ids_by_key[dependency_cache_key][owner_id] = true
+            record_digest_term(:dependency_owner, SubscriptionShape.canonical_term(:dependency_owner, dependency_cache_key, owner_id))
+          end
           @graph_version = graph_version
         end
 
@@ -129,7 +219,7 @@ module Upkeep
         end
 
         def subscription_shape(request_signature: nil)
-          SubscriptionShape.from_components(graph_component, request_signature: request_signature)
+          SubscriptionShape.from_trace_digest(@digest.hexdigest, request_signature: request_signature)
         end
 
         private
@@ -144,19 +234,11 @@ module Upkeep
             graph.edges.none? { |edge| edge.reason == :contains }
         end
 
-        def graph_component
-          {
-            frames: @frames.values.sort_by { |component| component.fetch(:id).to_s },
-            dependencies: @dependencies.map { |dependency_key, component| dependency_component(dependency_key, component) }
-              .sort_by { |component| component.fetch(:id).inspect },
-            contains: @contains.keys.sort_by(&:inspect)
-          }
-        end
-
-        def dependency_component(dependency_key, component)
-          component.merge(
-            owners: @dependency_owner_ids_by_key.fetch(dependency_key).keys.sort_by(&:to_s)
-          )
+        def record_digest_term(kind, term)
+          @digest.update("\0")
+          @digest.update(kind.to_s)
+          @digest.update("\0")
+          @digest.update(term)
         end
       end
     end
