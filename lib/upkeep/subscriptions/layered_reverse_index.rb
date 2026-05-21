@@ -35,6 +35,7 @@ module Upkeep
       end
 
       def entries_for_with_payload(changes, payload)
+        persistent_summary = persistent_index.summary
         active_entries = active_index.entries_for(changes)
         active_count = active_index.count
         pending_entries = pending_entries_for(changes)
@@ -43,6 +44,12 @@ module Upkeep
         payload[:active_subscriptions] = active_count
         payload[:pending_entries] = pending_entries.size
         payload[:pending_subscriptions] = pending_count
+        payload[:persistent_direct_index_entries] = persistent_summary.fetch(:direct).fetch(:entries)
+        payload[:persistent_shape_index_entries] = persistent_summary.fetch(:shape).fetch(:entries)
+        payload[:persistent_direct_lookup_keys] = persistent_summary.fetch(:direct).fetch(:lookup_keys)
+        payload[:persistent_shape_lookup_keys] = persistent_summary.fetch(:shape).fetch(:lookup_keys)
+        payload[:persistent_shape_keys] = persistent_summary.fetch(:shape).fetch(:shape_keys)
+        payload[:persistent_shape_subscriptions] = persistent_summary.fetch(:shape).fetch(:subscriptions)
 
         if active_count.zero?
           persistent_entries = persistent_index.entries_for(changes)

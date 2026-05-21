@@ -47,11 +47,23 @@ module Upkeep
       end
 
       def summary
-        lookup_key_digests = index_record.distinct.pluck(:lookup_key_digest) +
-          shape_index_record.distinct.pluck(:lookup_key_digest)
+        direct_lookup_key_digests = index_record.distinct.pluck(:lookup_key_digest)
+        shape_lookup_key_digests = shape_index_record.distinct.pluck(:lookup_key_digest)
+        direct_entries = index_record.count
+        shape_entries = shape_index_record.count
         {
-          lookup_keys: lookup_key_digests.uniq.size,
-          entries: index_record.count + shape_index_record.count
+          lookup_keys: (direct_lookup_key_digests + shape_lookup_key_digests).uniq.size,
+          entries: direct_entries + shape_entries,
+          direct: {
+            lookup_keys: direct_lookup_key_digests.uniq.size,
+            entries: direct_entries
+          },
+          shape: {
+            lookup_keys: shape_lookup_key_digests.uniq.size,
+            entries: shape_entries,
+            shape_keys: shape_index_record.distinct.count(:subscription_shape_key),
+            subscriptions: subscription_record.where.not(subscription_shape_key: nil).count
+          }
         }
       end
 

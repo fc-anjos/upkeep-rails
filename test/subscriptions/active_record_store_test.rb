@@ -232,6 +232,8 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     assert_equal first_index_rows, persistent_index_row_count
     assert_operator Upkeep::Subscriptions::ActiveRecordStore::ShapeIndexEntryRecord.count, :>, 0
     assert_equal ["shape:cards:open"], Upkeep::Subscriptions::ActiveRecordStore::SubscriptionRecord.distinct.pluck(:subscription_shape_key)
+    assert_operator store.summary.fetch(:reverse_index).fetch(:persistent).fetch(:shape).fetch(:entries), :>, 0
+    assert_equal 2, store.summary.fetch(:reverse_index).fetch(:persistent).fetch(:shape).fetch(:subscriptions)
 
     reloaded_store = active_record_store
     assert_equal "shape:cards:open", reloaded_store.fetch(first_subscription.id).metadata.fetch(:subscription_shape_key)
@@ -420,6 +422,8 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     assert_equal "persistent", events.first.payload.fetch(:mode)
     assert_equal "active_record", events.first.payload.fetch(:store)
     assert_operator events.first.payload.fetch(:persistent_entries), :>, 0
+    assert_operator events.first.payload.fetch(:persistent_direct_index_entries), :>, 0
+    assert_equal 0, events.first.payload.fetch(:persistent_shape_index_entries)
   end
 
   def test_persist_events_split_subscription_rows_from_index_rows
@@ -440,6 +444,30 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     assert_equal [0, 1], events.map { |event| event.payload.fetch(:index_jobs) }
     assert_equal [0, Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.count],
       events.map { |event| event.payload.fetch(:index_rows) }
+    assert_equal [0, Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.count],
+      events.map { |event| event.payload.fetch(:direct_index_rows) }
+    assert_equal [0, 0], events.map { |event| event.payload.fetch(:shape_index_rows) }
+  end
+
+  def test_shape_persist_events_report_shape_index_rows
+    create_subscription_card!("Plan")
+
+    _html, recorder = capture_controller_request("/cards?status=open")
+    store = active_record_store
+
+    events = capture_notifications("persist_subscription_store.upkeep") do
+      subscription = store.register(
+        subscriber_id: "subscriber-a",
+        recorder: recorder,
+        metadata: { stream_name: "stream-a", subscription_shape_key: "shape:cards:open" }
+      )
+      store.activate(subscription.id)
+      store.drain
+    end
+
+    assert_operator events.sum { |event| event.payload.fetch(:shape_index_rows) }, :>, 0
+    assert_equal Upkeep::Subscriptions::ActiveRecordStore::ShapeIndexEntryRecord.count,
+      events.sum { |event| event.payload.fetch(:shape_index_rows) }
   end
 
   def test_persistence_does_not_log_subscription_snapshots

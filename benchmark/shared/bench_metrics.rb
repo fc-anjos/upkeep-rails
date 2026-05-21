@@ -567,7 +567,9 @@ module BenchMetrics
           pending_index_entries: event.payload[:pending_index_entries],
           subscription_rows: event.payload[:subscription_rows],
           operations: event.payload[:operations],
-          index_rows: event.payload[:index_rows]
+          index_rows: event.payload[:index_rows],
+          direct_index_rows: event.payload[:direct_index_rows],
+          shape_index_rows: event.payload[:shape_index_rows]
         }
       )
     end
@@ -582,7 +584,11 @@ module BenchMetrics
           changes: event.payload[:changes],
           active_subscriptions: event.payload[:active_subscriptions],
           active_entries: event.payload[:active_entries],
-          persistent_entries: event.payload[:persistent_entries]
+          persistent_entries: event.payload[:persistent_entries],
+          persistent_direct_index_entries: event.payload[:persistent_direct_index_entries],
+          persistent_shape_index_entries: event.payload[:persistent_shape_index_entries],
+          persistent_shape_keys: event.payload[:persistent_shape_keys],
+          persistent_shape_subscriptions: event.payload[:persistent_shape_subscriptions]
         }
       )
     end
