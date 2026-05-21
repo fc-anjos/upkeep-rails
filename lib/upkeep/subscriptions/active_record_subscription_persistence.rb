@@ -37,6 +37,8 @@ module Upkeep
             result = persist_jobs_without_instrumentation(jobs)
             payload[:subscription_rows] = result.fetch(:subscription_rows)
             payload[:index_rows] = result.fetch(:index_rows)
+            payload[:direct_index_rows] = result.fetch(:direct_index_rows)
+            payload[:shape_index_rows] = result.fetch(:shape_index_rows)
           end
         else
           persist_jobs_without_instrumentation(jobs)
@@ -115,9 +117,13 @@ module Upkeep
         result = silence_active_record_logging do
           ActiveRecord::Base.connection_pool.with_connection do
             ActiveRecord::Base.transaction do
+              subscription_rows = persist_subscription_records(subscription_jobs)
+              index_result = index_subscriptions(index_jobs)
               {
-                subscription_rows: persist_subscription_records(subscription_jobs),
-                index_rows: index_subscriptions(index_jobs)
+                subscription_rows: subscription_rows,
+                index_rows: index_result.fetch(:index_rows),
+                direct_index_rows: index_result.fetch(:direct_index_rows),
+                shape_index_rows: index_result.fetch(:shape_index_rows)
               }
             end
           end
@@ -146,7 +152,7 @@ module Upkeep
       end
 
       def index_subscriptions(jobs)
-        return 0 if jobs.empty?
+        return index_result if jobs.empty?
 
         now = Time.now
         subscription_ids = jobs.map { |job| job.subscription.id }.uniq
@@ -154,8 +160,9 @@ module Upkeep
 
         index_record.where(subscription_id: subscription_ids).delete_all
 
-        index_direct_subscriptions(direct_jobs, now: now) +
-          index_shape_subscriptions(shape_jobs, now: now)
+        direct_rows = index_direct_subscriptions(direct_jobs, now: now)
+        shape_rows = index_shape_subscriptions(shape_jobs, now: now)
+        index_result(direct_index_rows: direct_rows, shape_index_rows: shape_rows)
       end
 
       def index_direct_subscriptions(jobs, now:)
@@ -350,6 +357,14 @@ module Upkeep
 
       def shape_indexable?(job)
         shape_index_key(job) && job.entries.any? && job.entries.all?(&:cohort?)
+      end
+
+      def index_result(direct_index_rows: 0, shape_index_rows: 0)
+        {
+          index_rows: direct_index_rows + shape_index_rows,
+          direct_index_rows: direct_index_rows,
+          shape_index_rows: shape_index_rows
+        }
       end
 
       def shape_key_for_metadata(metadata)

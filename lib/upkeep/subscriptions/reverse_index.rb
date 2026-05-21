@@ -71,9 +71,13 @@ module Upkeep
       end
 
       def summary
+        entries = @entries_by_lookup_key.values.flatten
+        cohort_entries = entries.select(&:cohort?)
         {
           lookup_keys: @entries_by_lookup_key.size,
-          entries: @entries_by_lookup_key.values.sum(&:size)
+          entries: entries.size,
+          cohort_entries: cohort_entries.size,
+          represented_subscribers: entries.flat_map(&:represented_subscriber_ids).uniq.size
         }
       end
 
