@@ -5,6 +5,7 @@ require_relative "capture/request"
 require_relative "subscriptions/registrar"
 require_relative "rails/configuration"
 require_relative "rails/activation_token"
+require_relative "rails/delivery_job"
 require_relative "rails/replay"
 require_relative "rails/action_view_capture"
 require_relative "rails/cable"
@@ -18,6 +19,8 @@ module Upkeep
   module Rails
     SUBSCRIPTION_IDENTITY = "upkeep.subscription_identity"
     REQUEST_CAPTURE = "request_capture.upkeep"
+    DELIVERY_ENQUEUE = "delivery_enqueue.upkeep"
+    DELIVERY_ENQUEUE_ERROR = "delivery_enqueue_error.upkeep"
     INTERNAL_DELIVERY_TABLES = %w[
       upkeep_subscriptions
       upkeep_subscription_index_entries
@@ -99,7 +102,10 @@ module Upkeep
         changes = deliverable_changes(changes)
         return Delivery::Transport::DispatchReport.new([]) if changes.empty?
 
-        delivery_dispatcher.enqueue(changes)
+        dispatch_changes(changes)
+      rescue StandardError => error
+        instrument_delivery_enqueue_error(changes, error)
+        Delivery::Transport::DispatchReport.new([])
       end
 
       def deliver_changes_now!(changes = Runtime::ChangeLog.drain)
@@ -124,10 +130,41 @@ module Upkeep
       private
 
       def delivery_dispatcher
-        @delivery_dispatcher ||= Delivery::AsyncDispatcher.new do |change_sets|
+        @delivery_dispatcher ||= Delivery::AsyncDispatcher.new(batch_window: configuration.delivery_batch_window) do |change_sets|
           batch = delivery_batch_for(change_sets)
           transport.deliver(batch)
         end
+      end
+
+      def dispatch_changes(changes)
+        payload = {
+          adapter: configuration.delivery_adapter,
+          queue: configuration.delivery_queue,
+          change_count: changes.size
+        }
+
+        ActiveSupport::Notifications.instrument(DELIVERY_ENQUEUE, payload) do
+          case configuration.delivery_adapter
+          when :active_job
+            DeliveryJob.perform_later(changes)
+            Delivery::Transport::DispatchReport.new([])
+          when :async
+            delivery_dispatcher.enqueue(changes)
+          when :inline
+            deliver_changes_now!(changes)
+          end
+        end
+      end
+
+      def instrument_delivery_enqueue_error(changes, error)
+        ActiveSupport::Notifications.instrument(
+          DELIVERY_ENQUEUE_ERROR,
+          adapter: configuration.delivery_adapter,
+          queue: configuration.delivery_queue,
+          change_count: changes.size,
+          error_class: error.class.name,
+          error_message: error.message
+        )
       end
 
       def subscription_registrar

@@ -43,6 +43,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency "actionview", ">= 7.1", "< 9.0"
   spec.add_dependency "actionpack", ">= 7.1", "< 9.0"
   spec.add_dependency "actioncable", ">= 7.1", "< 9.0"
+  spec.add_dependency "activejob", ">= 7.1", "< 9.0"
   spec.add_dependency "activerecord", ">= 7.1", "< 9.0"
   spec.add_dependency "activesupport", ">= 7.1", "< 9.0"
   spec.add_dependency "herb", ">= 0.10.1", "< 0.11"

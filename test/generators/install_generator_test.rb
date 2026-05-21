@@ -36,6 +36,9 @@ class InstallGeneratorTest < Rails::Generators::TestCase
     assert_file migration, /t\.json :owner_ids_snapshot, null: false/
     assert_file "config/initializers/upkeep.rb", /config\.upkeep\.enabled = true/
     assert_file "config/initializers/upkeep.rb", /config\.upkeep\.subscription_store = :active_record/
+    assert_file "config/initializers/upkeep.rb", /config\.upkeep\.delivery_adapter = :active_job/
+    assert_file "config/initializers/upkeep.rb", /config\.upkeep\.delivery_queue = :upkeep_realtime/
+    assert_file "config/initializers/upkeep.rb", /Delivery setup:/
     assert_file "config/initializers/upkeep.rb", /Identity setup:/
     assert_file "config/initializers/upkeep.rb", /Upkeep::Rails\.configure/
     assert_file "config/initializers/upkeep.rb", /upkeep\.identify :user, current: \["Current", :user\]/

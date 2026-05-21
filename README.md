@@ -77,6 +77,10 @@ public entry points:
 - `config.upkeep.enabled` - enable or disable runtime capture.
 - `config.upkeep.subscription_store` - choose `:active_record` or explicit
   development/test `:memory` storage.
+- `config.upkeep.delivery_adapter` - choose `:active_job`, `:async`, or
+  `:inline` for committed-change delivery.
+- `config.upkeep.delivery_queue` - Active Job queue name for Upkeep delivery
+  jobs.
 - `config.upkeep.refused_boundary_behavior` - raise or warn when a reactive
   boundary cannot be proven.
 - `config.upkeep.activation_token_expires_in` - signed marker token lifetime for
@@ -229,7 +233,44 @@ the response. The default token lifetime is 24 hours and can be adjusted:
 config.upkeep.activation_token_expires_in = 12.hours
 ```
 
-### 4. Configure Identity For User-Specific Pages
+### 4. Configure Delivery
+
+Upkeep dispatches committed Active Record changes through a delivery adapter.
+Production Rails apps should use Active Job so planning, rendering, and
+broadcasting do not run in the writer's request:
+
+```ruby
+Rails.application.configure do
+  config.upkeep.delivery_adapter = :active_job
+  config.upkeep.delivery_queue = :upkeep_realtime
+end
+```
+
+This uses the app's normal Active Job backend. With Sidekiq, set
+`config.active_job.queue_adapter = :sidekiq`. With Solid Queue, set
+`config.active_job.queue_adapter = :solid_queue` and run the Solid Queue worker.
+Upkeep does not talk to Sidekiq or Solid Queue directly.
+
+The queue backend and the WebSocket broadcast backend are separate:
+
+| Job backend | ActionCable backend | Redis required? |
+| --- | --- | --- |
+| Sidekiq | Redis | yes |
+| Sidekiq | Solid Cable | only for Sidekiq |
+| Solid Queue | Solid Cable | no |
+| Solid Queue | Redis | only for ActionCable |
+| Active Job async | ActionCable async | no, development/test only |
+
+ActionCable still needs a shared adapter in multi-process deployments because
+the job worker may not be the process holding the browser's WebSocket. Redis,
+Solid Cable, and PostgreSQL are shared ActionCable adapters; `async` is only
+for one-process development and tests.
+
+For debugging, `config.upkeep.delivery_adapter = :inline` runs delivery
+immediately. `:async` keeps the previous process-local batching behavior and is
+useful for tests or small local development.
+
+### 5. Configure Identity For User-Specific Pages
 
 Pages that depend on a user, account, tenant, or other authenticated actor need
 an explicit identity bridge. The `current:` side tells Upkeep which observed
@@ -274,7 +315,7 @@ If a page reads undeclared `CurrentAttributes` or Warden identity, Upkeep
 refuses live registration and reports `identity_setup_required` /
 `unidentified_identity` rather than guessing.
 
-### 5. Render Normal Rails Views
+### 6. Render Normal Rails Views
 
 Controllers keep loading Active Record models and relations:
 
@@ -303,7 +344,7 @@ Successful HTML GET responses are captured automatically. Upkeep records the
 rendered page, render sites, fragments, collection surfaces, identity inputs,
 and request inputs, then injects the subscription marker into the response.
 
-### 6. Keep Write Paths Focused
+### 7. Keep Write Paths Focused
 
 Writes keep doing domain work:
 
@@ -316,9 +357,10 @@ class CardsController < ApplicationController
 end
 ```
 
-After the commit, Upkeep dispatches invalidation facts, selects matching
-subscriptions, rerenders the narrowest proven target, and sends Turbo Stream
-payloads to the connected browsers.
+After the commit, Upkeep dispatches invalidation facts to the configured
+delivery adapter. Active Job delivery selects matching subscriptions, rerenders
+the narrowest proven target in the job worker, and sends Turbo Stream payloads
+to the connected browsers.
 
 ## How Refresh Works
 
