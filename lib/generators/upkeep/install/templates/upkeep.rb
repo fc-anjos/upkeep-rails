@@ -32,6 +32,12 @@ Upkeep::Rails.configure do |config|
   #   subscribe { |connection| connection.current_user }
   # end
   #
+  # Example for Devise/Warden current_user:
+  #
+  # config.identify :viewer, warden: :user do
+  #   subscribe { |connection| connection.current_user }
+  # end
+  #
   # Example for session-backed authentication:
   #
   # config.identify :viewer, session: :user_id do

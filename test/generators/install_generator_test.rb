@@ -49,6 +49,7 @@ class InstallGeneratorTest < Rails::Generators::TestCase
     assert_file "config/initializers/upkeep.rb", /Test setup:/
     assert_file "config/initializers/upkeep.rb", /Identity setup:/
     assert_file "config/initializers/upkeep.rb", /config\.identify :viewer, current: \["Current", :user\]/
+    assert_file "config/initializers/upkeep.rb", /config\.identify :viewer, warden: :user/
     assert_file "config/initializers/upkeep.rb", /absent_if/
     refute_match(/request\.session/, File.read(File.join(destination_root, "config/initializers/upkeep.rb")))
     assert_file "app/javascript/upkeep/subscription.js", /data-upkeep-subscription/
