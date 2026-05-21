@@ -114,8 +114,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_29_000004) do
     t.json "owner_ids_snapshot", null: false
     t.string "subscription_shape_key", null: false
     t.datetime "updated_at", null: false
-    t.index ["lookup_key_digest"], name: "index_upkeep_subscription_shape_index_entries_on_lookup_key_digest"
-    t.index ["subscription_shape_key"], name: "index_upkeep_subscription_shape_index_entries_on_subscription_shape_key"
+    t.index ["lookup_key_digest"], name: "idx_upkeep_sub_shape_entries_on_lookup_digest"
+    t.index ["subscription_shape_key"], name: "idx_upkeep_sub_shape_entries_on_shape_key"
   end
 
   create_table "upkeep_subscriptions", id: :string, force: :cascade do |t|
