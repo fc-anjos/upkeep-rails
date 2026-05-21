@@ -9,6 +9,12 @@ module Upkeep
         Upkeep::Rails.configure do |config|
           config.enabled = app.config.upkeep.fetch(:enabled, true)
           config.subscription_store = app.config.upkeep.fetch(:subscription_store, config.subscription_store)
+          config.delivery_adapter = app.config.upkeep.fetch(:delivery_adapter, Railtie.default_delivery_adapter(app))
+          config.delivery_queue = app.config.upkeep.fetch(:delivery_queue, config.delivery_queue)
+          config.delivery_batch_window =
+            app.config.upkeep.fetch(:delivery_batch_window, config.delivery_batch_window)
+          config.activation_token_expires_in =
+            app.config.upkeep.fetch(:activation_token_expires_in, config.activation_token_expires_in)
           config.refused_boundary_behavior =
             app.config.upkeep.fetch(:refused_boundary_behavior, config.refused_boundary_behavior)
         end
@@ -30,6 +36,14 @@ module Upkeep
         defined?(::Rake) &&
           ::Rake.respond_to?(:application) &&
           ::Rake.application.top_level_tasks.any?
+      end
+
+      def self.default_delivery_adapter(app)
+        if app.respond_to?(:env) && app.env.to_s == "production"
+          :active_job
+        else
+          Upkeep::Rails.configuration.delivery_adapter
+        end
       end
     end
   end
