@@ -2,6 +2,7 @@
 
 require "securerandom"
 require "time"
+require_relative "active_registry"
 
 module Upkeep
   module Subscriptions
@@ -52,8 +53,10 @@ module Upkeep
       attr_reader :reverse_index
 
       def initialize(reverse_index: ReverseIndex.new)
-        @reverse_index = reverse_index
-        @subscriptions = {}
+        @active_registry = ActiveRegistry.new(reverse_index: reverse_index)
+        @pending_registry = ActiveRegistry.new
+        @pending_index_entries = {}
+        @reverse_index = active_registry
         @next_id = 0
       end
 
@@ -67,29 +70,22 @@ module Upkeep
           metadata
         )
 
-        @subscriptions[subscription.id] = subscription
-        touch(subscription.id)
-        if entries
-          reverse_index.index_entries(entries, subscription: subscription)
-        else
-          reverse_index.index(subscription)
-        end
+        pending_registry.register(subscription, entries: entries)
+        @pending_index_entries[subscription.id] = entries if entries
         subscription
       end
 
       def touch(id, now: Time.now)
-        subscription = @subscriptions.fetch(id)
-        @subscriptions[id] = Subscription.new(
-          subscription.id,
-          subscription.subscriber_id,
-          subscription.recorder,
-          subscription.graph,
-          subscription.metadata.merge("last_seen_at" => now.utc.iso8601)
-        )
+        fetch(id)
+        metadata = { "last_seen_at" => now.utc.iso8601 }
+        pending_registry.touch(id, metadata: metadata)
+        active_registry.touch(id, metadata: metadata)
+        true
       end
 
       def prune_stale!(older_than:)
-        stale_ids = @subscriptions.filter_map do |id, subscription|
+        stale_ids = subscriptions.filter_map do |subscription|
+          id = subscription.id
           id if last_seen_at(subscription) && last_seen_at(subscription) < older_than
         end
 
@@ -99,16 +95,21 @@ module Upkeep
 
       def unregister(ids)
         ids = Array(ids)
-        ids.each do |id|
-          next unless @subscriptions.delete(id)
-
-          reverse_index.delete_subscription(id)
-        end
+        ids.each { |id| @pending_index_entries.delete(id) }
+        pending_registry.unregister(ids)
+        active_registry.unregister(ids)
         ids.size
       end
 
       def activate(id)
-        @subscriptions.fetch(id)
+        return true if active_registry.fetch(id)
+
+        subscription = pending_registry.fetch(id)
+        return false unless subscription
+
+        entries = @pending_index_entries.delete(id)
+        active_registry.register(subscription, entries: entries)
+        pending_registry.unregister(id)
         true
       end
 
@@ -121,42 +122,49 @@ module Upkeep
       end
 
       def fetch(id)
-        @subscriptions.fetch(id)
-      rescue KeyError
-        raise NotFound, id
+        active_registry.fetch(id) || pending_registry.fetch(id) || raise(NotFound, id)
       end
 
       def subscriptions
-        @subscriptions.values
+        active_registry.subscriptions + pending_registry.subscriptions
       end
 
       def reset
-        @subscriptions = {}
-        @reverse_index = ReverseIndex.new
+        @active_registry = ActiveRegistry.new
+        @pending_registry = ActiveRegistry.new
+        @pending_index_entries = {}
+        @reverse_index = active_registry
         @next_id = 0
       end
 
       def summary
+        active = active_registry.summary
+        pending = pending_registry.summary
         {
           subscriptions: subscriptions.size,
-          reverse_index: reverse_index.summary
+          pending_subscriptions: pending_registry.count,
+          active_subscriptions: active_registry.count,
+          deferred_index_subscriptions: 0,
+          reverse_index: active.merge(
+            mode: :active,
+            active: active,
+            pending: pending,
+            persistent: { lookup_keys: 0, entries: 0 }
+          )
         }
       end
 
       private
 
-      def next_subscription_id
-        "subscription-#{SecureRandom.uuid}"
-      end
+      attr_reader :pending_registry, :active_registry
 
       def last_seen_at(subscription)
         value = subscription.metadata["last_seen_at"] || subscription.metadata[:last_seen_at]
         Time.parse(value.to_s) if value
       end
 
-      def rebuild_reverse_index!
-        @reverse_index = ReverseIndex.new
-        subscriptions.each { |subscription| reverse_index.index(subscription) }
+      def next_subscription_id
+        "subscription-#{SecureRandom.uuid}"
       end
     end
   end
