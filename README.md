@@ -225,24 +225,27 @@ client can subscribe with an old payload shape and be rejected by the channel.
 
 ### 3. Configure Subscription Storage
 
-Production uses the ActiveRecord subscription store by default and fails fast
-when the Upkeep subscription tables are missing or out of date:
+The generated initializer keeps production on the durable ActiveRecord store
+and uses the in-process memory store for ordinary test runs:
 
 ```ruby
 # config/initializers/upkeep.rb
 Upkeep::Rails.configure do |config|
-  config.enabled = true
-  config.subscription_store = :active_record
+  app_config = Rails.application.config.upkeep
+
+  config.enabled = app_config.fetch(:enabled, true)
+  config.subscription_store = app_config.fetch(:subscription_store, Rails.env.test? ? :memory : :active_record)
 end
 ```
 
-For development or isolated tests that do not run the installer migration, opt
-into the in-process store explicitly:
+Use `config.upkeep.subscription_store = :active_record` in a test environment
+or CI job when you want to exercise durable subscription rows, schema checks,
+store reload, and cross-process lookup. Use the memory store for most
+controller/system tests that only need the public subscription lifecycle.
 
 ```ruby
-Upkeep::Rails.configure do |config|
-  config.subscription_store = :memory
-end
+# config/environments/test.rb
+config.upkeep.subscription_store = :active_record
 ```
 
 For more than one Puma worker, configure ActionCable with a shared adapter such
@@ -262,50 +265,13 @@ Upkeep::Rails.configure do |config|
 end
 ```
 
-### 4. Configure Delivery
-
-Upkeep dispatches committed Active Record changes through a delivery adapter.
-Production Rails apps should use Active Job so planning, rendering, and
-broadcasting do not run in the writer's request:
-
-```ruby
-Upkeep::Rails.configure do |config|
-  config.delivery_adapter = :active_job
-  config.delivery_queue = :upkeep_realtime
-end
-```
-
-This uses the app's normal Active Job backend. With Sidekiq, set
-`config.active_job.queue_adapter = :sidekiq`. With Solid Queue, set
-`config.active_job.queue_adapter = :solid_queue` and run the Solid Queue worker.
-Upkeep does not talk to Sidekiq or Solid Queue directly.
-
-The queue backend and the WebSocket broadcast backend are separate:
-
-| Job backend | ActionCable backend | Redis required? |
-| --- | --- | --- |
-| Sidekiq | Redis | yes |
-| Sidekiq | Solid Cable | only for Sidekiq |
-| Solid Queue | Solid Cable | no |
-| Solid Queue | Redis | only for ActionCable |
-| Active Job async | ActionCable async | no, development/test only |
-
-ActionCable still needs a shared adapter in multi-process deployments because
-the job worker may not be the process holding the browser's WebSocket. Redis,
-Solid Cable, and PostgreSQL are shared ActionCable adapters; `async` is only
-for one-process development and tests.
-
-For debugging, set `config.delivery_adapter = :inline` inside
-`Upkeep::Rails.configure` to run delivery immediately. `:async` keeps the
-previous process-local batching behavior and is useful for tests or small local
-development.
-
-### 5. Configure Identity For User-Specific Pages
+### 4. Configure Identity For User-Specific Pages
 
 Pages that depend on a user, account, tenant, or other authenticated actor need
-an explicit identity bridge. The `current:` side tells Upkeep which observed
-render-time value is the identity. The `subscribe` side tells Upkeep how to
-resolve the same identity from the ActionCable connection:
+an explicit identity bridge. The `current:`, `session:`, `cookie:`, or
+`warden:` side tells Upkeep which render-time value is the identity. The
+`subscribe` side tells Upkeep how to resolve the same identity from the
+ActionCable connection:
 
 ```ruby
 # config/initializers/upkeep.rb
@@ -363,6 +329,44 @@ end
 If a page reads an undeclared non-absent `CurrentAttributes` or Warden identity,
 Upkeep refuses live registration and reports `identity_setup_required` /
 `unidentified_identity` rather than guessing.
+
+### 5. Configure Delivery
+
+Upkeep dispatches committed Active Record changes through a delivery adapter.
+Production Rails apps should use Active Job so planning, rendering, and
+broadcasting do not run in the writer's request:
+
+```ruby
+Upkeep::Rails.configure do |config|
+  config.delivery_adapter = Rails.env.production? ? :active_job : :async
+  config.delivery_queue = :upkeep_realtime
+end
+```
+
+This uses the app's normal Active Job backend. With Sidekiq, set
+`config.active_job.queue_adapter = :sidekiq`. With Solid Queue, set
+`config.active_job.queue_adapter = :solid_queue` and run the Solid Queue worker.
+Upkeep does not talk to Sidekiq or Solid Queue directly.
+
+The queue backend and the WebSocket broadcast backend are separate:
+
+| Job backend | ActionCable backend | Redis required? |
+| --- | --- | --- |
+| Sidekiq | Redis | yes |
+| Sidekiq | Solid Cable | only for Sidekiq |
+| Solid Queue | Solid Cable | no |
+| Solid Queue | Redis | only for ActionCable |
+| Active Job async | ActionCable async | no, development/test only |
+
+ActionCable still needs a shared adapter in multi-process deployments because
+the job worker may not be the process holding the browser's WebSocket. Redis,
+Solid Cable, and PostgreSQL are shared ActionCable adapters; `async` is only
+for one-process development and tests.
+
+For debugging, set `config.delivery_adapter = :inline` inside
+`Upkeep::Rails.configure` to run delivery immediately. `:async` keeps the
+previous process-local batching behavior and is useful for tests or small local
+development.
 
 ### 6. Render Normal Rails Views
 
@@ -574,6 +578,20 @@ fallbacks from true refusal.
 
 Use `Upkeep::Rails::Testing` for app-level assertions around subscription
 registration and delivery.
+
+Structure app tests around behavior, not store internals:
+
+- Most request/system tests can run with `config.upkeep.subscription_store =
+  :memory`. Memory has the same public lifecycle as ActiveRecord: registration
+  is fetchable immediately, lookup visibility starts on activation, touch
+  updates liveness, unregister/prune remove lookup entries, and delivery uses
+  the same planner surface.
+- Keep a smaller ActiveRecord-backed integration slice for the production-only
+  concerns: generated migration shape, schema validation, durable rows,
+  reload/rehydration, async persistence, and cross-process lookup.
+- Do not assert implementation details that are unique to one store unless the
+  test is explicitly about that implementation. For app behavior, assert the
+  marker, activation, streams, broadcasts, and rendered bytes.
 
 Run the project test suite with the project Ruby:
 
