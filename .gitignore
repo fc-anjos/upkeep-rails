@@ -4,6 +4,7 @@
 /Gemfile.lock
 /log/
 /pkg/
+/*.gem
 /test/tmp/
 /tmp/
 /benchmark/results/

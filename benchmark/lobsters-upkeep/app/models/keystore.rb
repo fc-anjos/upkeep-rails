@@ -39,7 +39,7 @@ class Keystore < ApplicationRecord
     validate_input_key(key)
     Keystore.transaction do
       if Keystore.connection.adapter_name == "SQLite"
-        Keystore.connection.execute("INSERT OR IGNORE INTO " <<
+        Keystore.connection.execute(+"INSERT OR IGNORE INTO " <<
           "#{Keystore.table_name} (`key`, `value`) VALUES " <<
           "(#{q(key)}, 0)")
         Keystore.connection.execute("UPDATE #{Keystore.table_name} " <<

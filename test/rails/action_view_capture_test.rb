@@ -417,7 +417,8 @@ class ActionViewCaptureTest < Minitest::Test
     assert_equal "boards/collection", render_site.payload.fetch(:manifest_path)
     assert_equal "cards/_card", fragment.payload.fetch(:manifest_path)
     assert_equal render_site.payload.fetch(:manifest_path), recipe.manifest_reference.fetch(:path)
-    assert_includes html, %(upkeep-render-site data-upkeep-render-site="#{render_site.payload.fetch(:site_id)}")
+    assert_includes html, %(<ul data-upkeep-render-site="#{render_site.payload.fetch(:site_id)}")
+    refute_includes html, "<upkeep-render-site"
     assert_includes html, %(data-upkeep-frame="fragment:rails:cards/_card:rails_capture_cards:#{plan.id}")
   end
 

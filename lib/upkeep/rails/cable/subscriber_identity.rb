@@ -12,6 +12,40 @@ module Upkeep
       Identity = Data.define(:subscriber_id, :stream_name, :components)
       Decision = Data.define(:mode, :anonymous, :deopt_reason, :identity_sources, :identity_names)
 
+      class SubscribeContext
+        def initialize(connection)
+          @action_cable_connection = connection
+        end
+
+        def session
+          action_cable_request.session
+        end
+
+        def cookies
+          action_cable_request.cookies
+        end
+
+        def method_missing(name, *args, &block)
+          if action_cable_connection.respond_to?(name)
+            action_cable_connection.public_send(name, *args, &block)
+          else
+            super
+          end
+        end
+
+        def respond_to_missing?(name, include_private = false)
+          action_cable_connection.respond_to?(name, false) || super
+        end
+
+        private
+
+        attr_reader :action_cable_connection
+
+        def action_cable_request
+          action_cable_connection.__send__(:request)
+        end
+      end
+
       module SubscriberIdentity
         ANONYMOUS_PUBLIC_MODE = "anonymous_public"
         IDENTIFIED_MODE = "identified"
@@ -131,7 +165,7 @@ module Upkeep
 
           recorder.graph.dependency_nodes
             .map(&:payload)
-            .select(&:identity?)
+            .select { |dependency| Dependencies.partitioning_identity?(dependency) }
             .uniq(&:cache_key)
         end
 
@@ -141,6 +175,7 @@ module Upkeep
 
           identity_dependencies(recorder).flat_map do |dependency|
             definitions.select { |definition| definition.matches_dependency?(dependency) }
+              .reject { |definition| definition.absent_dependency?(dependency) }
               .map { |definition| [definition, dependency] }
           end
         end
@@ -161,8 +196,8 @@ module Upkeep
         end
 
         def component_for_dependency(definition, dependency)
-          if dependency_nil?(dependency)
-            raise UnidentifiedSubscriber, "captured identity :#{definition.name} from #{definition.source_label} is nil"
+          if definition.absent_dependency?(dependency)
+            raise UnidentifiedSubscriber, "captured identity :#{definition.name} from #{definition.source_label} is absent"
           end
 
           identity_component(definition.name, dependency.key.fetch(:value))
@@ -171,8 +206,8 @@ module Upkeep
         def subscribe_components(connection, definitions)
           definitions.filter_map do |definition|
             value = call_subscribe_block(definition, connection)
-            if value.nil?
-              raise UnidentifiedSubscriber, "subscribe identity :#{definition.name} from #{definition.source_label} is nil"
+            if definition.absent?(value)
+              raise UnidentifiedSubscriber, "subscribe identity :#{definition.name} from #{definition.source_label} is absent"
             end
 
             identity_component(definition.name, subscribe_identity_value(definition, value))
@@ -181,7 +216,8 @@ module Upkeep
 
         def call_subscribe_block(definition, connection)
           block = definition.subscribe_block
-          block.arity == 1 ? block.call(connection) : connection.instance_exec(&block)
+          context = SubscribeContext.new(connection)
+          block.arity == 1 ? block.call(context) : context.instance_exec(&block)
         end
 
         def subscribe_identity_value(definition, value)
@@ -230,14 +266,6 @@ module Upkeep
           else
             value
           end
-        end
-
-        def dependency_nil?(dependency)
-          value = dependency.key.fetch(:value)
-          return true if value.nil?
-
-          dependency.metadata[:value_class].to_s == "NilClass" ||
-            dependency.metadata["value_class"].to_s == "NilClass"
         end
 
         def model_component(name, identity)

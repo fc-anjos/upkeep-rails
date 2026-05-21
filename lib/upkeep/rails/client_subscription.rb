@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "cgi"
 require "json"
 
 module Upkeep
@@ -11,8 +12,7 @@ module Upkeep
 
       def inject(html, identity:, subscription:)
         marker = marker_for(identity: identity, subscription: subscription)
-        insert_before_closing("head", html, marker) ||
-          insert_before_closing("body", html, marker) ||
+        insert_before_closing("body", html, marker) ||
           "#{html}#{marker}"
       end
 
@@ -24,7 +24,14 @@ module Upkeep
           stream_name: identity.stream_name
         ).gsub("</", '<\/')
 
-        %(<script type="application/json" data-upkeep-subscription>#{payload}</script>)
+        id = "upkeep-subscription-source-#{subscription.id}"
+
+        [
+          %(<upkeep-subscription-source id="#{CGI.escapeHTML(id)}" ),
+          %(data-upkeep-subscription data-turbo-temporary>),
+          CGI.escapeHTML(payload),
+          %(</upkeep-subscription-source>)
+        ].join
       end
 
       def insert_before_closing(tag, html, marker)

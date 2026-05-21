@@ -26,9 +26,9 @@ class HerbTemplateManifestTest < Minitest::Test
     manifest = build_manifest(
       path: "app/views/boards/show.html.erb",
       source: <<~ERB
-        <main>
+        <ul>
           <%= render partial: "cards/card", collection: @cards, as: :card %>
-        </main>
+        </ul>
       ERB
     )
 
@@ -45,8 +45,27 @@ class HerbTemplateManifestTest < Minitest::Test
     assert_equal "card", render_node.fetch(:as)
     assert_operator render_node.fetch(:start_offset), :<, render_node.fetch(:end_offset)
     assert_equal render_node.fetch(:site_id), tag.fetch(:site_id)
-    assert_equal "collection_region", tag.fetch(:target)
+    assert_equal "container_element", tag.fetch(:target)
+    assert_equal "ul", tag.fetch(:tag_name)
+    assert_equal "ul", render_node.fetch(:render_site_container).fetch(:tag_name)
     assert_match(/\A[0-9a-f]{16}\z/, render_node.fetch(:site_id))
+  end
+
+  def test_collection_render_with_mixed_siblings_does_not_get_render_site_tag
+    manifest = build_manifest(
+      path: "app/views/boards/show.html.erb",
+      source: <<~ERB
+        <ul>
+          <li>Header</li>
+          <%= render partial: "cards/card", collection: @cards, as: :card %>
+        </ul>
+      ERB
+    )
+
+    assert manifest.parse.fetch(:ok)
+    assert_equal 1, manifest.render_nodes.size
+    assert_nil manifest.render_nodes.first.fetch(:render_site_container)
+    refute_includes manifest.frontend_tag_plan.map { |entry| entry.fetch(:kind) }, "render_site"
   end
 
   def test_html_doctype_does_not_prevent_page_root_tag

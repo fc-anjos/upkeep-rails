@@ -5,4 +5,6 @@
 # silently no-ops and per-region dedup is structurally impossible. Default
 # `:warn` is too quiet for benchmark workloads; the smoke gate hides the
 # regression behind correct-looking output.
-Rails.application.config.upkeep.refused_boundary_behavior = :raise
+Upkeep::Rails.configure do |config|
+  config.refused_boundary_behavior = :raise
+end

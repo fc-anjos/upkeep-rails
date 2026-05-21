@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "cgi"
 require "json"
 require "test_helper"
 
@@ -41,6 +42,18 @@ class UpkeepSubscriptionTest < ActionDispatch::IntegrationTest
     assert_acceptance_report(subscription, expected_path: "/")
   end
 
+  test "logged in index registers an identified subscription" do
+    sign_in_as @user
+
+    get "/"
+    assert_response :success
+
+    subscription = current_subscription!
+    assert_equal "identified", subscription.metadata.fetch(:identity_mode)
+    assert_includes subscription.metadata.fetch(:identity_sources), "session"
+    assert_acceptance_report(subscription, expected_path: "/")
+  end
+
   test "comment mutation after subscription delivers through current runtime" do
     sign_in_as @user
     get @story.comments_path
@@ -58,12 +71,12 @@ class UpkeepSubscriptionTest < ActionDispatch::IntegrationTest
     Upkeep::Rails.drain_delivery!
   end
 
-  private
+    private
     def current_subscription!
-      marker = response.body[%r{<script type="application/json" data-upkeep-subscription>(.*?)</script>}m, 1]
+      marker = response.body[%r{<upkeep-subscription-source\b[^>]*data-upkeep-subscription[^>]*>(.*?)</upkeep-subscription-source>}m, 1]
       assert marker, "expected current Upkeep subscription marker"
 
-      payload = JSON.parse(marker)
+      payload = JSON.parse(CGI.unescapeHTML(marker))
       Upkeep::Rails.subscriptions.fetch(payload.fetch("subscription_id"))
     end
 

@@ -2,6 +2,7 @@
 
 require "active_record"
 require "active_support/notifications"
+require "logger"
 require_relative "json_snapshot"
 require_relative "persistent_reverse_index"
 require_relative "store"
@@ -62,11 +63,13 @@ module Upkeep
         ids = Array(ids)
         return if ids.empty?
 
-        ActiveRecord::Base.connection_pool.with_connection do
-          ActiveRecord::Base.transaction do
-            index_record.where(subscription_id: ids).delete_all
-            deleted = subscription_record.where(id: ids).delete_all
-            decrement_count_cache(deleted)
+        silence_active_record_logging do
+          ActiveRecord::Base.connection_pool.with_connection do
+            ActiveRecord::Base.transaction do
+              index_record.where(subscription_id: ids).delete_all
+              deleted = subscription_record.where(id: ids).delete_all
+              decrement_count_cache(deleted)
+            end
           end
         end
       end
@@ -105,12 +108,14 @@ module Upkeep
         subscription_jobs = jobs.select { |job| persist_subscription?(job) }
         index_jobs = jobs.select { |job| persist_index?(job) }
 
-        result = ActiveRecord::Base.connection_pool.with_connection do
-          ActiveRecord::Base.transaction do
-            {
-              subscription_rows: persist_subscription_records(subscription_jobs),
-              index_rows: index_subscriptions(index_jobs)
-            }
+        result = silence_active_record_logging do
+          ActiveRecord::Base.connection_pool.with_connection do
+            ActiveRecord::Base.transaction do
+              {
+                subscription_rows: persist_subscription_records(subscription_jobs),
+                index_rows: index_subscriptions(index_jobs)
+              }
+            end
           end
         end
         increment_count_cache(result.fetch(:subscription_rows))
@@ -285,6 +290,15 @@ module Upkeep
 
       def operation_counts(jobs)
         jobs.each_with_object(Hash.new(0)) { |job, counts| counts[job.operation.to_s] += 1 }.to_h
+      end
+
+      def silence_active_record_logging
+        logger = ActiveRecord::Base.logger
+        if logger.respond_to?(:silence)
+          logger.silence(::Logger::WARN) { yield }
+        else
+          yield
+        end
       end
     end
   end

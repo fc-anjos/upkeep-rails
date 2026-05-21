@@ -234,7 +234,18 @@ module Upkeep
           return ["replace", member_replace_recipe, delivery_target, nil]
         end
 
-        ["replace", recipe, nil, deoptimization_reason(frame, entries, changes)]
+        [fallback_action_for(frame), recipe, nil, deoptimization_reason(frame, entries, changes)]
+      end
+
+      def fallback_action_for(frame)
+        case frame.payload.fetch(:kind)
+        when "page"
+          "refresh"
+        when "render_site"
+          "update"
+        else
+          "replace"
+        end
       end
 
       def append_recipe_for(frame, recipe, entries, changes)

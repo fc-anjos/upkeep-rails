@@ -81,8 +81,8 @@ class Story < ApplicationRecord
   }
   scope :not_hidden_by, ->(user) {
     user.nil? ? all : where.not(
-      HiddenStory.select('TRUE')
-        .where(Arel.sql('hidden_stories.story_id = stories.id'))
+      HiddenStory
+        .where(HiddenStory.arel_table[:story_id].eq(arel_table[:id]))
         .by(user)
         .arel
         .exists

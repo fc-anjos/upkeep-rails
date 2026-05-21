@@ -83,8 +83,14 @@ module Upkeep
       end
 
       def capture_collection(partial, collection, rendered_collection, context, options, block, collection_analysis: nil)
+        render_site = current_render_site
+        unless render_site
+          record_collection_dependency(collection, collection_analysis: collection_analysis)
+          return yield
+        end
+
         captured_options = render_options_for_replay(options)
-        metadata = collection_metadata(partial, collection, render_site: current_render_site)
+        metadata = collection_metadata(partial, collection, render_site: render_site)
         frame_id = "site:#{metadata.fetch(:site_id)}"
         recipe = collection_recipe(
           frame_id: frame_id,
@@ -130,8 +136,7 @@ module Upkeep
 
       def collection_metadata(partial, collection, render_site: nil)
         collection_key = collection_key(collection)
-        site_id = render_site&.fetch(:site_id) ||
-          Digest::SHA256.hexdigest(["rails_collection", partial.to_s, collection_key].inspect)[0, 16]
+        site_id = render_site.fetch(:site_id)
 
         {
           kind: "render_site",
@@ -724,7 +729,7 @@ module Upkeep
             yield
           end
 
-          %(<upkeep-render-site data-upkeep-render-site="#{CGI.escapeHTML(site_id.to_s)}">#{html}</upkeep-render-site>).html_safe
+          html.respond_to?(:html_safe) ? html.html_safe : html
         end
       end
 

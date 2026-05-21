@@ -240,7 +240,13 @@ module Upkeep
     end
 
     class Identity < Base
-      def initialize(source:, key:, value:, metadata: {})
+      def initialize(source:, key:, value:, metadata: {}, partitioning: nil, absent_by_name: nil)
+        metadata = metadata.dup
+        metadata[:partitioning_identity] = partitioning unless partitioning.nil?
+        if absent_by_name&.any?
+          metadata[:identity_absent_by_name] = absent_by_name.to_h.transform_keys(&:to_s)
+        end
+
         super(
           source: source,
           key: { key: key, value: value },
@@ -256,6 +262,13 @@ module Upkeep
         { source: source, key: key.fetch(:key), value: key.fetch(:value) }
       end
 
+      def nil_identity?
+        return true if key.fetch(:value).nil?
+
+        value_class = metadata[:value_class] || metadata["value_class"]
+        value_class.to_s == "NilClass"
+      end
+
       def visibility
         :identity_bound
       end
@@ -266,45 +279,53 @@ module Upkeep
     end
 
     class WardenUser < Identity
-      def initialize(scope:, user:)
+      def initialize(scope:, user:, partitioning: nil, absent_by_name: nil)
         super(
           source: :warden_user,
           key: scope.to_s,
           value: Dependencies.model_identity(user),
-          metadata: Dependencies.model_metadata(user).merge(scope: scope.to_s)
+          metadata: Dependencies.model_metadata(user).merge(scope: scope.to_s),
+          partitioning: partitioning,
+          absent_by_name: absent_by_name
         )
       end
     end
 
     class CurrentAttribute < Identity
-      def initialize(owner:, name:, value:)
+      def initialize(owner:, name:, value:, partitioning: nil, absent_by_name: nil)
         super(
           source: :current_attribute,
           key: "#{owner}.#{name}",
           value: Dependencies.canonical_identity(value),
-          metadata: { owner: owner.to_s, name: name.to_s }
+          metadata: { owner: owner.to_s, name: name.to_s },
+          partitioning: partitioning,
+          absent_by_name: absent_by_name
         )
       end
     end
 
     class SessionValue < Identity
-      def initialize(key:, value:)
+      def initialize(key:, value:, partitioning: nil, absent_by_name: nil)
         super(
           source: :session,
           key: key.to_s,
           value: Dependencies.private_fingerprint(value),
-          metadata: { key: key.to_s, value_class: value.class.name }
+          metadata: { key: key.to_s, value_class: value.class.name },
+          partitioning: partitioning,
+          absent_by_name: absent_by_name
         )
       end
     end
 
     class CookieValue < Identity
-      def initialize(key:, value:)
+      def initialize(key:, value:, partitioning: nil, absent_by_name: nil)
         super(
           source: :cookie,
           key: key.to_s,
           value: Dependencies.private_fingerprint(value),
-          metadata: { key: key.to_s, value_class: value.class.name }
+          metadata: { key: key.to_s, value_class: value.class.name },
+          partitioning: partitioning,
+          absent_by_name: absent_by_name
         )
       end
     end
@@ -423,6 +444,37 @@ module Upkeep
         value
       else
         model_identity(value) || private_fingerprint(value)
+      end
+    end
+
+    def partitioning_identity?(dependency)
+      return false unless dependency.identity?
+
+      flag = metadata_value(dependency, :partitioning_identity)
+      return flag if [true, false].include?(flag)
+
+      !nil_identity?(dependency)
+    end
+
+    def identity_absent_for?(dependency, name)
+      absent_by_name = metadata_value(dependency, :identity_absent_by_name) || {}
+      absent_by_name = absent_by_name.transform_keys(&:to_s) if absent_by_name.respond_to?(:transform_keys)
+      return absent_by_name.fetch(name.to_s) if absent_by_name.key?(name.to_s)
+
+      !partitioning_identity?(dependency)
+    end
+
+    def nil_identity?(dependency)
+      dependency.respond_to?(:nil_identity?) && dependency.nil_identity?
+    end
+
+    def metadata_value(dependency, key)
+      return unless dependency.respond_to?(:metadata)
+
+      if dependency.metadata.key?(key)
+        dependency.metadata.fetch(key)
+      elsif dependency.metadata.key?(key.to_s)
+        dependency.metadata.fetch(key.to_s)
       end
     end
 

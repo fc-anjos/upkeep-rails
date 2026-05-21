@@ -35,10 +35,10 @@ class Comment < ApplicationRecord
   scope :accessible_to_user, ->(user) { user && user.is_moderator? ? all : active }
   scope :not_on_story_hidden_by, ->(user) {
     user ? where.not(
-      HiddenStory.select('TRUE')
-      .where(Arel.sql('hidden_stories.story_id = stories.id'))
-      .by(user).arel.exists
-    ) : where('true')
+      HiddenStory
+        .where(HiddenStory.arel_table[:story_id].eq(Story.arel_table[:id]))
+        .by(user).arel.exists
+    ) : all
   }
 
   FLAGGABLE_DAYS = 7

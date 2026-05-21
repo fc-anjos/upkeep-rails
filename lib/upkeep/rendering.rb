@@ -251,11 +251,9 @@ module Upkeep
             target = Targeting::Target.new("render_site", site_id, "render-site replay")
             Targeting::Extraction.extract_target_html(page_recipe.render, target)
           else
-            html = Runtime::Observation.capture_frame(frame_id, metadata) do
+            Runtime::Observation.capture_frame(frame_id, metadata) do
               yield
             end
-
-            %(<upkeep-render-site data-upkeep-render-site="#{h(site_id)}">#{html}</upkeep-render-site>)
           end
         end
 
@@ -263,7 +261,7 @@ module Upkeep
           yield
         end
 
-        %(<upkeep-render-site data-upkeep-render-site="#{h(site_id)}">#{html}</upkeep-render-site>)
+        html
       end
 
       def manifest_reference(manifest_path, manifest_fingerprint)

@@ -36,23 +36,28 @@ module Upkeep
           id = subscription_id
           payload[:subscription_id] = id if payload
           unless measure(payload, :activation_token_ms) { valid_activation_token?(id) }
-            payload[:rejected] = true if payload
-            payload[:reject_reason] = "invalid_activation_token" if payload
-            return reject
+            return reject_upkeep_subscription(payload, "invalid_activation_token")
           end
 
           subscription = measure(payload, :fetch_ms) { Upkeep::Rails.subscriptions.fetch(id) }
           authorized = measure(payload, :authorization_ms) { authorized_subscription?(subscription) }
           unless authorized
-            payload[:rejected] = true if payload
-            return reject
+            return reject_upkeep_subscription(payload, "unauthorized_identity")
           end
 
           measure(payload, :activation_ms) { Upkeep::Rails.subscriptions.activate(id) }
           stream_count = measure(payload, :stream_attach_ms) { attach_streams(subscription) }
           payload[:stream_count] = stream_count if payload
-        rescue KeyError, UnidentifiedSubscriber
+        rescue KeyError
+          reject_upkeep_subscription(payload, missing_activation_token? ? "missing_activation_token" : "missing_subscription")
+        rescue UnidentifiedSubscriber
+          reject_upkeep_subscription(payload, "unidentified_subscriber")
+        end
+
+        def reject_upkeep_subscription(payload, reason)
           payload[:rejected] = true if payload
+          payload[:reject_reason] = reason if payload
+          log_subscription_rejection(reason)
           reject
         end
 
@@ -87,10 +92,27 @@ module Upkeep
 
         def activation_token
           params.fetch(:activation_token)
+        rescue KeyError
+          @missing_activation_token = true
+          raise
+        end
+
+        def missing_activation_token?
+          @missing_activation_token == true
         end
 
         def valid_activation_token?(id)
           ActivationToken.valid_for_subscription?(activation_token, id)
+        end
+
+        def log_subscription_rejection(reason)
+          return unless reason == "missing_activation_token"
+          return unless defined?(::Rails) && ::Rails.respond_to?(:logger) && ::Rails.logger
+
+          ::Rails.logger.warn(
+            "[upkeep] subscription rejected: missing activation_token. " \
+            "If this started after upgrading upkeep-rails, refresh app/javascript/upkeep/subscription.js from the install generator."
+          )
         end
 
         def authorized_subscription?(subscription)

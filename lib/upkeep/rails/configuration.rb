@@ -13,11 +13,12 @@ module Upkeep
       class IdentityDefinition
         attr_reader :name, :source, :source_key, :subscribe_block
 
-        def initialize(name:, source:, source_key:, subscribe_block:)
+        def initialize(name:, source:, source_key:, subscribe_block:, absent_block: nil)
           @name = name.to_sym
           @source = source.to_sym
           @source_key = source_key
           @subscribe_block = subscribe_block
+          @absent_block = absent_block
         end
 
         def matches_dependency?(dependency)
@@ -35,6 +36,31 @@ module Upkeep
           else
             false
           end
+        end
+
+        def matches_source?(source, key)
+          source = source.to_sym
+
+          case self.source
+          when :current
+            source == :current &&
+              key.fetch(:owner).to_s == source_key.fetch(:owner) &&
+              key.fetch(:name).to_s == source_key.fetch(:name)
+          when :session, :cookie, :warden
+            source == self.source && key.to_s == source_key
+          else
+            false
+          end
+        end
+
+        def absent?(value)
+          return value.nil? unless @absent_block
+
+          @absent_block.arity == 1 ? @absent_block.call(value) : @absent_block.call
+        end
+
+        def absent_dependency?(dependency)
+          Upkeep::Dependencies.identity_absent_for?(dependency, name)
         end
 
         def source_label
@@ -59,7 +85,11 @@ module Upkeep
       end
 
       class IdentityBuilder
-        attr_reader :subscribe_block
+        attr_reader :subscribe_block, :absent_block
+
+        def absent_if(&block)
+          @absent_block = block
+        end
 
         def subscribe(&block)
           @subscribe_block = block
@@ -136,8 +166,25 @@ module Upkeep
           name: name,
           source: source,
           source_key: source_key,
-          subscribe_block: builder.subscribe_block
+          subscribe_block: builder.subscribe_block,
+          absent_block: builder.absent_block
         )
+      end
+
+      def identity_presence_metadata(source:, key:, value:)
+        definitions = identity_definitions.select { |definition| definition.matches_source?(source, key) }
+        absent_by_name = definitions.to_h do |definition|
+          [definition.name.to_s, definition.absent?(value)]
+        end
+
+        {
+          partitioning: if definitions.any?
+            absent_by_name.values.any? { |absent| !absent }
+          else
+            !value.nil?
+          end,
+          absent_by_name: absent_by_name
+        }
       end
 
       def identity_definitions

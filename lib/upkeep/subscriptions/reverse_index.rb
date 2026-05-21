@@ -275,7 +275,7 @@ module Upkeep
       end
 
       def cohort_identity_dependency?(dependency)
-        dependency.identity? && COHORT_IDENTITY_SOURCES.include?(dependency.source.to_s)
+        Dependencies.partitioning_identity?(dependency) && COHORT_IDENTITY_SOURCES.include?(dependency.source.to_s)
       end
 
       def active_record_collection_lookup_keys(dependency)

@@ -24,6 +24,11 @@ class DeliveryCardsController < ActionController::Base
     @cards = @cards.limit(params[:limit].to_i) if params[:limit]
     render template: "delivery_cards/index"
   end
+
+  def titles
+    @titles = DeliveryCard.where(status: params.fetch(:status, "open")).pluck(:title)
+    render template: "delivery_cards/titles"
+  end
 end
 
 class TurboStreamsDeliveryTest < Minitest::Test
@@ -86,7 +91,7 @@ class TurboStreamsDeliveryTest < Minitest::Test
     ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
   end
 
-  def test_collection_create_appends_to_upkeep_collection_wrapper
+  def test_collection_create_appends_to_upkeep_collection_container
     create_delivery_card!("Plan")
     create_delivery_card!("Build")
 
@@ -102,7 +107,7 @@ class TurboStreamsDeliveryTest < Minitest::Test
 
     assert_equal "append", turbo_stream["action"]
     assert_equal stream.target_selector, turbo_stream["targets"]
-    assert_match(/\Aupkeep-render-site\[data-upkeep-render-site="/, stream.target_selector)
+    assert_match(/\A\[data-upkeep-render-site="/, stream.target_selector)
     assert_includes stream.html, "Review"
     refute_includes stream.html, "Plan"
     refute_includes stream.html, "Build"
@@ -328,6 +333,7 @@ class TurboStreamsDeliveryTest < Minitest::Test
     turbo_stream = Nokogiri::HTML5.fragment(stream.to_html).at_css("turbo-stream")
 
     assert_equal "replace", turbo_stream["action"]
+    assert_equal "morph", turbo_stream["method"]
     assert_nil stream.deoptimization_reason
     assert_equal "#delivery_card_#{card.id}", turbo_stream["targets"]
     assert_includes stream.html, "Nectarine"
@@ -350,9 +356,10 @@ class TurboStreamsDeliveryTest < Minitest::Test
     stream = batch.streams.first
     turbo_stream = Nokogiri::HTML5.fragment(stream.to_html).at_css("turbo-stream")
 
-    assert_equal "replace", turbo_stream["action"]
+    assert_equal "update", turbo_stream["action"]
+    assert_equal "morph", turbo_stream["method"]
     assert_equal "collection_member_replace_unproven", stream.deoptimization_reason
-    assert_match(/\Aupkeep-render-site\[data-upkeep-render-site="/, turbo_stream["targets"])
+    assert_match(/\A\[data-upkeep-render-site="/, turbo_stream["targets"])
     assert_includes stream.html, "Aardvark"
     assert_includes stream.html, "Alpha"
     assert_includes stream.html, "Zulu"
@@ -373,12 +380,61 @@ class TurboStreamsDeliveryTest < Minitest::Test
     stream = batch.streams.first
     turbo_stream = Nokogiri::HTML5.fragment(stream.to_html).at_css("turbo-stream")
 
-    assert_equal "replace", turbo_stream["action"]
+    assert_equal "update", turbo_stream["action"]
+    assert_equal "morph", turbo_stream["method"]
     assert_equal "collection_member_replace_unproven", stream.deoptimization_reason
-    assert_match(/\Aupkeep-render-site\[data-upkeep-render-site="/, turbo_stream["targets"])
+    assert_match(/\A\[data-upkeep-render-site="/, turbo_stream["targets"])
     assert_includes stream.html, "Alpha"
     refute_includes stream.html, "Mango"
     assert_includes stream.html, "Zulu"
+  end
+
+  def test_collection_create_after_member_destroy_updates_render_site_container
+    victim = create_delivery_card!("Alpha")
+    create_delivery_card!("Mango")
+    create_delivery_card!("Zulu")
+
+    store = Upkeep::Subscriptions::Store.new
+    register_controller_subscription(store, subscriber_id: "subscriber-a", path: "/cards?status=open&order=title")
+
+    Upkeep::Runtime::ChangeLog.reset
+    victim.destroy!
+    remove_stream = delivery.build(plan_for(store)).streams.first
+    assert_equal "remove", remove_stream.action
+
+    Upkeep::Runtime::ChangeLog.reset
+    create_delivery_card!("Review")
+
+    batch = delivery.build(plan_for(store))
+    stream = batch.streams.first
+    turbo_stream = Nokogiri::HTML5.fragment(stream.to_html).at_css("turbo-stream")
+
+    assert_equal "update", turbo_stream["action"]
+    assert_equal "morph", turbo_stream["method"]
+    assert_equal "collection_create_position_unproven", stream.deoptimization_reason
+    assert_match(/\A\[data-upkeep-render-site="/, turbo_stream["targets"])
+    assert_includes stream.html, "Review"
+    refute_includes stream.to_html, "<upkeep-render-site"
+  end
+
+  def test_scalar_page_dependency_uses_turbo_refresh_instead_of_document_replacement
+    card = create_delivery_card!("Plan")
+
+    store = Upkeep::Subscriptions::Store.new
+    register_controller_subscription(store, subscriber_id: "subscriber-a", path: "/cards/titles?status=open", action: :titles)
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.update!(title: "Plan v2")
+
+    batch = delivery.build(plan_for(store))
+    stream = batch.streams.first
+    turbo_stream = Nokogiri::HTML5.fragment(stream.to_html).at_css("turbo-stream")
+
+    assert_equal "refresh", turbo_stream["action"]
+    assert_equal "morph", turbo_stream["method"]
+    assert_equal "preserve", turbo_stream["scroll"]
+    refute turbo_stream["targets"]
+    assert_empty stream.html
   end
 
   def test_collection_create_skips_delivery_when_created_record_does_not_match_relation
@@ -522,14 +578,14 @@ class TurboStreamsDeliveryTest < Minitest::Test
     DeliveryCard.create!(title: title, status: status)
   end
 
-  def register_controller_subscription(store, subscriber_id:, path: "/cards?status=open")
-    _html, recorder = capture_controller_request(path)
+  def register_controller_subscription(store, subscriber_id:, path: "/cards?status=open", action: :index)
+    _html, recorder = capture_controller_request(path, action: action)
     store.register(subscriber_id: subscriber_id, recorder: recorder)
   end
 
-  def capture_controller_request(path)
+  def capture_controller_request(path, action: :index)
     result, recorder = Upkeep::Runtime::Observation.capture_request do
-      _status, _headers, body = DeliveryCardsController.action(:index).call(Rack::MockRequest.env_for(path))
+      _status, _headers, body = DeliveryCardsController.action(action).call(Rack::MockRequest.env_for(path))
       [collect_body(body), Upkeep::Runtime::Observation.recorder]
     end
 
@@ -572,6 +628,11 @@ class TurboStreamsDeliveryTest < Minitest::Test
           <ul>
             <%= render partial: "delivery_cards/card", collection: @cards, as: :card %>
           </ul>
+        </main>
+      ERB
+      "delivery_cards/titles.html.erb" => <<~ERB,
+        <main>
+          <p><%= @titles.join(", ") %></p>
         </main>
       ERB
       "delivery_cards/_card.html.erb" => <<~ERB

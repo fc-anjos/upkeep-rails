@@ -34,16 +34,22 @@ class InstallGeneratorTest < Rails::Generators::TestCase
     assert_file migration, /t\.string :dependency_table, null: false/
     assert_file migration, /t\.json :dependency_metadata_snapshot/
     assert_file migration, /t\.json :owner_ids_snapshot, null: false/
-    assert_file "config/initializers/upkeep.rb", /config\.upkeep\.enabled = true/
-    assert_file "config/initializers/upkeep.rb", /config\.upkeep\.subscription_store = :active_record/
-    assert_file "config/initializers/upkeep.rb", /config\.upkeep\.delivery_adapter = :active_job/
-    assert_file "config/initializers/upkeep.rb", /config\.upkeep\.delivery_queue = :upkeep_realtime/
+    assert_file "config/initializers/upkeep.rb", /Upkeep::Rails\.configure do \|config\|/
+    assert_file "config/initializers/upkeep.rb", /config\.enabled = true/
+    assert_file "config/initializers/upkeep.rb", /config\.subscription_store = :active_record/
+    assert_file "config/initializers/upkeep.rb", /config\.delivery_adapter = :active_job/
+    assert_file "config/initializers/upkeep.rb", /config\.delivery_queue = :upkeep_realtime/
     assert_file "config/initializers/upkeep.rb", /Delivery setup:/
     assert_file "config/initializers/upkeep.rb", /Identity setup:/
-    assert_file "config/initializers/upkeep.rb", /Upkeep::Rails\.configure/
-    assert_file "config/initializers/upkeep.rb", /upkeep\.identify :user, current: \["Current", :user\]/
+    assert_file "config/initializers/upkeep.rb", /config\.identify :viewer, current: \["Current", :user\]/
+    assert_file "config/initializers/upkeep.rb", /absent_if/
+    refute_match(/request\.session/, File.read(File.join(destination_root, "config/initializers/upkeep.rb")))
     assert_file "app/javascript/upkeep/subscription.js", /data-upkeep-subscription/
     assert_file "app/javascript/upkeep/subscription.js", /activation_token: payload\.activation_token/
+    assert_file "app/javascript/upkeep/subscription.js", /connectStreamSource/
+    assert_file "app/javascript/upkeep/subscription.js", /disconnectStreamSource/
+    assert_file "app/javascript/upkeep/subscription.js", /subscription rejected by the server/
+    refute_match(/document\.write/, File.read(File.join(destination_root, "app/javascript/upkeep/subscription.js")))
     assert_file "app/javascript/application.js", /import "@hotwired\/turbo-rails"/
     assert_file "app/javascript/application.js", %r{import "upkeep/subscription"}
     assert_file "config/importmap.rb", /pin "@hotwired\/turbo-rails", to: "turbo\.min\.js"/
@@ -93,6 +99,7 @@ class InstallGeneratorTest < Rails::Generators::TestCase
     assert_includes output, "Identity setup required"
     assert_includes output, "Current.user"
     assert_includes output, "session[:user_id]"
-    assert_includes output, "Upkeep does not infer user/account identity by naming convention."
+    assert_includes output, "Upkeep does not infer subscriber identity by naming convention."
+    assert_includes output, "undeclared non-absent CurrentAttributes"
   end
 end

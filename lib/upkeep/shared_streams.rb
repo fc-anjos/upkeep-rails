@@ -55,7 +55,7 @@ module Upkeep
     def identity_signature_for(graph, frame_id)
       identity_dependencies = graph.contained_node_ids(frame_id)
         .flat_map { |owner_id| graph.dependencies_for(owner_id) }
-        .select(&:identity?)
+        .select { |dependency| Dependencies.partitioning_identity?(dependency) }
         .uniq(&:cache_key)
       return "public" if identity_dependencies.empty?
 

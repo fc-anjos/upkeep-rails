@@ -114,6 +114,7 @@ class InvalidationPlannerTest < Minitest::Test
     plan = planner(store).plan(Upkeep::Runtime::ChangeLog.events)
 
     assert_equal ["page"], plan.targets.map { |target| target.target.kind }.uniq
+    assert_equal ["refresh"], plan.targets.map(&:action).uniq
     assert_equal [:active_record_query], plan.matched_entries.map { |entry| entry.dependency.source }.uniq
     assert_includes plan.targets.first.render, "Plan v2"
   end

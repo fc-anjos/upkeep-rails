@@ -274,7 +274,7 @@ module Upkeep
       def identity_dependencies_for(frame_id)
         identity_dependency_owner_ids(frame_id)
           .flat_map { |owner_id| @graph.dependencies_for(owner_id) }
-          .select(&:identity?)
+          .select { |dependency| Dependencies.partitioning_identity?(dependency) }
           .uniq(&:cache_key)
       end
 
@@ -456,14 +456,23 @@ module Upkeep
       def record_current_attribute(owner, name, value)
         return unless Observation.recording?
 
-        dependency = Dependencies::CurrentAttribute.new(owner: owner, name: name, value: value)
+        dependency = Dependencies::CurrentAttribute.new(
+          owner: owner,
+          name: name,
+          value: value,
+          **identity_presence_metadata(:current, { owner: owner, name: name }, value)
+        )
         Observation.record_dependency(dependency)
       end
 
       def record_session(key, value)
         return unless Observation.recording?
 
-        dependency = Dependencies::SessionValue.new(key: key, value: value)
+        dependency = Dependencies::SessionValue.new(
+          key: key,
+          value: value,
+          **identity_presence_metadata(:session, key, value)
+        )
         Observation.record_dependency(dependency)
         Observation.record_ambient_replay_input(:session, key, value)
       end
@@ -471,7 +480,11 @@ module Upkeep
       def record_cookie(key, value)
         return unless Observation.recording?
 
-        dependency = Dependencies::CookieValue.new(key: key, value: value)
+        dependency = Dependencies::CookieValue.new(
+          key: key,
+          value: value,
+          **identity_presence_metadata(:cookie, key, value)
+        )
         Observation.record_dependency(dependency)
         Observation.record_ambient_replay_input(:cookie, key, value)
       end
@@ -487,8 +500,20 @@ module Upkeep
       def record_warden_user(scope, user)
         return unless Observation.recording?
 
-        dependency = Dependencies::WardenUser.new(scope: scope, user: user)
+        dependency = Dependencies::WardenUser.new(
+          scope: scope,
+          user: user,
+          **identity_presence_metadata(:warden, scope, user)
+        )
         Observation.record_dependency(dependency)
+      end
+
+      def identity_presence_metadata(source, key, value)
+        if defined?(Upkeep::Rails) && Upkeep::Rails.respond_to?(:configuration)
+          Upkeep::Rails.configuration.identity_presence_metadata(source: source, key: key, value: value)
+        else
+          { partitioning: !value.nil?, absent_by_name: {} }
+        end
       end
     end
 

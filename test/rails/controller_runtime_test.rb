@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "cgi"
 require "tmpdir"
 
 class RuntimeDeliveryUser < ActiveRecord::Base
@@ -117,7 +118,9 @@ class ControllerRuntimeTest < Minitest::Test
     assert_equal "identity_dependencies_present", events.last.payload.fetch(:anonymous_deopt_reason)
     expected_identity = expected_current_user_identity(user)
     assert_equal subscription.subscriber_id, expected_identity.subscriber_id
+    assert_includes html, "<upkeep-subscription-source"
     assert_includes html, "data-upkeep-subscription"
+    assert_includes html, "data-turbo-temporary"
     assert_includes html, subscription.id
     assert_includes html, expected_identity.stream_name
     marker_payload = subscription_marker_payload(html)
@@ -162,7 +165,9 @@ class ControllerRuntimeTest < Minitest::Test
     assert_nil subscription.metadata[:anonymous_deopt_reason]
     assert_equal Upkeep::Rails::Cable::SubscriberIdentity::ANONYMOUS_PUBLIC_MODE, events.last.payload.fetch(:identity_mode)
     assert_equal true, events.last.payload.fetch(:anonymous)
+    assert_includes html, "<upkeep-subscription-source"
     assert_includes html, "data-upkeep-subscription"
+    assert_includes html, "data-turbo-temporary"
     assert_includes html, subscription.id
     assert_includes html, subscription.metadata.fetch(:stream_name)
     marker_payload = subscription_marker_payload(html)
@@ -379,10 +384,10 @@ class ControllerRuntimeTest < Minitest::Test
   end
 
   def subscription_marker_payload(html)
-    marker = html.match(%r{<script type="application/json" data-upkeep-subscription>(.*?)</script>}m)
+    marker = html.match(%r{<upkeep-subscription-source[^>]*data-upkeep-subscription[^>]*>(.*?)</upkeep-subscription-source>}m)
     raise "missing Upkeep subscription marker" unless marker
 
-    JSON.parse(marker[1])
+    JSON.parse(CGI.unescapeHTML(marker[1]))
   end
 
   def delivery_change(table:)
@@ -408,7 +413,7 @@ class ControllerRuntimeTest < Minitest::Test
 
   def configure_current_user_identity
     Upkeep::Rails.configuration.identify :user, current: [RuntimeDeliveryCurrent, :user] do
-      subscribe { |cable| cable.current_user }
+      subscribe { |connection| connection.current_user }
     end
   end
 
