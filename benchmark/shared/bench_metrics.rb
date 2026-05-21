@@ -883,8 +883,18 @@ module BenchMetrics
       request_capture: request_capture_snapshot,
       subscription_shapes: subscription_shapes_snapshot,
       subscription_subscribe: subscription_subscribe_snapshot,
+      subscription_store: subscription_store_snapshot,
       delivery: upkeep_delivery_snapshot
     }
+  end
+
+  def self.subscription_store_snapshot
+    store = current_subscription_store
+    return {} unless store&.respond_to?(:summary)
+
+    store.summary
+  rescue StandardError => e
+    { error: "#{e.class}: #{e.message}" }
   end
 
   def self.subscription_graphs_snapshot
@@ -1647,7 +1657,8 @@ module BenchMetrics
                        :replay_recipe_bytes, :shared_stream_names_count,
                        :refused_boundaries_snapshot, :subscription_identity_snapshot,
                        :request_capture_snapshot, :subscription_shapes_snapshot,
-                       :subscription_subscribe_snapshot, :upkeep_delivery_snapshot,
+                       :subscription_subscribe_snapshot, :subscription_store_snapshot,
+                       :upkeep_delivery_snapshot,
                        :setup_reactivity_counters, :increment_reactivity_tally, :phase_samples_for,
                        :record_phase_samples, :record_operation_phase_samples,
                        :phase_samples_snapshot, :phase_samples_by_operation_snapshot,
