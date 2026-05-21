@@ -83,12 +83,11 @@ function loadPageAndToken(baseUrl, pagePath, jar, channel) {
 
 function extractSubscriptionToken(body, channel) {
   if (channel.tokenAttr === "data-upkeep-subscription") {
-    const marker = findBetween(body, "data-upkeep-subscription>", "</script>");
-    if (!marker) return "";
+    const match = `${body || ""}`.match(/<upkeep-subscription-source\b[^>]*\bdata-upkeep-subscription\b[^>]*>([\s\S]*?)<\/upkeep-subscription-source>/);
+    if (!match) return "";
 
     try {
-      const payload = JSON.parse(marker);
-      return payload.subscription_id || "";
+      return JSON.parse(decodeHtmlEntities(match[1])) || "";
     } catch (error) {
       console.error(`[diag] invalid upkeep subscription marker: ${error}`);
       return "";
@@ -96,6 +95,15 @@ function extractSubscriptionToken(body, channel) {
   }
 
   return findBetween(body, `${channel.tokenAttr}="`, '"');
+}
+
+function decodeHtmlEntities(value) {
+  return `${value || ""}`
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
 }
 
 function benchConnectId(label = "primary") {
@@ -119,8 +127,14 @@ function connectSubscription(wsUrl, baseUrl, jar, channel, token, wsTimeout, con
   if (!check(client, { connected: (c) => c })) fail("WebSocket connection failed");
 
   const subscribeStartedAt = Date.now();
-  const sub = client.subscribe(channel.name, {
+  const subscriptionParams = channel.tokenAttr === "data-upkeep-subscription" ? {
+    subscription_id: token.subscription_id,
+    activation_token: token.activation_token,
+  } : {
     [channel.paramKey]: token,
+  };
+  const sub = client.subscribe(channel.name, {
+    ...subscriptionParams,
     bench_connect_id: connectId,
     bench_subscribe_started_at_ms: subscribeStartedAt,
   });

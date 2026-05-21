@@ -11,7 +11,6 @@ import cable from "k6/x/cable";
 import exec from "k6/execution";
 import { Counter, Trend } from "k6/metrics";
 import { BASE_URL, warmSetupAdmissionForVu, warmSetupWindowMs } from "../utils/config.js";
-import { findBetween } from "../utils/index.js";
 import { isApplicationMessage, serializeCableApplicationMessage } from "../utils/messages.js";
 import { textSummary } from "../utils/summary.js";
 
@@ -49,17 +48,26 @@ export const options = {
   },
 };
 
-function subscriptionIdFrom(body) {
+function subscriptionPayloadFrom(body) {
   if (!body) return "";
 
-  const marker = findBetween(body, "data-upkeep-subscription>", "</script>");
-  if (!marker) return "";
+  const match = `${body}`.match(/<upkeep-subscription-source\b[^>]*\bdata-upkeep-subscription\b[^>]*>([\s\S]*?)<\/upkeep-subscription-source>/);
+  if (!match) return "";
 
   try {
-    return JSON.parse(marker).subscription_id || "";
+    return JSON.parse(decodeHtmlEntities(match[1])) || "";
   } catch {
     return "";
   }
+}
+
+function decodeHtmlEntities(value) {
+  return `${value || ""}`
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
 }
 
 function receiveApplicationMessage(sub, timeoutSeconds) {
@@ -132,8 +140,8 @@ export default function () {
   pageRender.add(Date.now() - pageStartedAt);
   check(pageRes, { "feed loaded": (r) => r.status === 200 });
 
-  const subscriptionId = subscriptionIdFrom(pageRes.body);
-  if (!subscriptionId) fail("could not extract data-upkeep-subscription from /feed");
+  const subscriptionPayload = subscriptionPayloadFrom(pageRes.body);
+  if (!subscriptionPayload?.subscription_id) fail("could not extract data-upkeep-subscription from /feed");
 
   const connectId = benchConnectId();
   const connectStartedAt = Date.now();
@@ -145,7 +153,8 @@ export default function () {
 
   const subscribeStartedAt = Date.now();
   const sub = client.subscribe("Upkeep::Rails::Cable::Channel", {
-    subscription_id: subscriptionId,
+    subscription_id: subscriptionPayload.subscription_id,
+    activation_token: subscriptionPayload.activation_token,
     bench_connect_id: connectId,
     bench_subscribe_started_at_ms: subscribeStartedAt,
   });

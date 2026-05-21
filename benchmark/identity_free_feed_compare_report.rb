@@ -147,13 +147,18 @@ def summarize(values)
 end
 
 def load_server_events(results_dir, app_name, run_timestamp)
-  files = Dir.glob(File.join(results_dir, "server-#{app_name}-*.jsonl")).select do |path|
-    suffix = File.basename(path)[/server-#{app_name}-(\d{14})\.jsonl\z/, 1]
-    suffix && suffix >= run_timestamp
+  files = Dir.glob(File.join(results_dir, "server-#{app_name}-*.jsonl"))
+  numeric_run_timestamp = run_timestamp[/\A\d{14}\z/]
+  if numeric_run_timestamp
+    files = files.select do |path|
+      suffix = File.basename(path)[/server-#{app_name}-(\d{14})\.jsonl\z/, 1]
+      suffix && suffix >= numeric_run_timestamp
+    end
   end
   return [] if files.empty?
 
-  File.readlines(files.min).filter_map do |line|
+  path = numeric_run_timestamp ? files.min : files.max_by { |candidate| File.mtime(candidate) }
+  File.readlines(path).filter_map do |line|
     JSON.parse(line)
   rescue JSON::ParserError
     nil
@@ -186,6 +191,23 @@ def server_phase_summary(events)
     "subscription_confirmation" => event_field_stats(events, "bench_subscription_confirmation", "duration_ms"),
     "write_request" => event_field_stats(events, "bench_request", "duration_ms", phase: "feed#create", bench_phase: "write_post"),
     "write_client_to_server_start" => event_field_stats(events, "bench_request", "client_to_server_start_ms", phase: "feed#create", bench_phase: "write_post")
+  }
+end
+
+def subscription_index_summary(events)
+  persist_events = events.select { |event| event["event"] == "upkeep_subscription_store_persist" }
+  lookup_event = events.reverse.find { |event| event["event"] == "upkeep_subscription_index_lookup" } || {}
+
+  {
+    "subscription_rows_written" => persist_events.sum { |event| event["subscription_rows"].to_i },
+    "shape_index_rows_written" => persist_events.sum { |event| event["shape_index_rows"].to_i },
+    "direct_index_rows_written" => persist_events.sum { |event| event["direct_index_rows"].to_i },
+    "persistent_direct_index_entries" => lookup_event["persistent_direct_index_entries"],
+    "persistent_shape_index_entries" => lookup_event["persistent_shape_index_entries"],
+    "persistent_shape_keys" => lookup_event["persistent_shape_keys"],
+    "persistent_shape_subscriptions" => lookup_event["persistent_shape_subscriptions"],
+    "active_entries" => lookup_event["active_entries"],
+    "persistent_entries" => lookup_event["persistent_entries"]
   }
 end
 
@@ -250,6 +272,7 @@ report = {
     "subscribe_latency_p95_ms" => k6_metric(upkeep_k6, "subscribe_latency", "p(95)"),
     "suback_p95_ms" => k6_metric(upkeep_k6, "suback", "p(95)"),
     "server_phases" => server_phase_summary(upkeep_server_events),
+    "subscription_index" => subscription_index_summary(upkeep_server_events),
     "render_groups_by_tier" => labelled_delta(upkeep_before, upkeep_after, "render_groups_by_tier"),
     "render_groups_by_mode" => labelled_delta(upkeep_before, upkeep_after, "render_groups_by_mode"),
     "reactivity" => {
@@ -339,6 +362,11 @@ File.write(md_path, <<~MARKDOWN)
   | Runtime render count | #{fmt(upkeep.dig("reactivity", "runtime_render_count"))} |
   | Planned targets | #{fmt(upkeep.dig("reactivity", "planned_targets"))} |
   | Represented subscribers | #{fmt(upkeep.dig("reactivity", "represented_subscribers"))} |
+  | Durable direct index rows at lookup | #{fmt(upkeep.dig("subscription_index", "persistent_direct_index_entries"))} |
+  | Durable shape index rows at lookup | #{fmt(upkeep.dig("subscription_index", "persistent_shape_index_entries"))} |
+  | Shape keys at lookup | #{fmt(upkeep.dig("subscription_index", "persistent_shape_keys"))} |
+  | Shape subscriptions at lookup | #{fmt(upkeep.dig("subscription_index", "persistent_shape_subscriptions"))} |
+  | Shape index rows written | #{fmt(upkeep.dig("subscription_index", "shape_index_rows_written"))} |
   | Live delivery deopts | `#{upkeep.dig("reactivity", "live_deoptimizations") || {}}` |
   | Render groups by tier | `#{upkeep["render_groups_by_tier"]}` |
   | Render groups by mode | `#{upkeep["render_groups_by_mode"]}` |
