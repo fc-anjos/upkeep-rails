@@ -24,6 +24,7 @@ module Upkeep
     INTERNAL_DELIVERY_TABLES = %w[
       upkeep_subscriptions
       upkeep_subscription_index_entries
+      upkeep_subscription_shape_index_entries
     ].freeze
 
     class << self
@@ -300,11 +301,12 @@ module Upkeep
 
       def active_record_subscription_store_error(schema_errors, production: false)
         prefix = if production
-          "Upkeep production boot requires compatible upkeep_subscriptions and " \
-            "upkeep_subscription_index_entries tables for subscription_store=:active_record."
+          "Upkeep production boot requires compatible upkeep_subscriptions, " \
+            "upkeep_subscription_index_entries, and upkeep_subscription_shape_index_entries tables " \
+            "for subscription_store=:active_record."
         else
-          "Upkeep subscription_store=:active_record requires compatible upkeep_subscriptions and " \
-            "upkeep_subscription_index_entries tables."
+          "Upkeep subscription_store=:active_record requires compatible upkeep_subscriptions, " \
+            "upkeep_subscription_index_entries, and upkeep_subscription_shape_index_entries tables."
         end
 
         "#{prefix} Schema errors: #{schema_errors.join("; ")}. Run bin/rails generate upkeep:install " \

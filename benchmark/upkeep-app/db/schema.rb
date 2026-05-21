@@ -101,6 +101,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_29_000004) do
     t.index ["subscription_id"], name: "index_upkeep_subscription_index_entries_on_subscription_id"
   end
 
+  create_table "upkeep_subscription_shape_index_entries", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.json "dependency_metadata_snapshot"
+    t.string "dependency_predicate_digest"
+    t.string "dependency_source", null: false
+    t.string "dependency_table", null: false
+    t.string "lookup_attribute", null: false
+    t.string "lookup_key_digest", null: false
+    t.json "lookup_record_id_snapshot"
+    t.string "lookup_table", null: false
+    t.json "owner_ids_snapshot", null: false
+    t.string "subscription_shape_key", null: false
+    t.datetime "updated_at", null: false
+    t.index ["lookup_key_digest"], name: "index_upkeep_subscription_shape_index_entries_on_lookup_key_digest"
+    t.index ["subscription_shape_key"], name: "index_upkeep_subscription_shape_index_entries_on_subscription_shape_key"
+  end
+
   create_table "upkeep_subscriptions", id: :string, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.json "metadata"

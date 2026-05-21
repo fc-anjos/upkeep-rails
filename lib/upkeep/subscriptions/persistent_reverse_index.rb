@@ -22,9 +22,24 @@ module Upkeep
         :owner_ids_snapshot
       ].freeze
 
-      def initialize(reverse_index:, index_record:)
+      SHAPE_LOOKUP_COLUMNS = [
+        :subscription_shape_key,
+        :lookup_key_digest,
+        :dependency_source,
+        :lookup_table,
+        :lookup_record_id_snapshot,
+        :lookup_attribute,
+        :dependency_table,
+        :dependency_predicate_digest,
+        :dependency_metadata_snapshot,
+        :owner_ids_snapshot
+      ].freeze
+
+      def initialize(reverse_index:, index_record:, shape_index_record:, subscription_record:)
         @reverse_index = reverse_index
         @index_record = index_record
+        @shape_index_record = shape_index_record
+        @subscription_record = subscription_record
       end
 
       def entries_for(changes)
@@ -32,9 +47,11 @@ module Upkeep
       end
 
       def summary
+        lookup_key_digests = index_record.distinct.pluck(:lookup_key_digest) +
+          shape_index_record.distinct.pluck(:lookup_key_digest)
         {
-          lookup_keys: index_record.distinct.count(:lookup_key_digest),
-          entries: index_record.count
+          lookup_keys: lookup_key_digests.uniq.size,
+          entries: index_record.count + shape_index_record.count
         }
       end
 
@@ -61,7 +78,7 @@ module Upkeep
 
       private
 
-      attr_reader :reverse_index, :index_record
+      attr_reader :reverse_index, :index_record, :shape_index_record, :subscription_record
 
       def persistent_entries_for(changes)
         lookup_keys = Array(changes).flat_map { |change| reverse_index.lookup_keys_for_change(change) }.uniq
@@ -71,11 +88,28 @@ module Upkeep
         end
         lookup_key_digests = lookup_keys_by_digest.keys
 
-        index_record
+        direct_entries = index_record
           .where(lookup_key_digest: lookup_key_digests)
-            .pluck(*LOOKUP_COLUMNS)
-            .flat_map { |row| entries_for_row(row, lookup_keys_by_digest) }
-            .uniq { |entry| [entry.subscription_id, entry.owner_id, entry.dependency_cache_key] }
+          .pluck(*LOOKUP_COLUMNS)
+          .flat_map { |row| entries_for_row(row, lookup_keys_by_digest) }
+
+        shape_entries = shape_entries_for(lookup_key_digests, lookup_keys_by_digest)
+
+        (direct_entries + shape_entries).uniq { |entry| [entry.subscription_id, entry.owner_id, entry.dependency_cache_key] }
+      end
+
+      def shape_entries_for(lookup_key_digests, lookup_keys_by_digest)
+        shape_rows = shape_index_record
+          .where(lookup_key_digest: lookup_key_digests)
+          .pluck(*SHAPE_LOOKUP_COLUMNS)
+        return [] if shape_rows.empty?
+
+        subscription_ids_by_shape_key = subscription_ids_by_shape_key(
+          shape_rows.map { |row| row.fetch(0) }.uniq
+        )
+        shape_rows.flat_map do |row|
+          entries_for_shape_row(row, lookup_keys_by_digest, subscription_ids_by_shape_key)
+        end
       end
 
       def entries_for_row(row, lookup_keys_by_digest)
@@ -94,6 +128,28 @@ module Upkeep
             nil,
             nil
           )
+        end
+      end
+
+      def entries_for_shape_row(row, lookup_keys_by_digest, subscription_ids_by_shape_key)
+        attributes = SHAPE_LOOKUP_COLUMNS.zip(row).to_h
+        lookup_keys = lookup_keys_by_digest.fetch(attributes.fetch(:lookup_key_digest)) { return [] }
+        return [] unless lookup_keys.any? { |lookup_key| lookup_key_matches_row?(lookup_key, attributes) }
+
+        dependency = dependency_for_row(attributes)
+        dependency_cache_key = dependency.cache_key
+        subscription_ids = subscription_ids_by_shape_key.fetch(attributes.fetch(:subscription_shape_key), [])
+        subscription_ids.flat_map do |subscription_id|
+          JsonSnapshot.load(attributes.fetch(:owner_ids_snapshot)).map do |owner_id|
+            ReverseIndex::Entry.new(
+              subscription_id,
+              owner_id,
+              dependency_cache_key,
+              dependency,
+              nil,
+              nil
+            )
+          end
         end
       end
 
@@ -138,6 +194,19 @@ module Upkeep
         else
           raise ArgumentError, "unsupported persistent dependency source: #{source.inspect}"
         end
+      end
+
+      def subscription_ids_by_shape_key(shape_keys)
+        shape_key_lookup = shape_keys.to_h { |shape_key| [shape_key, []] }
+        subscription_record.pluck(:id, :metadata).each do |id, metadata|
+          shape_key = metadata_value(metadata, :subscription_shape_key)
+          shape_key_lookup[shape_key] << id if shape_key_lookup.key?(shape_key)
+        end
+        shape_key_lookup.transform_values { |ids| ids.sort_by(&:to_s) }
+      end
+
+      def metadata_value(metadata, key)
+        metadata.to_h[key] || metadata.to_h[key.to_s]
       end
     end
   end

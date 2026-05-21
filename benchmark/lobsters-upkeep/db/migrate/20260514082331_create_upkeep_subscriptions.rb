@@ -27,5 +27,21 @@ class CreateUpkeepSubscriptions < ActiveRecord::Migration[8.1]
       :upkeep_subscriptions,
       column: :subscription_id,
       on_delete: :cascade
+
+    create_table :upkeep_subscription_shape_index_entries do |t|
+      t.string :subscription_shape_key, null: false
+      t.string :lookup_key_digest, null: false
+      t.string :dependency_source, null: false
+      t.string :lookup_table, null: false
+      t.json :lookup_record_id_snapshot
+      t.string :lookup_attribute, null: false
+      t.string :dependency_table, null: false
+      t.string :dependency_predicate_digest
+      t.json :dependency_metadata_snapshot
+      t.json :owner_ids_snapshot, null: false
+      t.timestamps
+    end
+    add_index :upkeep_subscription_shape_index_entries, :subscription_shape_key
+    add_index :upkeep_subscription_shape_index_entries, :lookup_key_digest
   end
 end

@@ -43,6 +43,20 @@ module Upkeep
           "owner_ids_snapshot" => :json,
           "created_at" => :datetime,
           "updated_at" => :datetime
+        },
+        "upkeep_subscription_shape_index_entries" => {
+          "subscription_shape_key" => :string,
+          "lookup_key_digest" => :string,
+          "dependency_source" => :string,
+          "lookup_table" => :string,
+          "lookup_record_id_snapshot" => :json,
+          "lookup_attribute" => :string,
+          "dependency_table" => :string,
+          "dependency_predicate_digest" => :string,
+          "dependency_metadata_snapshot" => :json,
+          "owner_ids_snapshot" => :json,
+          "created_at" => :datetime,
+          "updated_at" => :datetime
         }
       }.freeze
 
@@ -64,13 +78,18 @@ module Upkeep
           foreign_key: "subscription_id"
       end
 
+      class ShapeIndexEntryRecord < ActiveRecord::Base
+        self.table_name = "upkeep_subscription_shape_index_entries"
+      end
+
       attr_reader :reverse_index
 
       DeferredIndexWrite = Data.define(:subscription, :entries)
 
-      def initialize(subscription_record: SubscriptionRecord, index_record: IndexEntryRecord)
+      def initialize(subscription_record: SubscriptionRecord, index_record: IndexEntryRecord, shape_index_record: ShapeIndexEntryRecord)
         @subscription_record = subscription_record
         @index_record = index_record
+        @shape_index_record = shape_index_record
         @index_builder = ReverseIndex.new
         @pending_registry = ActiveRegistry.new
         @active_registry = ActiveRegistry.new
@@ -79,11 +98,14 @@ module Upkeep
         @persistence = ActiveRecordSubscriptionPersistence.new(
           subscription_record: subscription_record,
           index_record: index_record,
+          shape_index_record: shape_index_record,
           index_builder: index_builder
         )
         persistent_index = PersistentReverseIndex.new(
           reverse_index: index_builder,
-          index_record: index_record
+          index_record: index_record,
+          shape_index_record: shape_index_record,
+          subscription_record: subscription_record
         )
         @reverse_index = LayeredReverseIndex.new(
           active_index: active_registry,
@@ -247,7 +269,7 @@ module Upkeep
 
       private
 
-      attr_reader :subscription_record, :index_record, :index_builder, :pending_registry, :active_registry, :persistence, :durable_writer
+      attr_reader :subscription_record, :index_record, :shape_index_record, :index_builder, :pending_registry, :active_registry, :persistence, :durable_writer
 
       def register_subscription(subscriber_id, recorder, metadata, entries: nil, payload: nil)
         recorder.flush_pending_dependencies if recorder.respond_to?(:flush_pending_dependencies)
