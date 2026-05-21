@@ -176,6 +176,7 @@ module Upkeep
       end
 
       def touch(id, now: Time.now)
+        fetch(id)
         metadata = { "last_seen_at" => now.utc.iso8601 }
         pending_registry.touch(id, metadata: metadata)
         active_registry.touch(id, metadata: metadata)

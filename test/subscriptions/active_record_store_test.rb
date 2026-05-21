@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "support/subscription_store_contract"
 require "fileutils"
 require "stringio"
 require "tmpdir"
@@ -19,6 +20,8 @@ class PersistentSubscriptionCardsController < ActionController::Base
 end
 
 class ActiveRecordSubscriptionStoreTest < Minitest::Test
+  include SubscriptionStoreContract
+
   def setup
     @previous_subscription_store = Upkeep::Rails.configuration.subscription_store
     Upkeep::Rails::Install.call
@@ -564,8 +567,36 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     store
   end
 
+  def store
+    @contract_store ||= active_record_store
+  end
+
   def create_subscription_card!(title, status: "open")
     PersistentSubscriptionCard.create!(title: title, status: status)
+  end
+
+  def recorder_with_dependency
+    recorder = Upkeep::Runtime::Recorder.new
+    recorder.record_dependency(
+      Upkeep::Dependencies::ActiveRecordAttribute.new(
+        table: "persistent_subscription_cards",
+        model: "PersistentSubscriptionCard",
+        id: 1,
+        attribute: "title"
+      )
+    )
+    recorder
+  end
+
+  def change
+    {
+      type: "update",
+      table: "persistent_subscription_cards",
+      id: 1,
+      changed_attributes: ["title"],
+      old_values: { "title" => "old" },
+      new_values: { "title" => "new" }
+    }
   end
 
   def capture_controller_request(path)

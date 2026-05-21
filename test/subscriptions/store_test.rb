@@ -1,10 +1,12 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "support/subscription_store_contract"
 
 class SubscriptionStoreTest < Minitest::Test
+  include SubscriptionStoreContract
+
   def test_touch_updates_last_seen_metadata
-    store = Upkeep::Subscriptions::Store.new
     subscription = store.register(subscriber_id: "subscriber-a", recorder: Upkeep::Runtime::Recorder.new)
     seen_at = Time.utc(2026, 1, 1, 12, 0, 0)
 
@@ -14,9 +16,10 @@ class SubscriptionStoreTest < Minitest::Test
   end
 
   def test_prune_stale_removes_old_subscriptions_from_index
-    store = Upkeep::Subscriptions::Store.new
     stale = store.register(subscriber_id: "stale", recorder: recorder_with_dependency)
     fresh = store.register(subscriber_id: "fresh", recorder: recorder_with_dependency)
+    store.activate(stale.id)
+    store.activate(fresh.id)
 
     store.touch(stale.id, now: Time.utc(2026, 1, 1))
     store.touch(fresh.id, now: Time.utc(2026, 1, 3))
@@ -31,9 +34,10 @@ class SubscriptionStoreTest < Minitest::Test
   end
 
   def test_unregister_removes_only_selected_subscription_from_index
-    store = Upkeep::Subscriptions::Store.new
     removed = store.register(subscriber_id: "removed", recorder: recorder_with_dependency)
     retained = store.register(subscriber_id: "retained", recorder: recorder_with_dependency)
+    store.activate(removed.id)
+    store.activate(retained.id)
 
     assert_equal 1, store.unregister(removed.id)
 
@@ -44,8 +48,8 @@ class SubscriptionStoreTest < Minitest::Test
   end
 
   def test_nil_id_attribute_dependency_matches_record_changes
-    store = Upkeep::Subscriptions::Store.new
     subscription = store.register(subscriber_id: "subscriber-a", recorder: recorder_with_nil_id_dependency)
+    store.activate(subscription.id)
 
     entries = store.reverse_index.entries_for([change.merge(id: nil)])
 
@@ -53,8 +57,8 @@ class SubscriptionStoreTest < Minitest::Test
   end
 
   def test_collection_dependency_indexes_proven_columns
-    store = Upkeep::Subscriptions::Store.new
     subscription = store.register(subscriber_id: "subscriber-a", recorder: recorder_with_collection_dependency)
+    store.activate(subscription.id)
 
     status_entries = store.reverse_index.entries_for([change.merge(changed_attributes: ["status"])])
     title_entries = store.reverse_index.entries_for([change.merge(changed_attributes: ["title"])])
@@ -64,8 +68,8 @@ class SubscriptionStoreTest < Minitest::Test
   end
 
   def test_identity_dependencies_do_not_create_invalidation_index_entries
-    store = Upkeep::Subscriptions::Store.new
-    store.register(subscriber_id: "subscriber-a", recorder: recorder_with_identity_dependency)
+    subscription = store.register(subscriber_id: "subscriber-a", recorder: recorder_with_identity_dependency)
+    store.activate(subscription.id)
 
     summary = store.summary.fetch(:reverse_index)
 
@@ -74,6 +78,10 @@ class SubscriptionStoreTest < Minitest::Test
   end
 
   private
+
+  def store
+    @store ||= Upkeep::Subscriptions::Store.new
+  end
 
   def recorder_with_dependency
     recorder = Upkeep::Runtime::Recorder.new

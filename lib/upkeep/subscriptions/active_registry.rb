@@ -6,10 +6,10 @@ require_relative "store"
 module Upkeep
   module Subscriptions
     class ActiveRegistry
-      def initialize
+      def initialize(reverse_index: ReverseIndex.new)
         @mutex = Mutex.new
         @subscriptions = {}
-        @reverse_index = ReverseIndex.new
+        @reverse_index = reverse_index
       end
 
       def register(subscription, entries: nil)
@@ -45,7 +45,7 @@ module Upkeep
       def touch(id, metadata:)
         @mutex.synchronize do
           subscription = @subscriptions[id]
-          return unless subscription
+          return false unless subscription
 
           @subscriptions[id] = Subscription.new(
             subscription.id,
@@ -54,6 +54,7 @@ module Upkeep
             subscription.graph,
             subscription.metadata.merge(metadata)
           )
+          true
         end
       end
 

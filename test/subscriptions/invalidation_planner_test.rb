@@ -102,7 +102,8 @@ class InvalidationPlannerTest < Minitest::Test
 
     store = Upkeep::Subscriptions::Store.new
     html, recorder = capture_controller_request("/cards/titles?status=open", action: :titles)
-    store.register(subscriber_id: "subscriber-a", recorder: recorder)
+    subscription = store.register(subscriber_id: "subscriber-a", recorder: recorder)
+    store.activate(subscription.id)
 
     assert_includes html, "Plan"
     refute_includes recorder.graph.summary.fetch(:dependency_sources), "active_record_collection"
@@ -250,11 +251,13 @@ class InvalidationPlannerTest < Minitest::Test
 
   def register_controller_subscription(store, subscriber_id:)
     _html, recorder = capture_controller_request("/cards?status=open")
-    store.register(
+    subscription = store.register(
       subscriber_id: subscriber_id,
       recorder: recorder,
       metadata: { subscription_shape_key: "shape:subscription_cards:index:open" }
     )
+    store.activate(subscription.id)
+    subscription
   end
 
   def capture_controller_request(path, action: :index)
@@ -269,7 +272,9 @@ class InvalidationPlannerTest < Minitest::Test
   def render_identity_subscription(store, subscriber_id:, user_name:)
     user = Upkeep::Domain::User.find_by!(name: user_name)
     result = renderer.render_request("boards/identity_collection", method(:domain_request), user: user)
-    store.register(subscriber_id: subscriber_id, recorder: result.recorder)
+    subscription = store.register(subscriber_id: subscriber_id, recorder: result.recorder)
+    store.activate(subscription.id)
+    subscription
   end
 
   def render_auth_subscription(store, subscriber_id:, user_name:)
@@ -285,7 +290,9 @@ class InvalidationPlannerTest < Minitest::Test
       current_attributes: { account_id: "account-#{subscriber_id.downcase}", viewer_role: subscriber_id.downcase }
     )
 
-    store.register(subscriber_id: subscriber_id, recorder: result.recorder)
+    subscription = store.register(subscriber_id: subscriber_id, recorder: result.recorder)
+    store.activate(subscription.id)
+    subscription
   end
 
   def reset_domain_database
