@@ -14,7 +14,13 @@ module Upkeep
     end
 
     def signature_for(recipe)
-      Digest::SHA256.hexdigest(recipe.to_h.inspect)
+      if recipe.instance_variable_defined?(:@upkeep_shared_stream_signature)
+        recipe.instance_variable_get(:@upkeep_shared_stream_signature)
+      else
+        Digest::SHA256.hexdigest(recipe.to_h.inspect).tap do |signature|
+          recipe.instance_variable_set(:@upkeep_shared_stream_signature, signature)
+        end
+      end
     end
 
     def names_for_subscription(subscription)

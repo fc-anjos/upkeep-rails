@@ -20,6 +20,8 @@ const postLatency = new Trend("post_latency", true);
 const rtt = new Trend("rtt", true);
 const setupTotal = new Trend("setup_total", true);
 const suback = new Trend("suback", true);
+const subscribeLatency = new Trend("subscribe_latency", true);
+const wsConnect = new Trend("ws_connect", true);
 const writesIssued = new Counter("writes_issued");
 const deliveries = new Counter("deliveries_observed");
 const steadyStateSetupLeaks = new Counter("steady_state_setup_leaks");
@@ -99,6 +101,19 @@ function recordDelivery(message) {
   if (sentAt) rtt.add(Date.now() - sentAt);
 }
 
+function benchConnectId() {
+  return `identity-free-vu${__VU}-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+}
+
+function wsUrlWithBenchTimings(baseUrl, connectId, startedAtMs) {
+  const wsUrl = `${baseUrl.replace(/^http/, "ws")}/cable`;
+  const joiner = wsUrl.includes("?") ? "&" : "?";
+  return [
+    `${wsUrl}${joiner}bench_connect_id=${encodeURIComponent(connectId)}`,
+    `bench_client_started_at_ms=${encodeURIComponent(startedAtMs)}`,
+  ].join("&");
+}
+
 export default function () {
   const scenarioStartAt = new Date(exec.scenario.startTime).getTime();
   const measuredPhaseStartsAt = scenarioStartAt + warmSetupWindowMs();
@@ -108,19 +123,33 @@ export default function () {
   const setupStartedAt = Date.now();
 
   const pageStartedAt = Date.now();
-  const pageRes = http.get(`${BASE_URL}/feed`);
+  const pageRes = http.get(`${BASE_URL}/feed`, {
+    headers: {
+      "X-Bench-Client-Started-At-Ms": `${pageStartedAt}`,
+      "X-Bench-Phase": "setup_page",
+    },
+  });
   pageRender.add(Date.now() - pageStartedAt);
   check(pageRes, { "feed loaded": (r) => r.status === 200 });
 
   const subscriptionId = subscriptionIdFrom(pageRes.body);
   if (!subscriptionId) fail("could not extract data-upkeep-subscription from /feed");
 
-  const client = cable.connect(`${BASE_URL.replace(/^http/, "ws")}/cable`, {
+  const connectId = benchConnectId();
+  const connectStartedAt = Date.now();
+  const client = cable.connect(wsUrlWithBenchTimings(BASE_URL, connectId, connectStartedAt), {
     receiveTimeoutMs: 5000,
   });
+  wsConnect.add(Date.now() - connectStartedAt);
   if (!check(client, { connected: (c) => c })) fail("WS connect failed");
 
-  const sub = client.subscribe("Upkeep::Rails::Cable::Channel", { subscription_id: subscriptionId });
+  const subscribeStartedAt = Date.now();
+  const sub = client.subscribe("Upkeep::Rails::Cable::Channel", {
+    subscription_id: subscriptionId,
+    bench_connect_id: connectId,
+    bench_subscribe_started_at_ms: subscribeStartedAt,
+  });
+  subscribeLatency.add(Date.now() - subscribeStartedAt);
   if (!check(sub, { subscribed: (ch) => ch })) fail("subscribe failed");
   suback.add(sub.ackDuration());
   const setupCompletedAt = Date.now();
@@ -140,7 +169,13 @@ export default function () {
     const res = http.post(
       `${BASE_URL}/feed`,
       { title: `feed ${nonce}`, body: `identity-free body ${nonce}` },
-      { tags: { name: "POST_feed" } }
+      {
+        headers: {
+          "X-Bench-Client-Started-At-Ms": `${sendTs}`,
+          "X-Bench-Phase": "write_post",
+        },
+        tags: { name: "POST_feed" },
+      }
     );
     postLatency.add(res.timings.duration);
     check(res, { "feed post 2xx": (r) => r.status >= 200 && r.status < 300 });

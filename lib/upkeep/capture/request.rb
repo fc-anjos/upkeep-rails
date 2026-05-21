@@ -13,7 +13,8 @@ module Upkeep
       :response_media_type,
       :response_successful,
       :signature,
-      :timings
+      :timings,
+      :counters
     ) do
       def successful?
         !!response_successful
@@ -28,11 +29,20 @@ module Upkeep
     module Request
       module_function
 
-      def call(controller)
+      def call(controller, profile: false)
         timings = {}
+        counters = {}
         action_result, recorder = measure(timings, :action_ms) do
-          Runtime::Observation.capture_request { yield }
+          if profile
+            profile_action(timings, counters) do
+              Runtime::Observation.capture_request(profile: true) { yield }
+            end
+          else
+            Runtime::Observation.capture_request { yield }
+          end
         end
+        timings.merge!(recorder.profile_timings)
+        counters.merge!(recorder.profile_counts)
         html = measure(timings, :response_body_ms) { response_body_html(controller.response.body) }
         signature = measure(timings, :signature_ms) { signature_for(controller) }
         RequestResult.new(
@@ -44,8 +54,17 @@ module Upkeep
           controller.response.media_type,
           controller.response.successful?,
           signature,
-          timings
+          timings,
+          counters
         )
+      end
+
+      def profile_action(timings, counters)
+        collector = ActionProfiler.new
+        collector.capture { yield }.tap do
+          timings.merge!(collector.timings)
+          counters.merge!(collector.counters)
+        end
       end
 
       def signature_for(controller)
@@ -77,6 +96,54 @@ module Upkeep
         yield
       ensure
         timings[key] = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at) * 1000.0).round(3)
+      end
+
+      class ActionProfiler
+        EVENT_MAP = {
+          "sql.active_record" => :sql,
+          "render_template.action_view" => :render_template,
+          "render_partial.action_view" => :render_partial,
+          "render_collection.action_view" => :render_collection
+        }.freeze
+
+        attr_reader :timings, :counters
+
+        def initialize
+          @thread = Thread.current
+          @timings = Hash.new(0.0)
+          @counters = Hash.new(0)
+        end
+
+        def capture
+          callback = lambda do |name, started, finished, unique_id, payload|
+            next unless Thread.current.equal?(@thread)
+
+            event = ActiveSupport::Notifications::Event.new(name, started, finished, unique_id, payload)
+            record(event)
+          end
+
+          ActiveSupport::Notifications.subscribed(callback, /\A(sql\.active_record|render_(template|partial|collection)\.action_view)\z/) do
+            yield
+          end
+        ensure
+          @timings.transform_values! { |value| value.round(3) }
+        end
+
+        private
+
+        def record(event)
+          key = EVENT_MAP[event.name]
+          return unless key
+          return if ignored_sql?(event)
+
+          @timings[:"#{key}_ms"] += event.duration
+          @counters[:"#{key}_count"] += 1
+          @timings[:view_ms] += event.duration if event.name.end_with?(".action_view")
+        end
+
+        def ignored_sql?(event)
+          event.name == "sql.active_record" && event.payload[:name] == "SCHEMA"
+        end
       end
     end
   end

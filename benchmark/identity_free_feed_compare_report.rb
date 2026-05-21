@@ -129,9 +129,71 @@ def ratio(numerator, denominator)
   numerator.to_f / denominator.to_f
 end
 
+def summarize(values)
+  values = values.compact.map(&:to_f).sort
+  return {} if values.empty?
+
+  percentile = lambda do |ratio|
+    index = [(values.length * ratio).ceil - 1, 0].max
+    values.fetch([index, values.length - 1].min)
+  end
+
+  {
+    "count" => values.length,
+    "avg_ms" => (values.sum / values.length).round(3),
+    "p95_ms" => percentile.call(0.95).round(3),
+    "max_ms" => values.last.round(3)
+  }
+end
+
+def load_server_events(results_dir, app_name, run_timestamp)
+  files = Dir.glob(File.join(results_dir, "server-#{app_name}-*.jsonl")).select do |path|
+    suffix = File.basename(path)[/server-#{app_name}-(\d{14})\.jsonl\z/, 1]
+    suffix && suffix >= run_timestamp
+  end
+  return [] if files.empty?
+
+  File.readlines(files.min).filter_map do |line|
+    JSON.parse(line)
+  rescue JSON::ParserError
+    nil
+  end
+end
+
+def event_field_stats(events, event_name, field, filters = {})
+  values = events.filter_map do |event|
+    next unless event["event"] == event_name
+    next unless filters.all? { |key, value| event[key.to_s] == value }
+
+    event[field]
+  end
+
+  summarize(values)
+end
+
+def server_phase_summary(events)
+  {
+    "setup_page_request" => event_field_stats(events, "bench_request", "duration_ms", phase: "feed#show", bench_phase: "setup_page"),
+    "setup_page_client_to_server_start" => event_field_stats(events, "bench_request", "client_to_server_start_ms", phase: "feed#show", bench_phase: "setup_page"),
+    "refresh_page_request" => event_field_stats(events, "bench_request", "duration_ms", phase: "feed#show", bench_phase: "refresh_get"),
+    "refresh_page_client_to_server_start" => event_field_stats(events, "bench_request", "client_to_server_start_ms", phase: "feed#show", bench_phase: "refresh_get"),
+    "cable_request" => event_field_stats(events, "bench_cable_request", "duration_ms"),
+    "cable_request_client_to_server_start" => event_field_stats(events, "bench_cable_request", "client_to_server_start_ms"),
+    "cable_open" => event_field_stats(events, "bench_cable_open", "duration_ms"),
+    "cable_open_client_to_server_start" => event_field_stats(events, "bench_cable_open", "client_to_server_start_ms"),
+    "subscription_registration" => event_field_stats(events, "bench_subscription_registration", "duration_ms"),
+    "subscription_registration_client_to_server_start" => event_field_stats(events, "bench_subscription_registration", "client_to_server_start_ms"),
+    "subscription_confirmation" => event_field_stats(events, "bench_subscription_confirmation", "duration_ms"),
+    "write_request" => event_field_stats(events, "bench_request", "duration_ms", phase: "feed#create", bench_phase: "write_post"),
+    "write_client_to_server_start" => event_field_stats(events, "bench_request", "client_to_server_start_ms", phase: "feed#create", bench_phase: "write_post")
+  }
+end
+
 upkeep_entries = load_jsonl(File.join(results_dir, "metrics-upkeep-#{timestamp}.jsonl"))
 upkeep_k6 = load_json(File.join(results_dir, "render-dedup-identity-free-feed-upkeep.json"))
 turbo_k6 = load_json(File.join(results_dir, "render-dedup-identity-free-feed-turbo.json"))
+upkeep_server_events = load_server_events(results_dir, "upkeep", timestamp)
+turbo_server_events = load_server_events(results_dir, "turbo", timestamp)
 
 upkeep_before = metric_data(upkeep_entries, "before")
 upkeep_after = metric_data(upkeep_entries, "after-render-dedup-identity-free-feed-compare-upkeep")
@@ -184,7 +246,10 @@ report = {
     "page_render_p95_ms" => k6_metric(upkeep_k6, "page_render", "p(95)"),
     "setup_p95_ms" => k6_metric(upkeep_k6, "setup_total", "p(95)"),
     "steady_state_setup_leaks" => k6_metric(upkeep_k6, "steady_state_setup_leaks", "count"),
+    "ws_connect_p95_ms" => k6_metric(upkeep_k6, "ws_connect", "p(95)"),
+    "subscribe_latency_p95_ms" => k6_metric(upkeep_k6, "subscribe_latency", "p(95)"),
     "suback_p95_ms" => k6_metric(upkeep_k6, "suback", "p(95)"),
+    "server_phases" => server_phase_summary(upkeep_server_events),
     "render_groups_by_tier" => labelled_delta(upkeep_before, upkeep_after, "render_groups_by_tier"),
     "render_groups_by_mode" => labelled_delta(upkeep_before, upkeep_after, "render_groups_by_mode"),
     "reactivity" => {
@@ -216,7 +281,10 @@ report = {
     "page_render_p95_ms" => k6_metric(turbo_k6, "page_render", "p(95)"),
     "setup_p95_ms" => k6_metric(turbo_k6, "setup_total", "p(95)"),
     "steady_state_setup_leaks" => k6_metric(turbo_k6, "steady_state_setup_leaks", "count"),
-    "suback_p95_ms" => k6_metric(turbo_k6, "suback", "p(95)")
+    "ws_connect_p95_ms" => k6_metric(turbo_k6, "ws_connect", "p(95)"),
+    "subscribe_latency_p95_ms" => k6_metric(turbo_k6, "subscribe_latency", "p(95)"),
+    "suback_p95_ms" => k6_metric(turbo_k6, "suback", "p(95)"),
+    "server_phases" => server_phase_summary(turbo_server_events)
   }
 }
 
@@ -251,6 +319,8 @@ File.write(md_path, <<~MARKDOWN)
   | Setup leaks after warm window | #{fmt(upkeep["steady_state_setup_leaks"])} | #{fmt(turbo["steady_state_setup_leaks"])} |
   | Setup p95 ms | #{fmt(upkeep["setup_p95_ms"])} | #{fmt(turbo["setup_p95_ms"])} |
   | Page render p95 ms | #{fmt(upkeep["page_render_p95_ms"])} | #{fmt(turbo["page_render_p95_ms"])} |
+  | WS connect p95 ms | #{fmt(upkeep["ws_connect_p95_ms"])} | #{fmt(turbo["ws_connect_p95_ms"])} |
+  | Subscribe call p95 ms | #{fmt(upkeep["subscribe_latency_p95_ms"])} | #{fmt(turbo["subscribe_latency_p95_ms"])} |
   | Subscribe ack p95 ms | #{fmt(upkeep["suback_p95_ms"])} | #{fmt(turbo["suback_p95_ms"])} |
   | Write POST p95 ms | #{fmt(upkeep["post_p95_ms"])} | #{fmt(turbo["post_p95_ms"])} |
   | Update→settled p95 ms | #{fmt(upkeep["rtt_p95_ms"])} | #{fmt(turbo["rtt_p95_ms"])} |
@@ -275,11 +345,28 @@ File.write(md_path, <<~MARKDOWN)
   | Subscription identity modes | `#{upkeep.dig("subscription_identity", "by_mode") || {}}` |
   | Anonymous deopts | `#{upkeep.dig("subscription_identity", "anonymous_deopts") || {}}` |
   | Request capture timings | `#{upkeep.dig("request_capture", "timings") || {}}` |
+  | Request capture by operation | `#{upkeep.dig("request_capture", "by_operation") || {}}` |
   | Subscription shape cache | `#{upkeep["subscription_shapes"] || {}}` |
   | Subscription shape timings | `#{upkeep.dig("subscription_shapes", "timings") || {}}` |
   | Subscribe channel timings | `#{upkeep.dig("subscription_subscribe", "timings") || {}}` |
   | Stored subscriptions | #{fmt(upkeep.dig("reactivity", "subscriptions"))} |
   | Shared stream names | #{fmt(upkeep.dig("reactivity", "shared_stream_names"))} |
+
+  ## Server/Client Phase Correlation
+
+  | Phase | Upkeep | Turbo |
+  | --- | ---: | ---: |
+  | Setup page request server p95 ms | #{fmt(upkeep.dig("server_phases", "setup_page_request", "p95_ms"))} | #{fmt(turbo.dig("server_phases", "setup_page_request", "p95_ms"))} |
+  | Setup page client-to-server start p95 ms | #{fmt(upkeep.dig("server_phases", "setup_page_client_to_server_start", "p95_ms"))} | #{fmt(turbo.dig("server_phases", "setup_page_client_to_server_start", "p95_ms"))} |
+  | Refresh page request server p95 ms | #{fmt(upkeep.dig("server_phases", "refresh_page_request", "p95_ms"))} | #{fmt(turbo.dig("server_phases", "refresh_page_request", "p95_ms"))} |
+  | Refresh page client-to-server start p95 ms | #{fmt(upkeep.dig("server_phases", "refresh_page_client_to_server_start", "p95_ms"))} | #{fmt(turbo.dig("server_phases", "refresh_page_client_to_server_start", "p95_ms"))} |
+  | Cable request server p95 ms | #{fmt(upkeep.dig("server_phases", "cable_request", "p95_ms"))} | #{fmt(turbo.dig("server_phases", "cable_request", "p95_ms"))} |
+  | Cable open server p95 ms | #{fmt(upkeep.dig("server_phases", "cable_open", "p95_ms"))} | #{fmt(turbo.dig("server_phases", "cable_open", "p95_ms"))} |
+  | Subscription registration server p95 ms | #{fmt(upkeep.dig("server_phases", "subscription_registration", "p95_ms"))} | #{fmt(turbo.dig("server_phases", "subscription_registration", "p95_ms"))} |
+  | Subscription registration client-to-server start p95 ms | #{fmt(upkeep.dig("server_phases", "subscription_registration_client_to_server_start", "p95_ms"))} | #{fmt(turbo.dig("server_phases", "subscription_registration_client_to_server_start", "p95_ms"))} |
+  | Subscription confirmation server p95 ms | #{fmt(upkeep.dig("server_phases", "subscription_confirmation", "p95_ms"))} | #{fmt(turbo.dig("server_phases", "subscription_confirmation", "p95_ms"))} |
+  | Write request server p95 ms | #{fmt(upkeep.dig("server_phases", "write_request", "p95_ms"))} | #{fmt(turbo.dig("server_phases", "write_request", "p95_ms"))} |
+  | Write client-to-server start p95 ms | #{fmt(upkeep.dig("server_phases", "write_client_to_server_start", "p95_ms"))} | #{fmt(turbo.dig("server_phases", "write_client_to_server_start", "p95_ms"))} |
 
   ## Reading the comparison
 

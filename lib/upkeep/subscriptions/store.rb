@@ -56,6 +56,7 @@ module Upkeep
       end
 
       def register(subscriber_id:, recorder:, metadata: {}, entries: nil)
+        recorder.flush_pending_dependencies if recorder.respond_to?(:flush_pending_dependencies)
         subscription = Subscription.new(
           next_subscription_id,
           subscriber_id,

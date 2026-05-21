@@ -41,14 +41,16 @@ module Upkeep
 
       def add_dependency(owner_id, dependency)
         dependency_cache_key = dependency.cache_key
+        dependency_cache_keys = @dependency_cache_keys_by_node[owner_id]
+        return false if dependency_cache_keys.key?(dependency_cache_key)
+
         add_node(owner_id, kind: :unknown) unless nodes.key?(owner_id)
         add_node(dependency_cache_key, kind: :dependency, payload: dependency)
         add_edge(owner_id, dependency_cache_key, reason: :depends_on)
-        dependency_cache_keys = @dependency_cache_keys_by_node[owner_id]
-        return if dependency_cache_keys.key?(dependency_cache_key)
 
         dependency_cache_keys[dependency_cache_key] = true
         @dependencies_by_node[owner_id] << dependency
+        true
       end
 
       def dependencies_for(node_id)

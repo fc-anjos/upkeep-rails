@@ -125,14 +125,7 @@ module Upkeep
       end
 
       def template_metadata(template, locals)
-        virtual_path = template.virtual_path || template.identifier
-        manifest = manifest_for_template(template)
-        {
-          kind: partial_template?(template) ? "fragment" : "page",
-          template: virtual_path,
-          identifier: template.identifier,
-          locals: local_metadata(locals)
-        }.merge(manifest_metadata(manifest))
+        template_static_metadata(template).merge(locals: local_metadata(locals))
       end
 
       def collection_metadata(partial, collection, render_site: nil)
@@ -391,6 +384,20 @@ module Upkeep
           )
           template.instance_variable_set(:@upkeep_herb_manifest, manifest)
           manifest
+        end
+      end
+
+      def template_static_metadata(template)
+        template.instance_variable_get(:@upkeep_static_metadata) || begin
+          virtual_path = template.virtual_path || template.identifier
+          manifest = manifest_for_template(template)
+          metadata = {
+            kind: partial_template?(template) ? "fragment" : "page",
+            template: virtual_path,
+            identifier: template.identifier
+          }.merge(manifest_metadata(manifest)).freeze
+          template.instance_variable_set(:@upkeep_static_metadata, metadata)
+          metadata
         end
       end
 

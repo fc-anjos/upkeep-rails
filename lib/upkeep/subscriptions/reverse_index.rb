@@ -78,6 +78,7 @@ module Upkeep
       end
 
       def entries_for_subscription(subscription)
+        subscription.recorder.flush_pending_dependencies if subscription.recorder.respond_to?(:flush_pending_dependencies)
         cohort_key = cohort_key_for(subscription)
         subscription.graph.dependency_nodes.flat_map do |node|
           subscription.graph.dependency_owner_ids(node.id).map do |owner_id|

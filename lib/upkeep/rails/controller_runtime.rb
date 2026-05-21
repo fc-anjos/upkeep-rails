@@ -70,10 +70,10 @@ module Upkeep
         measure_phase(payload, :change_capture_ms) do
           _captured, changes = Upkeep::Runtime::ChangeLog.capture do
             if payload.fetch(:subscription_request)
-              capture = Upkeep::Capture::Request.call(self) { action.call }
+              capture = Upkeep::Capture::Request.call(self, profile: request_capture_profile?) { action.call }
               result = capture.action_result
             else
-              result = action.call
+              measure_phase(payload, :action_ms) { result = action.call }
             end
           end
         end
@@ -113,6 +113,9 @@ module Upkeep
         capture.timings.each do |phase, ms|
           payload[:"capture_#{phase}"] = ms
         end
+        capture.counters.each do |counter, value|
+          payload[:"capture_#{counter}"] = value
+        end
       end
 
       def measure_phase(payload, key)
@@ -124,6 +127,10 @@ module Upkeep
 
       def upkeep_subscription_request?
         request.get? || request.head?
+      end
+
+      def request_capture_profile?
+        ActiveSupport::Notifications.notifier.listening?(Upkeep::Rails::REQUEST_CAPTURE)
       end
     end
   end

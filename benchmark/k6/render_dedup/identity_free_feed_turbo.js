@@ -21,6 +21,8 @@ const refreshGetLatency = new Trend("refresh_get_latency", true);
 const rtt = new Trend("rtt", true);
 const setupTotal = new Trend("setup_total", true);
 const suback = new Trend("suback", true);
+const subscribeLatency = new Trend("subscribe_latency", true);
+const wsConnect = new Trend("ws_connect", true);
 const writesIssued = new Counter("writes_issued");
 const refreshesObserved = new Counter("refreshes_observed");
 const refreshGets = new Counter("refresh_gets");
@@ -86,6 +88,10 @@ function consumeApplicationMessages(sub, timeoutSeconds, expectedMessages, onMes
 function fetchRefresh() {
   const startedAt = Date.now();
   const res = http.get(`${BASE_URL}/feed`, {
+    headers: {
+      "X-Bench-Client-Started-At-Ms": `${startedAt}`,
+      "X-Bench-Phase": "refresh_get",
+    },
     tags: { name: "GET_feed_refresh" },
   });
   refreshGetLatency.add(Date.now() - startedAt);
@@ -101,6 +107,18 @@ function recordRefresh() {
   if (sentAt) rtt.add(Date.now() - sentAt);
 }
 
+function benchConnectId() {
+  return `identity-free-turbo-vu${__VU}-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+}
+
+function wsUrlWithBenchTimings(wsUrl, connectId, startedAtMs) {
+  const joiner = wsUrl.includes("?") ? "&" : "?";
+  return [
+    `${wsUrl}${joiner}bench_connect_id=${encodeURIComponent(connectId)}`,
+    `bench_client_started_at_ms=${encodeURIComponent(startedAtMs)}`,
+  ].join("&");
+}
+
 export default function () {
   const scenarioStartAt = new Date(exec.scenario.startTime).getTime();
   const measuredPhaseStartsAt = scenarioStartAt + warmSetupWindowMs();
@@ -110,19 +128,33 @@ export default function () {
   const setupStartedAt = Date.now();
 
   const pageStartedAt = Date.now();
-  const pageRes = http.get(`${BASE_URL}/feed`);
+  const pageRes = http.get(`${BASE_URL}/feed`, {
+    headers: {
+      "X-Bench-Client-Started-At-Ms": `${pageStartedAt}`,
+      "X-Bench-Phase": "setup_page",
+    },
+  });
   pageRender.add(Date.now() - pageStartedAt);
   check(pageRes, { "feed loaded": (r) => r.status === 200 });
 
   const token = pageRes.body ? findBetween(pageRes.body, 'signed-stream-name="', '"') : "";
   if (!token) fail("could not extract signed-stream-name from /feed");
 
-  const client = cable.connect(WS_URL, {
+  const connectId = benchConnectId();
+  const connectStartedAt = Date.now();
+  const client = cable.connect(wsUrlWithBenchTimings(WS_URL, connectId, connectStartedAt), {
     receiveTimeoutMs: 5000,
   });
+  wsConnect.add(Date.now() - connectStartedAt);
   if (!check(client, { connected: (c) => c })) fail("WS connect failed");
 
-  const sub = client.subscribe("Turbo::StreamsChannel", { signed_stream_name: token });
+  const subscribeStartedAt = Date.now();
+  const sub = client.subscribe("Turbo::StreamsChannel", {
+    signed_stream_name: token,
+    bench_connect_id: connectId,
+    bench_subscribe_started_at_ms: subscribeStartedAt,
+  });
+  subscribeLatency.add(Date.now() - subscribeStartedAt);
   if (!check(sub, { subscribed: (ch) => ch })) fail("subscribe failed");
   suback.add(sub.ackDuration());
   const setupCompletedAt = Date.now();
@@ -142,7 +174,13 @@ export default function () {
     const res = http.post(
       `${BASE_URL}/feed`,
       { title: `feed ${nonce}`, body: `identity-free body ${nonce}` },
-      { tags: { name: "POST_feed" } }
+      {
+        headers: {
+          "X-Bench-Client-Started-At-Ms": `${sendTs}`,
+          "X-Bench-Phase": "write_post",
+        },
+        tags: { name: "POST_feed" },
+      }
     );
     postLatency.add(res.timings.duration);
     check(res, { "feed post 2xx": (r) => r.status >= 200 && r.status < 300 });
