@@ -73,6 +73,7 @@ class BenchmarkLayoutTest < Minitest::Test
   def test_gemspec_packages_public_runtime_and_installer
     files = Gem::Specification.load(project_root.join("upkeep-rails.gemspec").to_s).files
 
+    assert_includes files, "lib/upkeep-rails.rb"
     assert_includes files, "lib/upkeep.rb"
     assert_includes files, "lib/upkeep/rails/testing.rb"
     assert_includes files, "lib/upkeep/herb/developer_report.rb"

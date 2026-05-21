@@ -70,7 +70,7 @@ target, and leaves unrelated subscribers alone.
 Upkeep Rails is early alpha. Application code should start from the documented
 public entry points:
 
-- `gem "upkeep-rails", require: "upkeep"` - load the Railtie.
+- `gem "upkeep-rails"` - load the Railtie.
 - `bin/rails generate upkeep:install` - install storage, cable, and browser
   bootstrap files.
 - `config.upkeep.enabled` - enable or disable runtime capture.
@@ -166,7 +166,7 @@ Proven delivery describes *how much to refresh safely*.
 Add the gem to a Rails app:
 
 ```ruby
-gem "upkeep-rails", require: "upkeep"
+gem "upkeep-rails"
 ```
 
 The Railtie installs hooks when Rails loads Active Record, Action Controller,
