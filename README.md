@@ -66,43 +66,6 @@ records, request values, and identity values the response used. When the commit
 lands, Upkeep selects the affected frames, rerenders the narrowest proven
 target, and leaves unrelated subscribers alone.
 
-## Status
-
-Upkeep Rails is early alpha. Application code should start from the documented
-public entry points:
-
-- `gem "upkeep-rails"` - load the Railtie.
-- `bin/rails generate upkeep:install` - install storage, cable, and browser
-  bootstrap files.
-- `Upkeep::Rails.configure` - configure runtime settings from initializers and
-  declare identity bridges.
-- `config.upkeep.enabled` - enable or disable runtime capture from Rails
-  application or environment config.
-- `config.upkeep.subscription_store` - choose `:active_record` or explicit
-  development/test `:memory` storage.
-- `config.upkeep.delivery_adapter` - choose `:active_job`, `:async`, or
-  `:inline` for committed-change delivery.
-- `config.upkeep.delivery_queue` - Active Job queue name for Upkeep delivery
-  jobs.
-- `config.upkeep.refused_boundary_behavior` - raise or warn when a reactive
-  boundary cannot be proven.
-- `config.upkeep.activation_token_expires_in` - signed marker token lifetime for
-  activating the exact subscription rendered into the HTML response.
-- `Upkeep::Rails.configure { |config| config.identify ... }` - declare each
-  user, account, tenant, or session identity that must be matched again when
-  the browser subscribes over ActionCable.
-- `Upkeep::Rails::Cable::Channel` - the generated browser client subscribes to
-  this channel.
-- `Upkeep::Rails::Testing` - integration test helpers.
-
-Use `Upkeep::Rails.configure` in `config/initializers/upkeep.rb`. Use
-`config.upkeep.*` only from Rails application or environment config that runs
-before initializers.
-
-Everything under `Upkeep::Runtime`, `Upkeep::Dependencies`,
-`Upkeep::Invalidation`, `Upkeep::Subscriptions`, `Upkeep::Delivery`,
-`Upkeep::DAG`, probes, proofs, and benchmark harness code is internal.
-
 ## Core Concepts
 
 ### Rendered Page
@@ -112,16 +75,12 @@ request runs normally through Rails. Upkeep observes the controller, Action View
 rendering, Active Record reads, request inputs, and identity inputs used by the
 response.
 
-A rendered page describes *what the browser saw*.
-
 ### Frame
 
 A **frame** is a rendered page, template, partial, collection render site, or
 fragment with a stable delivery target. Frames let Upkeep refresh a specific
 part of the page instead of replaying the whole response when a narrower update
 is proven safe.
-
-A frame describes *where a refresh can land*.
 
 ### Surface
 
@@ -135,8 +94,6 @@ surface tied to the cards table, the columns that decide membership, and the
 records rendered in that collection. A card update only selects the frames whose
 surface it can affect.
 
-A surface describes *when to rerender*.
-
 ### Identity Boundary
 
 An **identity boundary** is state that decides who may receive a live update.
@@ -146,8 +103,6 @@ naming convention. Subscriber identity must be declared with
 `config.identify`, then resolved again from ActionCable when the browser
 subscribes.
 
-An identity boundary describes *who may share a result*.
-
 ### Subscription
 
 A **subscription** is the browser's live connection back to the captured page.
@@ -155,15 +110,6 @@ Upkeep injects a body-scoped `<upkeep-subscription-source>` marker into
 successful HTML responses. The generated browser bootstrap upgrades that marker
 into a Turbo stream source, subscribes over ActionCable, and lets Turbo process
 received stream payloads.
-
-A subscription describes *where updates should be sent*.
-
-The marker includes a signed activation token for that subscription and is
-`data-turbo-temporary`, so Turbo does not cache stale subscription handles. The
-token lets the browser activate the exact rendered response it received on first
-paint without requiring Upkeep to create a guest cookie or infer application
-identity. Identified pages still use declared identity authorization in addition
-to the activation token.
 
 ### Proven Delivery
 
@@ -179,19 +125,6 @@ render site's children, so `update` preserves the legal container element and
 swaps its contents. Page-level fallbacks use Turbo Stream
 `refresh method="morph" scroll="preserve"` instead of replacing `<html>` or
 writing a new document from JavaScript.
-
-Proven delivery describes *how much to refresh safely*.
-
-### Glossary
-
-| Term | What it means |
-| --- | --- |
-| Capture | The GET-time observation of render structure, data reads, request inputs, and identity inputs. |
-| Commit facts | Active Record lifecycle facts such as table, model, id, changed attributes, and old/new values. |
-| Replay | Rerendering a captured page, render site, or fragment with the observed inputs needed for that target. |
-| Shared render | One replay reused for multiple anonymous or public subscribers with the same safe delivery shape. |
-| Opaque | Visible to application code, but not structurally inspectable enough for Upkeep to prove dependencies, replay inputs, or delivery targets. Raw SQL strings, process-local objects, and ambiguous HTML roots are common examples. |
-| Refused boundary | A page Upkeep did not register because a query, identity input, replay input, or DOM target could not be proven. |
 
 ## Quick Start
 
@@ -252,12 +185,8 @@ For more than one Puma worker, configure ActionCable with a shared adapter such
 as Redis or Solid Cable. The subscription store decides which subscribers need
 work; ActionCable decides which worker owns each WebSocket connection.
 
-The generated subscription source carries a stateless signed activation token.
-The generated browser client forwards it to ActionCable, where Upkeep verifies
-that the browser is activating the same subscription id that was rendered into
-the response. The source lives in `<body>` and is marked `data-turbo-temporary`
-so Turbo navigation and cache lifecycle disconnect stale subscriptions cleanly.
-The default token lifetime is 24 hours and can be adjusted:
+The generated subscription source carries a stateless signed activation token,
+and its default lifetime is 24 hours:
 
 ```ruby
 Upkeep::Rails.configure do |config|
@@ -282,6 +211,32 @@ Upkeep::Rails.configure do |config|
 end
 ```
 
+Read that as:
+
+| Part | Meaning | How to choose it |
+| --- | --- | --- |
+| `:viewer` | The name of this identity component inside Upkeep. | Pick the role the value plays in authorization or personalization: `:viewer`, `:account`, `:tenant`, `:locale`, etc. |
+| `current: ["Current", :user]` | The render-side source. This says: when a page reads `Current.user`, that value is the `:viewer` identity. | Use this when views, controllers, helpers, or presenters rely on an `ActiveSupport::CurrentAttributes` value. The first item is the Current class name, the second is the attribute. |
+| `subscribe { |connection| connection.current_user }` | The ActionCable-side resolver. This says how the WebSocket connection proves the same `:viewer` value when it subscribes. | Return the same logical value as the render side, usually an Active Record record, GlobalID-capable object, string, number, symbol, boolean, array, or hash. |
+
+The mental model is: the keyword argument describes what the HTML render read;
+the `subscribe` block describes what the live WebSocket can prove. Upkeep only
+authorizes the live subscription when those values match.
+
+Choose the source keyword from the API your render path actually reads:
+
+| App code reads | Declare | Subscribe side should return |
+| --- | --- | --- |
+| `Current.user` | `current: ["Current", :user]` | the same user, usually `connection.current_user` |
+| Devise `current_user`, `user_signed_in?`, or raw `warden.user(:user)` | `warden: :user` | the same Devise user, usually `connection.current_user` |
+| `session[:user_id]` | `session: :user_id` | the same session value, `connection.session[:user_id]` |
+| `cookies[:account_id]` | `cookie: :account_id` | the same cookie value, `connection.cookies[:account_id]` |
+
+If an app copies Devise's user into `Current.user` and the rendered page only
+reads `Current.user`, use `current:`. If the same render also calls Devise's
+`current_user` or `user_signed_in?`, declare the Warden source too or remove
+the duplicate identity read from the rendered path.
+
 The matching cable connection must expose that identity:
 
 ```ruby
@@ -297,6 +252,37 @@ module ApplicationCable
 end
 ```
 
+If the app uses Devise helpers in controllers or views, declare the Warden
+scope Devise uses. The render side sees Devise through Warden; the cable side
+can still return `connection.current_user`:
+
+```ruby
+# config/initializers/upkeep.rb
+Upkeep::Rails.configure do |config|
+  config.identify :viewer, warden: :user do
+    subscribe { |connection| connection.current_user }
+  end
+end
+```
+
+```ruby
+# app/channels/application_cable/connection.rb
+module ApplicationCable
+  class Connection < ActionCable::Connection::Base
+    identified_by :current_user
+
+    def connect
+      self.current_user = env["warden"]&.user(:user)
+    end
+  end
+end
+```
+
+Use the matching Devise/Warden scope for other authenticated roles, such as
+`warden: :admin`. If every cable subscription in the app requires login, the
+connection can reject when `current_user` is nil; if the app also serves public
+live pages, leave it nil so logged-out identity remains absent.
+
 Session-backed identity can be declared directly:
 
 ```ruby
@@ -306,6 +292,10 @@ Upkeep::Rails.configure do |config|
   end
 end
 ```
+
+Here `:viewer` still names the identity component, `session: :user_id` says the
+render-side identity is `session[:user_id]`, and the `subscribe` block reads
+the matching value from the ActionCable connection's session.
 
 The `subscribe` block receives an Upkeep connection context. It delegates public
 methods such as `current_user` to the ActionCable connection and exposes
@@ -393,9 +383,8 @@ Templates keep rendering ERB and partial collections:
 </main>
 ```
 
-Successful HTML GET responses are captured automatically. Upkeep records the
-rendered page, render sites, fragments, collection surfaces, identity inputs,
-and request inputs, then injects the subscription marker into the response.
+Successful HTML GET responses are captured automatically and receive the
+subscription marker.
 
 ### 7. Keep Write Paths Focused
 
@@ -411,19 +400,8 @@ end
 ```
 
 After the commit, Upkeep dispatches invalidation facts to the configured
-delivery adapter. Active Job delivery selects matching subscriptions, rerenders
-the narrowest proven target in the job worker, and sends Turbo Stream payloads
-to the connected browsers.
-
-## How Refresh Works
-
-1. A successful HTML GET captures a rendered page.
-2. The browser subscribes using the injected `upkeep-subscription-source`.
-3. Active Record commits emit lifecycle facts.
-4. Upkeep matches those facts against active surfaces.
-5. Matching frames replay or use a proven stream operation.
-6. Equivalent public targets render once and fan out to matching subscribers.
-7. Identity-bound targets remain partitioned by observed identity boundaries.
+delivery adapter, rerenders the narrowest proven target, and sends Turbo Stream
+payloads to connected browsers.
 
 ## What Upkeep Observes
 
@@ -514,41 +492,6 @@ Scalar relation output is tracked as a page-level query dependency:
 Simple plucked columns are live and can select a page replay when they change.
 They are not collection dependencies, so they do not participate in
 append/remove/prepend planning.
-
-## Identity And Sharing
-
-Upkeep observes ambient state while rendering, but subscriber identity is
-explicit. A page that reads `Current.user` is not automatically treated as a
-user page. Declare the identity:
-
-```ruby
-Upkeep::Rails.configure do |config|
-  config.identify :viewer, current: ["Current", :user] do
-    subscribe { |connection| connection.current_user }
-  end
-end
-```
-
-The symbol, such as `:viewer`, names the identity component. Common components
-are `:viewer`, `:account`, `:tenant`, `:organization`, `:role`, `:locale`, and
-`:impersonator`. If a page depends on both `:viewer` and `:account`, the cable
-subscription must match both before Upkeep authorizes the live stream.
-
-A declared identity only partitions delivery when its captured value is present.
-The default absence rule is `nil`; customize it with `absent_if` when your app
-uses another sentinel. Upkeep records the absence decision at capture time, so
-session and cookie identity values can remain fingerprinted instead of being
-stored raw.
-
-If a page never reads identity state, it can stay anonymous-public. Anonymous
-subscribers with the same subscription shape can share compiled subscription
-structure and update renders. Upkeep does not share initial response HTML.
-
-Session, cookie, and request replay stores only observed values needed to rerun
-the page. Unread session keys, cookies, and request headers are not copied into
-the replay payload. Session and cookie reads become subscriber identity only
-when declared with `config.identify`; otherwise they are ambient replay inputs
-and do not authorize an ActionCable subscriber.
 
 ## Refused Boundaries
 
