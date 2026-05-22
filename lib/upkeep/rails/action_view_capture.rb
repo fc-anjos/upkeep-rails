@@ -708,17 +708,49 @@ module Upkeep
       end
 
       module ViewHelpers
+        UPKEEP_FRAME_BLOCK_ERROR = "upkeep_frame requires a block. Use: " \
+          '<%= upkeep_frame("frame-name") do %> ... <% end %>'
+
+        # Returns the stable DOM id for the current page frame.
+        #
+        # This helper is only available while Upkeep is rendering a captured
+        # page template.
+        #
+        # @return [String]
+        # @raise [RuntimeError] when called outside an Upkeep page frame render.
         def upkeep_page_frame_id
           Upkeep::Rails::ActionViewCapture.current_frame_id ||
             raise("upkeep_page_frame_id is only available while rendering an Upkeep page frame")
         end
 
+        # Returns the stable DOM id for the current fragment frame.
+        #
+        # This helper is only available while Upkeep is rendering a captured
+        # partial or fragment template.
+        #
+        # @return [String]
+        # @raise [RuntimeError] when called outside an Upkeep frame render.
         def upkeep_frame_id
           Upkeep::Rails::ActionViewCapture.current_frame_id ||
             raise("upkeep_frame_id is only available while rendering an Upkeep frame")
         end
 
-        def render_site(site_id, manifest_path: nil, manifest_fingerprint: nil)
+        # Captures a collection-level live frame and returns the rendered block.
+        #
+        # Use this as a normal output-producing Rails block helper:
+        #
+        #   <%= upkeep_frame "cards" do %>
+        #     <%= render partial: "cards/card", collection: @cards, as: :card %>
+        #   <% end %>
+        #
+        # @param site_id [#to_s] stable application id for this frame.
+        # @param manifest_path [String, nil] template manifest path for replay diagnostics.
+        # @param manifest_fingerprint [String, nil] template manifest fingerprint for replay diagnostics.
+        # @return [String, ActiveSupport::SafeBuffer] rendered block HTML.
+        # @raise [ArgumentError] when called without a block.
+        def upkeep_frame(site_id, manifest_path: nil, manifest_fingerprint: nil, &block)
+          raise ArgumentError, UPKEEP_FRAME_BLOCK_ERROR unless block
+
           html = Upkeep::Rails::ActionViewCapture.with_render_site(
             {
               site_id: site_id,
@@ -726,7 +758,7 @@ module Upkeep
               manifest_fingerprint: manifest_fingerprint
             }.compact
           ) do
-            yield
+            capture(&block)
           end
 
           html.respond_to?(:html_safe) ? html.html_safe : html

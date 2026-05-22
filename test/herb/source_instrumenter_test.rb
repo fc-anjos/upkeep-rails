@@ -144,7 +144,7 @@ class HerbSourceInstrumenterTest < Minitest::Test
       collection.map { |card| "<li>#{card.title}</li>" }.join
     end
 
-    def render_site(site_id, manifest_path: nil, manifest_fingerprint: nil)
+    def upkeep_frame(site_id, manifest_path: nil, manifest_fingerprint: nil)
       render_site_ids << site_id
       manifest_paths << manifest_path
       manifest_fingerprints << manifest_fingerprint

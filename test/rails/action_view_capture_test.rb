@@ -182,6 +182,22 @@ class ActionViewCaptureTest < Minitest::Test
     assert_equal ["id"], page_frame.payload.fetch(:controller).fetch(:path_parameters)
   end
 
+  def test_upkeep_frame_helper_renders_block_once_with_output_erb
+    create_card!("Plan")
+
+    html, recorder = capture_render("boards/manual_frame", cards: RailsCaptureCard.order(:id))
+
+    assert_equal 1, html.scan("Manual frame").size
+    assert_equal 1, recorder.graph.frame_nodes.count { |frame| frame.payload.fetch(:kind) == "render_site" }
+  end
+
+  def test_upkeep_frame_helper_requires_block
+    error = assert_raises(ArgumentError) { view.upkeep_frame("manual") }
+
+    assert_includes error.message, "upkeep_frame requires a block"
+    assert_includes error.message, "<%= upkeep_frame"
+  end
+
   def test_controller_page_recipe_preserves_rack_session
     create_card!("Plan")
 
@@ -668,6 +684,14 @@ class ActionViewCaptureTest < Minitest::Test
           <ul>
             <%= render partial: "cards/card", collection: cards, as: :card %>
           </ul>
+        </main>
+      ERB
+      "boards/manual_frame.html.erb" => <<~ERB,
+        <main>
+          <%= upkeep_frame "manual", manifest_path: "boards/manual_frame", manifest_fingerprint: "test" do %>
+            <section>Manual frame</section>
+            <%= render partial: "cards/card", collection: cards, as: :card %>
+          <% end %>
         </main>
       ERB
       "controller_cards/index.html.erb" => <<~ERB,
