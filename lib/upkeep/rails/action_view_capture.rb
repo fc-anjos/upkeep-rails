@@ -19,7 +19,6 @@ module Upkeep
       RENDER_SITE_STACK_KEY = :upkeep_rails_render_site_stack
 
       MANIFEST_PARSE_OPTIONS = HerbSupport::TemplateManifest::DEFAULT_PARSE_OPTIONS.merge(
-        action_view_helpers: false,
         transform_conditionals: false
       ).freeze
 
@@ -223,10 +222,16 @@ module Upkeep
             options: snapshot_render_options(options)
           )
         ) do
-          replay_options = replay_render_options(options)
-          replay_options[:partial] = partial unless partial == :derived
-          replay_options[:collection] = replay_collection_value(collection, collection_analysis)
-          context.render(replay_options, &block)
+          replay_collection = replay_collection_value(collection, collection_analysis)
+
+          if partial == :derived
+            context.render(replay_collection, &block)
+          else
+            replay_options = replay_render_options(options)
+            replay_options[:partial] = partial
+            replay_options[:collection] = replay_collection
+            context.render(replay_options, &block)
+          end
         end
       end
 
@@ -713,8 +718,10 @@ module Upkeep
 
         # Returns the stable DOM id for the current page frame.
         #
-        # This helper is only available while Upkeep is rendering a captured
-        # page template.
+        # Normal templates do not need to call this directly; Upkeep's source
+        # instrumentation adds page-frame markers while rendering captured page
+        # templates. This helper is available for custom/generated markup that
+        # must emit the marker explicitly.
         #
         # @return [String]
         # @raise [RuntimeError] when called outside an Upkeep page frame render.
@@ -725,8 +732,10 @@ module Upkeep
 
         # Returns the stable DOM id for the current fragment frame.
         #
-        # This helper is only available while Upkeep is rendering a captured
-        # partial or fragment template.
+        # Normal partials do not need to call this directly; Upkeep's source
+        # instrumentation adds fragment-frame markers while rendering captured
+        # partial or fragment templates. This helper is available for
+        # custom/generated markup that must emit the marker explicitly.
         #
         # @return [String]
         # @raise [RuntimeError] when called outside an Upkeep frame render.
@@ -735,13 +744,23 @@ module Upkeep
             raise("upkeep_frame_id is only available while rendering an Upkeep frame")
         end
 
-        # Captures a collection-level live frame and returns the rendered block.
+        # Advanced escape hatch for a custom render-site frame.
         #
-        # Use this as a normal output-producing Rails block helper:
+        # Ordinary Rails ERB does not need this helper. Upkeep instruments safe
+        # partial collection renders automatically and inserts the internal
+        # markers needed for page, fragment, and render-site delivery.
+        #
+        # Use this only when a generated/helper-built boundary cannot be derived
+        # from template source. The helper is output-producing and returns the
+        # rendered block:
         #
         #   <%= upkeep_frame "cards" do %>
         #     <%= render partial: "cards/card", collection: @cards, as: :card %>
         #   <% end %>
+        #
+        # Manual callers are responsible for rendering a stable DOM target for
+        # the site. Instrumented templates add that target automatically for
+        # normal render sites.
         #
         # @param site_id [#to_s] stable application id for this frame.
         # @param manifest_path [String, nil] template manifest path for replay diagnostics.

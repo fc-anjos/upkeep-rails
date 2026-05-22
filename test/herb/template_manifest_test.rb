@@ -51,6 +51,47 @@ class HerbTemplateManifestTest < Minitest::Test
     assert_match(/\A[0-9a-f]{16}\z/, render_node.fetch(:site_id))
   end
 
+  def test_render_object_shorthand_gets_runtime_confirmed_render_site_candidate
+    manifest = build_manifest(
+      path: "app/views/boards/show.html.erb",
+      source: <<~ERB
+        <ul>
+          <%= render cards %>
+        </ul>
+      ERB
+    )
+
+    render_node = manifest.render_nodes.first
+    tag = manifest.frontend_tag_plan.find { |entry| entry.fetch(:kind) == "render_site" }
+
+    assert manifest.parse.fetch(:ok)
+    assert_equal "object", render_node.fetch(:kind)
+    assert_equal "cards", render_node.fetch(:object)
+    assert_nil render_node.fetch(:collection)
+    assert_equal "object_shorthand", render_node.fetch(:render_site_source)
+    assert_equal "object_shorthand", tag.fetch(:render).fetch(:source)
+    assert_equal "ul", render_node.fetch(:render_site_container).fetch(:tag_name)
+  end
+
+  def test_helper_lowered_tag_can_be_a_render_site_container
+    manifest = build_manifest(
+      path: "app/views/boards/show.html.erb",
+      source: <<~ERB
+        <%= tag.ul id: "cards" do %>
+          <%= render partial: "cards/card", collection: cards, as: :card %>
+        <% end %>
+      ERB
+    )
+
+    render_node = manifest.render_nodes.first
+    tag = manifest.frontend_tag_plan.find { |entry| entry.fetch(:kind) == "render_site" }
+
+    assert manifest.parse.fetch(:ok)
+    assert_equal "ActionView::Helpers::TagHelper#tag", render_node.fetch(:render_site_container).fetch(:element_source)
+    assert_equal "ActionView::Helpers::TagHelper#tag", tag.fetch(:element_source)
+    assert_equal "ul", tag.fetch(:tag_name)
+  end
+
   def test_collection_render_with_mixed_siblings_does_not_get_render_site_tag
     manifest = build_manifest(
       path: "app/views/boards/show.html.erb",

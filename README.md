@@ -120,9 +120,9 @@ boundary, it refuses registration instead of silently widening into unsafe broad
 invalidation.
 
 Render-site replays use Turbo Stream `update method="morph"` against the real
-HTML element marked with `data-upkeep-render-site`. The stream template is the
-render site's children, so `update` preserves the legal container element and
-swaps its contents. Page-level fallbacks use Turbo Stream
+HTML element Upkeep marked as the render site. The stream template is the render
+site's children, so `update` preserves the legal container element and swaps its
+contents. Page-level fallbacks use Turbo Stream
 `refresh method="morph" scroll="preserve"` instead of replacing `<html>` or
 writing a new document from JavaScript.
 
@@ -156,41 +156,65 @@ apps without a package-manager dependency. After upgrading `upkeep-rails`, rerun
 the installer or compare that file with the generated template. A stale browser
 client can subscribe with an old payload shape and be rejected by the channel.
 
-### 3. Mark Live Frames
+### 3. Render Normal Rails Views
 
-Upkeep's Rails helper surface is intentionally small:
+No per-template annotations are required for ordinary Rails views. Controllers
+keep loading Active Record models and relations:
 
-- `upkeep_frame(id, manifest_path: nil, manifest_fingerprint: nil) { ... }`
-  captures a collection-level live frame. It is an output-producing block
-  helper, so use `<%= ... %>`.
-- `upkeep_page_frame_id` returns the current page frame id for a root element.
-- `upkeep_frame_id` returns the current partial or fragment frame id for a root
-  element.
+```ruby
+class BoardsController < ApplicationController
+  def show
+    @board = Board.find(params[:id])
+    @cards = @board.cards.order(:position)
+  end
+end
+```
 
-Use `upkeep_frame` around collection regions that should update as one unit
-when membership, ordering, or aggregate data changes. The element Turbo should
-update needs `data-upkeep-render-site` with the same id:
+Templates keep rendering ERB and partial collections:
 
 ```erb
-<main data-upkeep-page-frame="<%= upkeep_page_frame_id %>">
-  <%= upkeep_frame "cards" do %>
-    <ul data-upkeep-render-site="cards">
-      <%= render partial: "cards/card", collection: @cards, as: :card %>
-    </ul>
-  <% end %>
+<main>
+  <h1><%= @board.name %></h1>
+
+  <ul id="cards">
+    <%= render partial: "cards/card", collection: @cards, as: :card %>
+  </ul>
 </main>
 ```
 
-Partial roots should expose their current frame id:
+Partials keep normal, stable HTML roots:
 
 ```erb
-<li id="<%= dom_id(card) %>" data-upkeep-frame="<%= upkeep_frame_id %>">
+<li id="<%= dom_id(card) %>">
   <%= card.title %>
 </li>
 ```
 
-Calling `upkeep_frame` without a block raises `ArgumentError` with the expected
-ERB shape.
+At render time, Upkeep instruments Action View templates and adds the internal
+`data-upkeep-*` markers it needs for page roots, fragment roots, and safe
+collection render-site containers. A normal partial collection render like the
+`<ul>` above can become a narrow render site when the collection render is the
+container's only meaningful child. Successful HTML GET responses are captured
+automatically and receive the subscription marker.
+
+Upkeep also understands Rails' polymorphic collection render shorthand when the
+runtime confirms that it rendered a collection:
+
+```erb
+<ul id="cards">
+  <%= render @cards %>
+</ul>
+```
+
+For containers built with Rails tag helpers, Herb supplies the same structural
+view of the tag that literal HTML would have. Upkeep can therefore keep this
+idiom live without hand-written `data-upkeep-*` markers:
+
+```erb
+<%= tag.ul id: "cards" do %>
+  <%= render partial: "cards/card", collection: @cards, as: :card %>
+<% end %>
+```
 
 ### 4. Configure Subscription Storage
 
@@ -394,35 +418,7 @@ For debugging, set `config.delivery_adapter = :inline` inside
 previous process-local batching behavior and is useful for tests or small local
 development.
 
-### 7. Render Normal Rails Views
-
-Controllers keep loading Active Record models and relations:
-
-```ruby
-class BoardsController < ApplicationController
-  def show
-    @board = Board.find(params[:id])
-    @cards = @board.cards.order(:position)
-  end
-end
-```
-
-Templates keep rendering ERB and partial collections:
-
-```erb
-<main>
-  <h1><%= @board.name %></h1>
-
-  <ul id="cards">
-    <%= render partial: "cards/card", collection: @cards, as: :card %>
-  </ul>
-</main>
-```
-
-Successful HTML GET responses are captured automatically and receive the
-subscription marker.
-
-### 8. Keep Write Paths Focused
+### 7. Keep Write Paths Focused
 
 Writes keep doing domain work:
 
@@ -445,7 +441,11 @@ Render structure:
 
 - Rails-resolved page templates.
 - Partial and object partial renders.
-- Collection render sites and their child fragments.
+- Action View-instrumented collection render sites and their child fragments.
+- Polymorphic `render @records` collection shorthand when runtime rendering
+  confirms a collection.
+- `tag.*` and `content_tag` containers lowered by Herb into ordinary template
+  structure.
 - Single-root fragment targets and legal render-site container targets.
 
 Data dependencies:
@@ -494,7 +494,7 @@ subscriber. It refuses that boundary instead.
 | Reads from external stores or process state: Redis, HTTP APIs, files, global variables, class variables, singleton caches, background thread state, or service memoization. | Active Record commit facts cannot select these reads, and Upkeep has no source adapter for their lifecycle. | They are not live dependencies today. If another observed dependency causes a replay, normal Rails code may read the new value during that replay; the external read itself will not trigger one. Use existing app mechanisms, explicit broadcasts, or future source adapters for those domains. |
 | Writes outside observed Active Record paths: direct connection SQL, writes in another datastore, or side effects that do not emit Upkeep change facts. | Upkeep cannot match a future change to an existing surface without a write fact. | No refresh is scheduled from that write. Prefer Active Record write APIs for capturable models, or keep a manual invalidation/broadcast path for sources Upkeep does not observe yet. |
 | Replay inputs that cannot be rebuilt: arbitrary objects, procs, IO handles, open clients, or values that only exist in one Ruby process. | A captured target must be replayable later, often in a different request context. | Keep frame locals and render options to records, relations, arrays, hashes, literals, and observed request/session/cookie values. Non-replayable values block the narrow replay path until they are represented as stable data. |
-| Patch targets Upkeep cannot identify in rendered HTML. | Delivery needs a stable page, render-site, fragment, or member target. Ambiguous or missing roots cannot be patched safely. | Upkeep uses the narrowest proven target. If a narrow target is not proven but an enclosing target is, delivery deoptimizes to the enclosing target; if no safe target exists, the boundary is refused or tests expose the missing target. |
+| Patch targets Upkeep cannot identify in rendered HTML. | Delivery needs a stable page, render-site, fragment, or member target. Upkeep adds those markers for ordinary page templates, partial roots, and safe collection render sites, but opaque generated markup can still hide a target. | Upkeep uses the narrowest proven target. If a narrow target is not proven but an enclosing target is, delivery deoptimizes to the enclosing target; if no safe target exists, the boundary is refused or tests expose the missing target. |
 
 ## Query Shapes
 

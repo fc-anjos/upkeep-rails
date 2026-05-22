@@ -239,7 +239,8 @@ module Upkeep
             as: token_value(keywords&.as_name),
             locals: Array(keywords&.locals).map { |local| token_value(local.name) },
             block_arguments: Array(node.block_arguments).map { |argument| token_value(argument.name) },
-            render_site_container: render_site_container_for(node, keywords)
+            render_site_container: render_site_container_for(node, keywords),
+            render_site_source: render_site_source(keywords)
           }
         end
 
@@ -249,6 +250,7 @@ module Upkeep
             target: "root_element",
             location: location_payload(root_element.location),
             tag_name: token_value(root_element.tag_name),
+            element_source: element_source(root_element),
             attributes: [
               {
                 name: "data-upkeep-frame",
@@ -269,6 +271,7 @@ module Upkeep
             target: "root_element",
             location: location_payload(root_element.location),
             tag_name: token_value(root_element.tag_name),
+            element_source: element_source(root_element),
             attributes: [
               {
                 name: "data-upkeep-page-frame",
@@ -287,6 +290,7 @@ module Upkeep
             target: "container_element",
             location: container.fetch(:location),
             tag_name: container.fetch(:tag_name),
+            element_source: container.fetch(:element_source),
             site_id: render_node.fetch(:site_id),
             attributes: [
               {
@@ -299,22 +303,27 @@ module Upkeep
               partial: render_node.fetch(:partial),
               collection: render_node.fetch(:collection),
               object: render_node.fetch(:object),
-              as: render_node.fetch(:as)
+              as: render_node.fetch(:as),
+              source: render_node.fetch(:render_site_source)
             },
             update_role: render_site_update_role(render_node)
           }
         end
 
         def render_site_update_role(render_node)
-          if render_node.fetch(:render_site_container)
+          case render_node.fetch(:render_site_source)
+          when "collection_keyword"
             "anchor collection membership while child partial roots carry per-record frame tags"
+          when "object_shorthand"
+            "anchor a render-object shorthand when ActionView runtime confirms it rendered a collection"
           else
             "record where ActionView runtime must confirm the rendered frame target"
           end
         end
 
         def render_site_container_for(node, keywords)
-          return unless token_value(keywords&.collection)
+          source = render_site_source(keywords)
+          return unless source
 
           container = html_stack.last
           return unless container
@@ -322,8 +331,24 @@ module Upkeep
 
           {
             location: location_payload(container.location),
-            tag_name: token_value(container.tag_name)
+            tag_name: token_value(container.tag_name),
+            element_source: element_source(container),
+            source: source
           }
+        end
+
+        def render_site_source(keywords)
+          return "collection_keyword" if token_value(keywords&.collection)
+
+          # ActionView accepts `render @records` / `render records` as a
+          # polymorphic render. Herb can identify the stable DOM container, but
+          # Ruby decides at runtime whether the object is a collection, a single
+          # record, or a renderable component. Mark it as a candidate only; the
+          # runtime collection renderer must still confirm a collection before a
+          # render-site frame is recorded.
+          return "object_shorthand" if token_value(keywords&.object)
+
+          nil
         end
 
         def safe_collection_container?(container, render_node)
@@ -361,6 +386,10 @@ module Upkeep
             "Herb::AST::HTMLElementNode",
             "Herb::AST::HTMLConditionalElementNode"
           ].include?(node.class.name)
+        end
+
+        def element_source(node)
+          node.element_source
         end
 
         def html_doctype?(node)

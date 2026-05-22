@@ -8,7 +8,7 @@
   </p>
 
   <%= form_with url: keybase_proofs_url, scope: :keybase_proof do |f| %>
-    Is this you on Keybase? <b><i><%= @kb_username %></b></i>
+    Is this you on Keybase? <b><i><%= @kb_username %></i></b>
     <%= f.hidden_field "kb_username", value: @kb_username %>
     <%= f.hidden_field "kb_signature", value: @kb_signature %>
     <%= f.hidden_field "kb_ua", value: @kb_ua %>

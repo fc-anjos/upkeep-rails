@@ -22,18 +22,18 @@ Upkeep::Rails.configure do |config|
   # :active_record when you want to exercise durable subscription rows.
   #
   # View setup:
-  # Wrap collection regions that should receive narrowed live updates with the
-  # upkeep_frame block helper, and mark page/partial roots with the generated
-  # frame ids:
+  # No per-template annotations are required for ordinary Rails views. Upkeep
+  # instruments Action View templates as they render and adds the internal
+  # markers it needs for page roots, fragment roots, and safe partial collection
+  # render-site containers. Keep rendering normal ERB and collection partials:
   #
-  # <%%= upkeep_frame "cards" do %>
-  #   <ul data-upkeep-render-site="cards">
-  #     <%%= render partial: "cards/card", collection: @cards, as: :card %>
-  #   </ul>
-  # <%% end %>
+  # <ul>
+  #   <%%= render partial: "cards/card", collection: @cards, as: :card %>
+  # </ul>
   #
-  # In normal ERB templates, prefer the output form above: <%%= upkeep_frame ... %>.
-  # Calling upkeep_frame without a block raises an ArgumentError.
+  # The upkeep_frame helper remains available for advanced/generated boundaries
+  # that cannot be derived from template source, but it is not part of normal
+  # application setup.
 
   # Identity setup:
   # Upkeep does not infer subscriber identity by naming convention. Declare each

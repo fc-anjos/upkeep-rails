@@ -32,6 +32,40 @@ class HerbSourceInstrumenterTest < Minitest::Test
     assert_equal %(<main data-upkeep-page-frame="page:boards/show"><ul data-upkeep-render-site="#{render_site_id}"><li>Plan</li></ul></main>), html
   end
 
+  def test_marks_render_object_shorthand_as_runtime_confirmed_render_site_candidate
+    source = '<main><ul><%= render cards %></ul></main>'
+    manifest = build_manifest(path: "boards/show", source: source)
+    render_site_id = manifest.render_nodes.first.fetch(:site_id)
+
+    context = RenderSiteContext.new
+    html = render_erb(instrument(manifest, source), context)
+
+    assert_equal [render_site_id], context.render_site_ids
+    assert_equal %(<main data-upkeep-page-frame="page:boards/show"><ul data-upkeep-render-site="#{render_site_id}"><li>Plan</li></ul></main>), html
+  end
+
+  def test_marks_tag_helper_render_site_container_through_helper_arguments
+    source = '<main><%= tag.ul id: "cards" do %><%= render partial: "cards/card", collection: cards, as: :card %><% end %></main>'
+    manifest = build_manifest(path: "boards/show", source: source)
+    render_site_id = manifest.render_nodes.first.fetch(:site_id)
+
+    instrumented = instrument(manifest, source)
+
+    assert_includes instrumented, %{tag.ul id: "cards", "data-upkeep-render-site" => "#{render_site_id}" do}
+    assert_includes instrumented, %{upkeep_frame("#{render_site_id}"}
+  end
+
+  def test_marks_content_tag_render_site_container_through_helper_arguments
+    source = '<main><%= content_tag :ul, class: "cards" do %><%= render partial: "cards/card", collection: cards, as: :card %><% end %></main>'
+    manifest = build_manifest(path: "boards/show", source: source)
+    render_site_id = manifest.render_nodes.first.fetch(:site_id)
+
+    instrumented = instrument(manifest, source)
+
+    assert_includes instrumented, %{content_tag :ul, class: "cards", "data-upkeep-render-site" => "#{render_site_id}" do}
+    assert_includes instrumented, %{upkeep_frame("#{render_site_id}"}
+  end
+
   def test_does_not_create_render_site_when_collection_has_static_siblings
     source = '<main><ul><li>Header</li><%= render partial: "cards/card", collection: cards, as: :card %></ul></main>'
     manifest = build_manifest(path: "boards/show", source: source)
@@ -140,8 +174,18 @@ class HerbSourceInstrumenterTest < Minitest::Test
       "page:boards/show"
     end
 
-    def render(partial:, collection:, as:)
+    def render(*args, partial: nil, collection: nil, as: nil)
+      collection ||= args.first
       collection.map { |card| "<li>#{card.title}</li>" }.join
+    end
+
+    def tag
+      TagBuilder.new(self)
+    end
+
+    def content_tag(name, options = {}, **kwargs)
+      options = options.merge(kwargs)
+      "<#{name}#{html_attributes(options)}>#{yield}</#{name}>"
     end
 
     def upkeep_frame(site_id, manifest_path: nil, manifest_fingerprint: nil)
@@ -149,6 +193,23 @@ class HerbSourceInstrumenterTest < Minitest::Test
       manifest_paths << manifest_path
       manifest_fingerprints << manifest_fingerprint
       yield
+    end
+
+    def html_attributes(options)
+      return "" if options.empty?
+
+      " " + options.map { |key, value| %(#{key}="#{value}") }.join(" ")
+    end
+
+    class TagBuilder
+      def initialize(context)
+        @context = context
+      end
+
+      def ul(options = {}, **kwargs)
+        options = options.merge(kwargs)
+        "<ul#{@context.html_attributes(options)}>#{yield}</ul>"
+      end
     end
   end
 end
