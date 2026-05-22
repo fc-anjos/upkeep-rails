@@ -77,6 +77,19 @@ class HerbSourceInstrumenterTest < Minitest::Test
     assert_equal '<main data-upkeep-page-frame="page:boards/show"><ul><li>Header</li><li>Plan</li></ul></main>', html
   end
 
+  def test_recovered_parse_adds_broad_root_marker_without_trusting_render_sites
+    source = '<main><ul><li><%= render partial: "cards/card", collection: cards, as: :card %></ul></main>'
+    manifest = build_manifest(path: "boards/recovered", source: source)
+
+    instrumented = instrument(manifest, source)
+
+    refute manifest.parse.fetch(:ok)
+    assert manifest.recovered?
+    assert_includes instrumented, 'data-upkeep-page-frame="<%= upkeep_page_frame_id %>"'
+    refute_includes instrumented, "upkeep_frame("
+    refute_includes instrumented, "data-upkeep-render-site"
+  end
+
   def test_inserts_page_root_marker_in_source
     source = "<main><h1>Launch</h1></main>"
     manifest = build_manifest(path: "boards/show", source: source)

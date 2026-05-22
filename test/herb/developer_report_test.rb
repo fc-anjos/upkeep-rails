@@ -24,6 +24,28 @@ class HerbDeveloperReportTest < Minitest::Test
     assert_action(actions, source: "proof", target: "page:boards/helper_hidden", reason: "helper_hidden_collection")
   end
 
+  def test_reports_recovered_parse_warnings_without_trusted_render_sites
+    manifest = Upkeep::HerbSupport::TemplateManifest.build(
+      path: "boards/recovered",
+      source: '<main><ul><li><%= render partial: "cards/card", collection: cards, as: :card %></ul></main>'
+    )
+
+    report = Upkeep::HerbSupport::DeveloperReport.new(manifests: [manifest]).to_h
+    template = report.fetch(:templates).first
+    action = report.fetch(:actions).first
+
+    refute template.fetch(:parse_ok)
+    assert template.fetch(:parse_recovered)
+    assert_equal 1, template.fetch(:strict_parse_errors).size
+    assert_equal 1, template.fetch(:parse_warnings).size
+    assert_equal 0, template.fetch(:render_sites)
+    assert_equal 1, template.fetch(:recovered_render_sites)
+    assert_includes template.fetch(:blockers), "parse_recovered"
+    assert_equal "parse_recovered", action.fetch(:reason)
+    assert_equal 1, action.fetch(:recovered_render_sites)
+    assert_equal 1, report.fetch(:summary).fetch(:recoverable_parse_failures)
+  end
+
   private
 
   def manifests

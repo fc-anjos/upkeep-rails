@@ -448,6 +448,16 @@ Render structure:
   structure.
 - Single-root fragment targets and legal render-site container targets.
 
+Template parsing:
+
+- Upkeep plans narrow source-derived targets only from templates that pass
+  Herb's strict parser.
+- If strict parsing fails but Herb can recover with `strict: false`, Upkeep
+  reports the strict parser diagnostics as warnings and may still add broad
+  page or fragment root markers.
+- Recovered render sites are diagnostic only. Fix the strict warnings before
+  expecting narrow collection updates from that template.
+
 Data dependencies:
 
 - Active Record attribute reads.

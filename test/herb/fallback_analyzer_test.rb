@@ -36,6 +36,13 @@ class HerbFallbackAnalyzerTest < Minitest::Test
     assert_equal "no_herb_render_site", fallback_reason(graph, "page:boards/inline", changes: [:changed])
   end
 
+  def test_explains_recovered_parse
+    graph = graph_with_page("boards/recovered")
+    graph.add_dependency("page:boards/recovered", FakeDependency.new(:changed, :active_record_attribute))
+
+    assert_equal "parse_recovered", fallback_reason(graph, "page:boards/recovered", changes: [:changed])
+  end
+
   def test_manifest_mismatch_takes_precedence
     graph = graph_with_page("boards/inline")
     alignment_report = {
@@ -80,6 +87,7 @@ class HerbFallbackAnalyzerTest < Minitest::Test
       Upkeep::Templates::Template.new("boards/preloaded_plain", "<main><%= summary.title %></main>", :page),
       Upkeep::Templates::Template.new("boards/helper_hidden", "<main><%= helper_hidden_card_list(cards) %></main>", :page),
       Upkeep::Templates::Template.new("boards/inline", "<main><% cards.each do |card| %><span><%= card.title %></span><% end %></main>", :page),
+      Upkeep::Templates::Template.new("boards/recovered", "<main><ul><li><%= summary.title %></ul></main>", :page),
       Upkeep::Templates::Template.new("cards/_card", "<li><%= card.title %></li>", :partial)
     ].then { |templates| Upkeep::HerbSupport::RuntimeAlignment.build_manifests(templates) }
   end

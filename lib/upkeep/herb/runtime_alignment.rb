@@ -175,6 +175,7 @@ module Upkeep
       def template_deopt_reason(template, manifest)
         return "manifest_missing" unless template
         return "manifest_missing" unless manifest
+        return "manifest_parse_recovered" if manifest.recovered?
         return "manifest_parse_failed" unless manifest.parse.fetch(:ok)
 
         "manifest_not_eligible"
@@ -183,6 +184,7 @@ module Upkeep
       def fragment_deopt_reason(template, manifest)
         return "manifest_missing" unless template
         return "manifest_missing" unless manifest
+        return "manifest_parse_recovered" if manifest.recovered?
         return "manifest_parse_failed" unless manifest.parse.fetch(:ok)
         return "manifest_not_partial" unless manifest.partial?
         return "partial_not_single_root" unless manifest.root_shape.fetch(:single_root, false)
