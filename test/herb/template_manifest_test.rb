@@ -144,6 +144,29 @@ class HerbTemplateManifestTest < Minitest::Test
     assert_equal 1, summary.fetch(:single_root_partials)
   end
 
+  def test_strict_parse_failure_recovers_non_strict_for_diagnostics_without_trusted_plan
+    manifest = build_manifest(
+      path: "app/views/boards/recovered.html.erb",
+      source: '<main><ul><li><%= render partial: "cards/card", collection: cards, as: :card %></ul></main>'
+    )
+
+    refute manifest.parse.fetch(:ok)
+    assert manifest.recovered?
+    assert manifest.parse.fetch(:recovery).fetch(:ok)
+    assert_empty manifest.frontend_tag_plan
+    assert_empty manifest.render_nodes
+    assert_equal 1, manifest.recovery_render_nodes.size
+    assert_equal ["page_root", "render_site"], manifest.recovery_frontend_tag_plan.map { |entry| entry.fetch(:kind) }
+
+    summary = Upkeep::HerbSupport::TemplateManifest.summary([manifest])
+
+    assert_equal 1, summary.fetch(:strict_parse_failures)
+    assert_equal 1, summary.fetch(:recoverable_parse_failures)
+    assert_equal 1, summary.fetch(:recovered_render_nodes)
+    assert_equal 0, summary.fetch(:render_nodes)
+    assert_equal 0, summary.fetch(:render_site_tags)
+  end
+
   def test_parse_errors_are_captured_in_manifest
     manifest = build_manifest(
       path: "app/views/cards/_broken.html.erb",

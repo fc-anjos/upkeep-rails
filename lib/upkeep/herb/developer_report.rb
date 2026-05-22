@@ -12,6 +12,7 @@ module Upkeep
         "no_herb_render_site" => "Extract updateable repeated markup into a partial render so Herb can plan a render site.",
         "page_dependency_without_narrower_frame" => "Add a fragment or render-site boundary around the data-dependent region.",
         "parse_failure" => "Fix the Herb parse error before using source-derived update addresses.",
+        "parse_recovered" => "Herb recovered with non-strict parsing, but Upkeep kept narrow source-derived addresses disabled. Fix the strict warnings to enable narrow updates.",
         "preloaded_plain_data" => "Keep record identity available to the view or attach summaries to their source records."
       }.freeze
 
@@ -43,7 +44,11 @@ module Upkeep
           path: manifest.path,
           kind: manifest.partial? ? "partial" : "page",
           parse_ok: manifest.parse.fetch(:ok),
+          parse_recovered: manifest.recovered?,
+          strict_parse_errors: strict_parse_errors(manifest),
+          parse_warnings: parse_warnings(manifest),
           render_sites: manifest.render_nodes.size,
+          recovered_render_sites: manifest.recovery_render_nodes.size,
           fragment_root_tags: manifest.frontend_tag_plan.count { |tag| tag.fetch(:kind) == "fragment_root" },
           helper_lowered_elements: manifest.helper_lowered_elements.size,
           blockers: template_blockers(manifest)
@@ -53,19 +58,21 @@ module Upkeep
       def template_actions
         manifests.flat_map do |manifest|
           template_blockers(manifest).map do |blocker|
-            {
+            action = {
               source: "template",
               path: manifest.path,
               reason: blocker,
               message: template_action_message(blocker)
             }
+            action[:recovered_render_sites] = manifest.recovery_render_nodes.size if blocker == "parse_recovered"
+            action
           end
         end
       end
 
       def template_blockers(manifest)
         blockers = []
-        blockers << "parse_failure" unless manifest.parse.fetch(:ok)
+        blockers << (manifest.recovered? ? "parse_recovered" : "parse_failure") unless manifest.parse.fetch(:ok)
         blockers << "partial_without_single_root" if manifest.partial? && manifest.parse.fetch(:ok) && !manifest.root_shape.fetch(:single_root, false)
         blockers << "page_without_render_site" if !manifest.partial? && manifest.parse.fetch(:ok) && manifest.render_nodes.empty?
         blockers
@@ -75,6 +82,8 @@ module Upkeep
         case blocker
         when "parse_failure"
           FALLBACK_ACTIONS.fetch("parse_failure")
+        when "parse_recovered"
+          FALLBACK_ACTIONS.fetch("parse_recovered")
         when "partial_without_single_root"
           FALLBACK_ACTIONS.fetch("multi_root_partial")
         when "page_without_render_site"
@@ -107,6 +116,19 @@ module Upkeep
 
       def page_fallback_reasons
         proof_report&.fetch(:summary, {})&.fetch(:page_fallback_reasons, {}) || {}
+      end
+
+      def strict_parse_errors(manifest)
+        Array(manifest.parse[:errors])
+      end
+
+      def parse_warnings(manifest)
+        warnings = Array(manifest.parse[:warnings])
+        return warnings unless manifest.recovered?
+
+        warnings + strict_parse_errors(manifest).map do |error|
+          error.merge(severity: "warning", recovery: "non_strict")
+        end
       end
     end
   end

@@ -21,34 +21,53 @@ module Upkeep
         multi_root: false
       }.freeze
 
-      attr_reader :path, :parse, :root_shape, :frontend_tag_plan, :render_nodes, :helper_lowered_elements
+      attr_reader :path, :parse, :root_shape, :frontend_tag_plan, :render_nodes, :helper_lowered_elements, :recovery
 
       def self.build(path:, source:, parse_options: DEFAULT_PARSE_OPTIONS)
         parse_result = ::Herb.parse(source, **parse_options)
-        parse = parse_status(parse_result)
-        visitor = Visitor.new(path: path, source: source)
-        parse_result.value&.accept(visitor) if parse.fetch(:ok)
+        parse = parse_status(parse_result, mode: parse_mode(parse_options))
+
+        if parse.fetch(:ok)
+          visitor = Visitor.new(path: path, source: source)
+          parse_result.value&.accept(visitor)
+
+          return new(
+            path: path,
+            parse: parse,
+            root_shape: visitor.root_shape,
+            frontend_tag_plan: visitor.frontend_tag_plan,
+            render_nodes: visitor.render_nodes,
+            helper_lowered_elements: visitor.helper_lowered_elements,
+            recovery: nil
+          )
+        end
+
+        parse, recovery = recovery_for(path: path, source: source, parse: parse, parse_options: parse_options)
 
         new(
           path: path,
           parse: parse,
-          root_shape: visitor.root_shape,
-          frontend_tag_plan: visitor.frontend_tag_plan,
-          render_nodes: visitor.render_nodes,
-          helper_lowered_elements: visitor.helper_lowered_elements
+          root_shape: EMPTY_ROOT_SHAPE,
+          frontend_tag_plan: [],
+          render_nodes: [],
+          helper_lowered_elements: [],
+          recovery: recovery
         )
       rescue StandardError => error
         new(
           path: path,
           parse: {
             ok: false,
+            mode: parse_mode(parse_options),
             exception: error.class.name,
-            message: error.message
+            message: error.message,
+            recovered: false
           },
-          root_shape: {},
+          root_shape: EMPTY_ROOT_SHAPE,
           frontend_tag_plan: [],
           render_nodes: [],
-          helper_lowered_elements: []
+          helper_lowered_elements: [],
+          recovery: nil
         )
       end
 
@@ -58,6 +77,8 @@ module Upkeep
         {
           templates_scanned: manifests.size,
           strict_parse_failures: manifests.count { |manifest| !manifest.parse.fetch(:ok) },
+          recoverable_parse_failures: manifests.count(&:recovered?),
+          recovered_render_nodes: manifests.sum { |manifest| manifest.recovery_render_nodes.size },
           render_nodes: manifests.sum { |manifest| manifest.render_nodes.size },
           helper_lowered_elements: manifests.sum { |manifest| manifest.helper_lowered_elements.size },
           frontend_tag_targets: manifests.sum { |manifest| manifest.frontend_tag_plan.size },
@@ -70,17 +91,50 @@ module Upkeep
         }
       end
 
-      def self.parse_status(parse_result)
+      def self.parse_status(parse_result, mode:)
         errors = parse_result.errors.map { |error| error_payload(error) }
         warnings = parse_result.warnings.map { |warning| error_payload(warning) }
 
         {
           ok: errors.empty?,
+          mode: mode,
           errors: errors,
-          warnings: warnings
+          warnings: warnings,
+          recovered: false
         }
       end
       private_class_method :parse_status
+
+      def self.recovery_for(path:, source:, parse:, parse_options:)
+        return [parse, nil] unless parse_options.fetch(:strict, false)
+
+        recovery_options = parse_options.merge(strict: false)
+        recovery_result = ::Herb.parse(source, **recovery_options)
+        recovery_parse = parse_status(recovery_result, mode: "non_strict")
+        parse = parse.merge(recovered: recovery_parse.fetch(:ok), recovery: recovery_parse)
+
+        return [parse, { parse: recovery_parse }] unless recovery_parse.fetch(:ok)
+
+        visitor = Visitor.new(path: path, source: source)
+        recovery_result.value&.accept(visitor)
+
+        [
+          parse,
+          {
+            parse: recovery_parse,
+            root_shape: visitor.root_shape,
+            frontend_tag_plan: visitor.frontend_tag_plan,
+            render_nodes: visitor.render_nodes,
+            helper_lowered_elements: visitor.helper_lowered_elements
+          }
+        ]
+      end
+      private_class_method :recovery_for
+
+      def self.parse_mode(parse_options)
+        parse_options.fetch(:strict, false) ? "strict" : "non_strict"
+      end
+      private_class_method :parse_mode
 
       def self.error_payload(error)
         {
@@ -107,13 +161,14 @@ module Upkeep
       end
       private_class_method :location_payload
 
-      def initialize(path:, parse:, root_shape:, frontend_tag_plan:, render_nodes:, helper_lowered_elements:)
+      def initialize(path:, parse:, root_shape:, frontend_tag_plan:, render_nodes:, helper_lowered_elements:, recovery:)
         @path = path
         @parse = parse
         @root_shape = root_shape
         @frontend_tag_plan = frontend_tag_plan
         @render_nodes = render_nodes
         @helper_lowered_elements = helper_lowered_elements
+        @recovery = recovery
       end
 
       def to_h
@@ -123,8 +178,9 @@ module Upkeep
           root_shape: root_shape,
           frontend_tag_plan: frontend_tag_plan,
           render_nodes: render_nodes,
-          helper_lowered_elements: helper_lowered_elements
-        }
+          helper_lowered_elements: helper_lowered_elements,
+          recovery: recovery
+        }.compact
       end
 
       def fingerprint
@@ -133,6 +189,18 @@ module Upkeep
 
       def partial?
         File.basename(path).start_with?("_")
+      end
+
+      def recovered?
+        parse.fetch(:recovered, false)
+      end
+
+      def recovery_frontend_tag_plan
+        Array(recovery&.fetch(:frontend_tag_plan, []))
+      end
+
+      def recovery_render_nodes
+        Array(recovery&.fetch(:render_nodes, []))
       end
 
       class Visitor < ::Herb::Visitor

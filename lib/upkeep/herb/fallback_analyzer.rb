@@ -43,6 +43,7 @@ module Upkeep
 
       def manifest_reason(manifest)
         return "manifest_missing" unless manifest
+        return "parse_recovered" if manifest.recovered?
 
         "parse_failure"
       end

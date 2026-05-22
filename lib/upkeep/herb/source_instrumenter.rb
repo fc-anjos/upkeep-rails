@@ -10,7 +10,7 @@ module Upkeep
       end
 
       def instrument(source)
-        return source unless manifest.parse.fetch(:ok)
+        return source unless manifest.parse.fetch(:ok) || manifest.recovered?
 
         apply_replacements(source, replacements_for(source))
       end
@@ -24,6 +24,8 @@ module Upkeep
       end
 
       def render_site_replacements
+        return [] unless manifest.parse.fetch(:ok)
+
         manifest.render_nodes.select { |render_node| render_node.fetch(:render_site_container) }.map do |render_node|
           [
             render_node.fetch(:start_offset),
@@ -34,9 +36,14 @@ module Upkeep
       end
 
       def marker_replacements(source)
-        manifest.frontend_tag_plan
-          .select { |entry| %w[fragment_root page_root render_site].include?(entry.fetch(:kind)) }
+        frontend_tag_plan_for_instrumentation
           .filter_map { |tag| root_marker_replacement(source, tag) }
+      end
+
+      def frontend_tag_plan_for_instrumentation
+        return manifest.frontend_tag_plan.select { |entry| %w[fragment_root page_root render_site].include?(entry.fetch(:kind)) } if manifest.parse.fetch(:ok)
+
+        manifest.recovery_frontend_tag_plan.select { |entry| %w[fragment_root page_root].include?(entry.fetch(:kind)) }
       end
 
       def root_marker_replacement(source, tag)
