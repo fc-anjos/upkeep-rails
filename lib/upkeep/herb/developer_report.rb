@@ -68,7 +68,6 @@ module Upkeep
         blockers << "parse_failure" unless manifest.parse.fetch(:ok)
         blockers << "partial_without_single_root" if manifest.partial? && manifest.parse.fetch(:ok) && !manifest.root_shape.fetch(:single_root, false)
         blockers << "page_without_render_site" if !manifest.partial? && manifest.parse.fetch(:ok) && manifest.render_nodes.empty?
-        blockers << "helper_lowered_html" if manifest.helper_lowered_elements.any?
         blockers
       end
 
@@ -80,8 +79,6 @@ module Upkeep
           FALLBACK_ACTIONS.fetch("multi_root_partial")
         when "page_without_render_site"
           FALLBACK_ACTIONS.fetch("no_herb_render_site")
-        when "helper_lowered_html"
-          "Replace helper-lowered HTML with explicit template structure when it should be independently updateable."
         end
       end
 

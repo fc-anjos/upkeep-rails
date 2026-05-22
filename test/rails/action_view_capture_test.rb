@@ -58,6 +58,36 @@ class RailsCaptureCardsController < ActionController::Base
 end
 
 class ActionViewCaptureTest < Minitest::Test
+  MatrixExpectation = Data.define(:template, :target_kinds, :render_sites, :render_site_markers, :expected_text)
+
+  class MatrixCardListComponent
+    def initialize(cards:)
+      @cards = cards
+    end
+
+    def render_in(view_context)
+      @view_context = view_context
+      call
+    ensure
+      @view_context = nil
+    end
+
+    private
+
+    attr_reader :cards, :view_context
+
+    def call
+      view_context.content_tag(:section, class: "card-list-component") do
+        view_context.safe_join([
+          view_context.content_tag(:h2, "Component cards"),
+          view_context.content_tag(:ul) do
+            view_context.render partial: "cards/card", collection: cards, as: :card
+          end
+        ])
+      end
+    end
+  end
+
   class TestRackSession < ActiveSupport::HashWithIndifferentAccess
     def enabled? = true
 
@@ -75,6 +105,20 @@ class ActionViewCaptureTest < Minitest::Test
       value = super
       Upkeep::Runtime::Ambient.record_session(key, value)
       value
+    end
+  end
+
+  module MatrixViewHelpers
+    def helper_collection(cards)
+      render partial: "cards/card", collection: cards, as: :card
+    end
+
+    def render_component(component)
+      component.render_in(self)
+    end
+
+    def card_list_component(cards)
+      MatrixCardListComponent.new(cards: cards)
     end
   end
 
@@ -180,6 +224,48 @@ class ActionViewCaptureTest < Minitest::Test
     assert_includes replayed_html, "Plan v2"
     refute_includes replayed_html, ">Plan<"
     assert_equal ["id"], page_frame.payload.fetch(:controller).fetch(:path_parameters)
+  end
+
+  def test_view_instrumentation_matrix_for_collection_boundaries
+    expectations = [
+      MatrixExpectation.new("matrix/simple_collection", ["render_site"], 1, 1, "Plan"),
+      MatrixExpectation.new("matrix/mixed_collection_siblings", ["page"], 0, 0, "Plan"),
+      MatrixExpectation.new("matrix/helper_hidden_collection", ["page"], 0, 0, "Plan"),
+      MatrixExpectation.new("matrix/component_hidden_collection", ["page"], 0, 0, "Plan"),
+      MatrixExpectation.new("matrix/render_relation_shorthand", ["render_site"], 1, 1, "Plan"),
+      MatrixExpectation.new("matrix/aggregate_only", [], 0, 0, "Total:"),
+      MatrixExpectation.new("matrix/manual_helper_frame", ["render_site"], 1, 1, "Plan")
+    ]
+    failures = []
+    observations = []
+
+    expectations.each do |expectation|
+      RailsCaptureCard.delete_all
+      create_card!("Plan")
+      create_card!("Build")
+
+      html, recorder = capture_render(expectation.template, cards: RailsCaptureCard.order(:id))
+      render_sites = recorder.graph.frame_nodes.select { |frame| frame.payload.fetch(:kind) == "render_site" }
+
+      Upkeep::Runtime::ChangeLog.reset
+      create_card!("Review")
+
+      targets = Upkeep::Targeting::Selector.new.select(recorder, Upkeep::Runtime::ChangeLog.events)
+      actual = {
+        target_kinds: targets.map(&:kind).uniq,
+        render_sites: render_sites.size,
+        render_site_markers: html.scan("data-upkeep-render-site").size,
+        dependency_sources: recorder.graph.summary.fetch(:dependency_sources)
+      }
+
+      observations << "#{expectation.template}: targets=#{actual.fetch(:target_kinds).inspect}, render_sites=#{actual.fetch(:render_sites)}, markers=#{actual.fetch(:render_site_markers)}, dependencies=#{actual.fetch(:dependency_sources).inspect}"
+      failures << "#{expectation.template} target kind expected #{expectation.target_kinds.inspect}, got #{actual.fetch(:target_kinds).inspect}" unless actual.fetch(:target_kinds) == expectation.target_kinds
+      failures << "#{expectation.template} render-site frames expected #{expectation.render_sites}, got #{actual.fetch(:render_sites)}" unless actual.fetch(:render_sites) == expectation.render_sites
+      failures << "#{expectation.template} render-site markers expected #{expectation.render_site_markers}, got #{actual.fetch(:render_site_markers)}" unless actual.fetch(:render_site_markers) == expectation.render_site_markers
+      assert_includes html, expectation.expected_text, "#{expectation.template} rendered expected text"
+    end
+
+    flunk("View instrumentation matrix gaps:\n#{failures.join("\n")}\n\nObserved behavior:\n#{observations.join("\n")}") if failures.any?
   end
 
   def test_upkeep_frame_helper_renders_block_once_with_output_erb
@@ -438,6 +524,35 @@ class ActionViewCaptureTest < Minitest::Test
     assert_includes html, %(data-upkeep-frame="fragment:rails:cards/_card:rails_capture_cards:#{plan.id}")
   end
 
+  def test_render_relation_shorthand_records_render_site_and_replays_membership_change
+    create_card!("Plan")
+    create_card!("Build")
+
+    html, recorder = capture_render("boards/relation_shorthand", cards: RailsCaptureCard.order(:id))
+
+    Upkeep::Runtime::ChangeLog.reset
+    create_card!("Review")
+
+    targets = Upkeep::Targeting::Selector.new.select(recorder, Upkeep::Runtime::ChangeLog.events)
+    recipe = recorder.graph.node(Upkeep::Targeting::Extraction.frame_id_for(targets.first)).payload.fetch(:recipe)
+    replayed_html = recipe.render
+
+    assert_equal ["render_site"], targets.map(&:kind).uniq
+    assert_includes replayed_html, "Review"
+    assert_includes html, "data-upkeep-render-site"
+  end
+
+  def test_helper_lowered_tag_collection_records_render_site
+    create_card!("Plan")
+    create_card!("Build")
+
+    html, recorder = capture_render("boards/tag_helper_collection", cards: RailsCaptureCard.order(:id))
+    render_site = recorder.graph.frame_nodes.find { |frame| frame.payload.fetch(:kind) == "render_site" }
+
+    assert render_site
+    assert_includes html, %(<ul id="cards" data-upkeep-render-site="#{render_site.payload.fetch(:site_id)}")
+  end
+
   def test_controller_materialized_relation_records_render_site_collection_dependency
     plan = create_card!("Plan", status: "open")
     build = create_card!("Build", status: "open")
@@ -660,6 +775,7 @@ class ActionViewCaptureTest < Minitest::Test
     lookup_context = ActionView::LookupContext.new([resolver])
     ActionView::Base.with_empty_template_cache.new(lookup_context, {}, nil).tap do |view|
       view.prefix_partial_path_with_controller_namespace = false
+      view.extend(MatrixViewHelpers)
     end
   end
 
@@ -686,11 +802,76 @@ class ActionViewCaptureTest < Minitest::Test
           </ul>
         </main>
       ERB
+      "boards/relation_shorthand.html.erb" => <<~ERB,
+        <main>
+          <ul>
+            <%= render cards %>
+          </ul>
+        </main>
+      ERB
+      "boards/tag_helper_collection.html.erb" => <<~ERB,
+        <main>
+          <%= tag.ul id: "cards" do %>
+            <%= render partial: "cards/card", collection: cards, as: :card %>
+          <% end %>
+        </main>
+      ERB
       "boards/manual_frame.html.erb" => <<~ERB,
         <main>
           <%= upkeep_frame "manual", manifest_path: "boards/manual_frame", manifest_fingerprint: "test" do %>
             <section>Manual frame</section>
             <%= render partial: "cards/card", collection: cards, as: :card %>
+          <% end %>
+        </main>
+      ERB
+      "matrix/simple_collection.html.erb" => <<~ERB,
+        <main>
+          <ul>
+            <%= render partial: "cards/card", collection: cards, as: :card %>
+          </ul>
+        </main>
+      ERB
+      "matrix/mixed_collection_siblings.html.erb" => <<~ERB,
+        <main>
+          <ul>
+            <li>Header</li>
+            <%= render partial: "cards/card", collection: cards, as: :card %>
+          </ul>
+        </main>
+      ERB
+      "matrix/helper_hidden_collection.html.erb" => <<~ERB,
+        <main>
+          <ul>
+            <%= helper_collection(cards) %>
+          </ul>
+        </main>
+      ERB
+      "matrix/component_hidden_collection.html.erb" => <<~ERB,
+        <main>
+          <%= render_component(card_list_component(cards)) %>
+        </main>
+      ERB
+      "matrix/render_relation_shorthand.html.erb" => <<~ERB,
+        <main>
+          <ul>
+            <%= render cards %>
+          </ul>
+        </main>
+      ERB
+      "matrix/aggregate_only.html.erb" => <<~ERB,
+        <main>
+          <section>
+            <p>Total: <%= cards.count %></p>
+            <p>Top id: <%= cards.maximum(:id) || 0 %></p>
+          </section>
+        </main>
+      ERB
+      "matrix/manual_helper_frame.html.erb" => <<~ERB,
+        <main>
+          <%= upkeep_frame "helper-cards", manifest_path: "matrix/manual_helper_frame", manifest_fingerprint: "test" do %>
+            <ul data-upkeep-render-site="helper-cards">
+              <%= helper_collection(cards) %>
+            </ul>
           <% end %>
         </main>
       ERB

@@ -1,0 +1,26 @@
+<% children = users_by_parent[user.id] %>
+<% user_class = if !user.is_active?
+  "inactive_user"
+elsif user.is_new?
+  "new_user"
+end %>
+
+<li class="<%= user.invited_by_user_id ? "" : "noparent" %>">
+  <a name="<%= user.username %>" href="/u/<%= user.username %>" class="<%= user_class %>"><%= user.username %></a>
+  <% if user.is_admin? %>
+    (administrator)
+  <% elsif user.is_moderator? %>
+    (moderator)
+  <% else %>
+    (<%= user.karma %>)
+  <% end %>
+
+  <% if children %>
+    <ul class="user_tree">
+      <%= render partial: "users/tree_user",
+        collection: children.reverse,
+        as: :user,
+        locals: { users_by_parent: users_by_parent } %>
+    </ul>
+  <% end %>
+</li>
