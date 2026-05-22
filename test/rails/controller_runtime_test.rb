@@ -316,7 +316,7 @@ class ControllerRuntimeTest < Minitest::Test
       env_for("/cards/#{card.id}", method: "PATCH", params: { id: card.id, title: "Plan v2" })
     )
     collect_body(body)
-    Upkeep::Rails.drain_delivery!
+    Upkeep::Rails::Testing.drain_delivery!
 
     assert_equal 1, adapter.bodies.size
     assert_includes adapter.bodies.first, "Plan v2"
@@ -334,7 +334,7 @@ class ControllerRuntimeTest < Minitest::Test
       delivery_change(table: "upkeep_subscription_shape_index_entries")
     ])
     Upkeep::Rails.deliver_changes!([delivery_change(table: "upkeep_subscriptions")])
-    Upkeep::Rails.drain_delivery!
+    Upkeep::Rails::Testing.drain_delivery!
 
     assert_empty plan_events
     assert_empty build_events

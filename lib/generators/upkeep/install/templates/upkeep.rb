@@ -20,6 +20,20 @@ Upkeep::Rails.configure do |config|
   # same subscription lifecycle as ActiveRecord without requiring subscription
   # tables in every app test database. Keep at least one app/CI path on
   # :active_record when you want to exercise durable subscription rows.
+  #
+  # View setup:
+  # Wrap collection regions that should receive narrowed live updates with the
+  # upkeep_frame block helper, and mark page/partial roots with the generated
+  # frame ids:
+  #
+  # <%%= upkeep_frame "cards" do %>
+  #   <ul data-upkeep-render-site="cards">
+  #     <%%= render partial: "cards/card", collection: @cards, as: :card %>
+  #   </ul>
+  # <%% end %>
+  #
+  # In normal ERB templates, prefer the output form above: <%%= upkeep_frame ... %>.
+  # Calling upkeep_frame without a block raises an ArgumentError.
 
   # Identity setup:
   # Upkeep does not infer subscriber identity by naming convention. Declare each

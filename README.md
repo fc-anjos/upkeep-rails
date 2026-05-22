@@ -156,7 +156,43 @@ apps without a package-manager dependency. After upgrading `upkeep-rails`, rerun
 the installer or compare that file with the generated template. A stale browser
 client can subscribe with an old payload shape and be rejected by the channel.
 
-### 3. Configure Subscription Storage
+### 3. Mark Live Frames
+
+Upkeep's Rails helper surface is intentionally small:
+
+- `upkeep_frame(id, manifest_path: nil, manifest_fingerprint: nil) { ... }`
+  captures a collection-level live frame. It is an output-producing block
+  helper, so use `<%= ... %>`.
+- `upkeep_page_frame_id` returns the current page frame id for a root element.
+- `upkeep_frame_id` returns the current partial or fragment frame id for a root
+  element.
+
+Use `upkeep_frame` around collection regions that should update as one unit
+when membership, ordering, or aggregate data changes. The element Turbo should
+update needs `data-upkeep-render-site` with the same id:
+
+```erb
+<main data-upkeep-page-frame="<%= upkeep_page_frame_id %>">
+  <%= upkeep_frame "cards" do %>
+    <ul data-upkeep-render-site="cards">
+      <%= render partial: "cards/card", collection: @cards, as: :card %>
+    </ul>
+  <% end %>
+</main>
+```
+
+Partial roots should expose their current frame id:
+
+```erb
+<li id="<%= dom_id(card) %>" data-upkeep-frame="<%= upkeep_frame_id %>">
+  <%= card.title %>
+</li>
+```
+
+Calling `upkeep_frame` without a block raises `ArgumentError` with the expected
+ERB shape.
+
+### 4. Configure Subscription Storage
 
 The generated initializer keeps production on the durable ActiveRecord store
 and uses the in-process memory store for ordinary test runs:
@@ -194,7 +230,7 @@ Upkeep::Rails.configure do |config|
 end
 ```
 
-### 4. Configure Identity For User-Specific Pages
+### 5. Configure Identity For User-Specific Pages
 
 Pages that depend on a user, account, tenant, or other authenticated actor need
 an explicit identity bridge. The `current:`, `session:`, `cookie:`, or
@@ -320,7 +356,7 @@ If a page reads an undeclared non-absent `CurrentAttributes` or Warden identity,
 Upkeep refuses live registration and reports `identity_setup_required` /
 `unidentified_identity` rather than guessing.
 
-### 5. Configure Delivery
+### 6. Configure Delivery
 
 Upkeep dispatches committed Active Record changes through a delivery adapter.
 Production Rails apps should use Active Job so planning, rendering, and
@@ -358,7 +394,7 @@ For debugging, set `config.delivery_adapter = :inline` inside
 previous process-local batching behavior and is useful for tests or small local
 development.
 
-### 6. Render Normal Rails Views
+### 7. Render Normal Rails Views
 
 Controllers keep loading Active Record models and relations:
 
@@ -386,7 +422,7 @@ Templates keep rendering ERB and partial collections:
 Successful HTML GET responses are captured automatically and receive the
 subscription marker.
 
-### 7. Keep Write Paths Focused
+### 8. Keep Write Paths Focused
 
 Writes keep doing domain work:
 

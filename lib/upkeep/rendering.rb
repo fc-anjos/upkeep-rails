@@ -229,7 +229,9 @@ module Upkeep
         @upkeep_frame_id || raise("upkeep_frame_id is only available while rendering a fragment")
       end
 
-      def render_site(site_id, manifest_path: nil, manifest_fingerprint: nil)
+      def upkeep_frame(site_id, manifest_path: nil, manifest_fingerprint: nil, &block)
+        raise ArgumentError, "upkeep_frame requires a block" unless block
+
         frame_id = "site:#{site_id}"
         metadata = {
           kind: "render_site",
@@ -252,13 +254,13 @@ module Upkeep
             Targeting::Extraction.extract_target_html(page_recipe.render, target)
           else
             Runtime::Observation.capture_frame(frame_id, metadata) do
-              yield
+              block.call
             end
           end
         end
 
         html = Runtime::Observation.capture_frame(frame_id, metadata.merge(recipe: recipe)) do
-          yield
+          block.call
         end
 
         html

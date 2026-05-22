@@ -80,7 +80,7 @@ class BenchmarkSurfaceTest < ActionDispatch::IntegrationTest
     broadcasts = capture_upkeep_broadcasts do
       patch board_card_path(@board, @card), params: { card: { title: "Streamed graph capture" } }
       assert_response :ok
-      Upkeep::Rails.drain_delivery!
+      drain_upkeep_delivery!
     end
 
     assert_equal 1, broadcasts.size

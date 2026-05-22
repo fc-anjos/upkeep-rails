@@ -68,7 +68,7 @@ class UpkeepSubscriptionTest < ActionDispatch::IntegrationTest
     end
 
     assert_response :success
-    Upkeep::Rails.drain_delivery!
+    Upkeep::Rails::Testing.drain_delivery!
   end
 
     private

@@ -47,6 +47,9 @@ class InstallGeneratorTest < Rails::Generators::TestCase
     assert_file "config/initializers/upkeep.rb", /config\.delivery_queue = app_config\.fetch\(:delivery_queue, :upkeep_realtime\)/
     assert_file "config/initializers/upkeep.rb", /Delivery setup:/
     assert_file "config/initializers/upkeep.rb", /Test setup:/
+    assert_file "config/initializers/upkeep.rb", /View setup:/
+    assert_file "config/initializers/upkeep.rb", /<%= upkeep_frame "cards"/
+    assert_file "config/initializers/upkeep.rb", /Calling upkeep_frame without a block raises an ArgumentError/
     assert_file "config/initializers/upkeep.rb", /Identity setup:/
     assert_file "config/initializers/upkeep.rb", /config\.identify :viewer, current: \["Current", :user\]/
     assert_file "config/initializers/upkeep.rb", /config\.identify :viewer, warden: :user/

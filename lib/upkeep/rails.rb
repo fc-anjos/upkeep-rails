@@ -99,6 +99,15 @@ module Upkeep
         nil
       end
 
+      # Dispatches committed application changes through the configured delivery
+      # adapter.
+      #
+      # ControllerRuntime calls this automatically after non-GET actions. Apps
+      # usually should not call it from controllers or models.
+      #
+      # @param changes [Array<#to_h>] change events to deliver. Defaults to the
+      #   current runtime change log.
+      # @return [Upkeep::Delivery::Transport::DispatchReport]
       def deliver_changes!(changes = Runtime::ChangeLog.drain)
         changes = deliverable_changes(changes)
         return Delivery::Transport::DispatchReport.new([]) if changes.empty?
@@ -109,16 +118,22 @@ module Upkeep
         Delivery::Transport::DispatchReport.new([])
       end
 
+      # Delivers committed application changes immediately in the current
+      # process.
+      #
+      # This is used by the inline delivery adapter and Active Job worker. Tests
+      # that need deterministic async delivery should use
+      # Upkeep::Rails::Testing instead of calling this directly.
+      #
+      # @param changes [Array<#to_h>] change events to deliver. Defaults to the
+      #   current runtime change log.
+      # @return [Upkeep::Delivery::TurboStreams::Batch, Upkeep::Delivery::Transport::DispatchReport]
       def deliver_changes_now!(changes = Runtime::ChangeLog.drain)
         changes = deliverable_changes(changes)
         return Delivery::Transport::DispatchReport.new([]) if changes.empty?
 
         batch = delivery_batch_for([changes])
         transport.deliver(batch)
-      end
-
-      def drain_delivery!
-        @delivery_dispatcher&.drain
       end
 
       def validate_configuration!(environment: rails_environment)
@@ -135,6 +150,10 @@ module Upkeep
           batch = delivery_batch_for(change_sets)
           transport.deliver(batch)
         end
+      end
+
+      def drain_delivery_dispatcher!
+        @delivery_dispatcher&.drain
       end
 
       def dispatch_changes(changes)
