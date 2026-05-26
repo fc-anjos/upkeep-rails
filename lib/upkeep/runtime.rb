@@ -398,11 +398,11 @@ module Upkeep
         }
       end
 
-      def bulk_update(table:, model:, changed_attributes:, predicate_sql:, predicate_coverage:, predicate_table_columns:, new_values: {})
+      def bulk_update(table:, model:, changed_attributes:, predicate_sql:, predicate_coverage:, predicate_table_columns:, new_values: {}, id: nil)
         changed_attributes = Array(changed_attributes).map(&:to_s).sort
         new_values = new_values.transform_keys(&:to_s)
 
-        {
+        event = {
           type: "bulk_update",
           table: table,
           model: model,
@@ -416,12 +416,14 @@ module Upkeep
           predicate_coverage: predicate_coverage,
           predicate_table_columns: predicate_table_columns
         }
+        event[:id] = id unless id.nil?
+        event
       end
 
-      def bulk_delete(table:, model:, changed_attributes:, predicate_sql:, predicate_coverage:, predicate_table_columns:)
+      def bulk_delete(table:, model:, changed_attributes:, predicate_sql:, predicate_coverage:, predicate_table_columns:, id: nil)
         changed_attributes = Array(changed_attributes).map(&:to_s).sort
 
-        {
+        event = {
           type: "bulk_delete",
           table: table,
           model: model,
@@ -433,6 +435,8 @@ module Upkeep
           predicate_coverage: predicate_coverage,
           predicate_table_columns: predicate_table_columns
         }
+        event[:id] = id unless id.nil?
+        event
       end
 
       def previous_changes(changes)
@@ -804,6 +808,37 @@ module Upkeep
       end
     end
 
+    # Hooks `cache_key_with_version` so that any caller (Rails fragment caching,
+    # `Rails.cache.fetch("#{record.cache_key_with_version}/...")`, Russian doll,
+    # etc.) registers a dependency on the record's `updated_at` attribute. This
+    # lets Upkeep stay reactive across `Rails.cache.fetch` blocks: even on cache
+    # hits, the participating records are still declared as dependencies, so a
+    # touch/update broadcasts an update to subscribers viewing the cached
+    # fragment.
+    module CacheKeyObserver
+      def cache_key_with_version
+        record_upkeep_cache_key_dependency
+        super
+      end
+
+      private
+
+      def record_upkeep_cache_key_dependency
+        return unless Observation.recording?
+        return if new_record? || destroyed?
+
+        attribute = self.class.timestamp_attributes_for_update_in_model.first.to_s
+        Observation.record_dependency(
+          Dependencies::ActiveRecordAttribute.new(
+            table: self.class.table_name,
+            model: self.class.name,
+            id: id,
+            attribute: attribute
+          )
+        )
+      end
+    end
+
     module PersistenceObserver
       def update_columns(attributes)
         new_values = upkeep_update_column_values(attributes)
@@ -873,7 +908,8 @@ module Upkeep
           predicate_sql: analysis.sql,
           predicate_coverage: analysis.coverage.to_s,
           predicate_table_columns: analysis.table_columns,
-          new_values: update_values(updates)
+          new_values: update_values(updates),
+          id: single_primary_key_predicate_value(analysis)
         )
 
         super.tap { ChangeLog.record(event) }
@@ -887,7 +923,8 @@ module Upkeep
           changed_attributes: [klass.primary_key].compact,
           predicate_sql: analysis.sql,
           predicate_coverage: analysis.coverage.to_s,
-          predicate_table_columns: analysis.table_columns
+          predicate_table_columns: analysis.table_columns,
+          id: single_primary_key_predicate_value(analysis)
         )
 
         super.tap { ChangeLog.record(event) }
@@ -1011,6 +1048,21 @@ module Upkeep
 
         updates.transform_keys(&:to_s)
       end
+
+      def single_primary_key_predicate_value(analysis)
+        primary_key = analysis.primary_key
+        return unless primary_key
+
+        predicates = analysis.predicates.select do |predicate|
+          predicate.fetch(:table) == analysis.primary_table.to_s &&
+            predicate.fetch(:column) == primary_key.to_s &&
+            %w[eq in].include?(predicate.fetch(:operator).to_s)
+        end
+        return unless predicates.size == 1
+
+        values = predicates.first.fetch(:values)
+        values.first if values.size == 1
+      end
     end
 
     module Install
@@ -1025,6 +1077,7 @@ module Upkeep
 
         ActiveRecord::AttributeMethods::Read.prepend(AttributeObserver)
         ActiveRecord::Base.prepend(PersistenceObserver) unless ActiveRecord::Base < PersistenceObserver
+        ActiveRecord::Base.prepend(CacheKeyObserver) unless ActiveRecord::Base < CacheKeyObserver
         ActiveRecord::Relation.prepend(RelationObserver)
 
         ActiveRecord::Base.after_commit do |record|

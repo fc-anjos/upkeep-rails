@@ -231,6 +231,10 @@ module Upkeep
         raise NotFound, id
       end
 
+      def explain(id)
+        fetch(id).explain
+      end
+
       def subscriptions
         persistent_count = persistence.count
         in_memory_subscriptions = (active_registry.subscriptions + pending_registry.subscriptions).to_h do |subscription|

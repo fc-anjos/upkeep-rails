@@ -107,6 +107,20 @@ class ChangeEventsTest < Minitest::Test
     assert_equal({ old: nil, new: "done" }, event.fetch(:attribute_changes).fetch("status"))
     assert_equal :columns, event.fetch(:predicate_coverage).to_sym
     assert_includes event.fetch(:predicate_table_columns).fetch("change_event_cards"), "status"
+    refute_includes event, :id
+  end
+
+  def test_bulk_update_event_includes_id_for_single_primary_key_predicate
+    card = ChangeEventCard.create!(title: "Plan", status: "open", position: 1)
+
+    Upkeep::Runtime::ChangeLog.reset
+    ChangeEventCard.where(id: card.id).update_all(status: "done")
+
+    event = Upkeep::Runtime::ChangeLog.events.fetch(0)
+
+    assert_equal "bulk_update", event.fetch(:type)
+    assert_equal card.id, event.fetch(:id)
+    assert_equal ["status"], event.fetch(:changed_attributes)
   end
 
   def test_bulk_delete_event_preserves_conservative_predicate_context
@@ -125,6 +139,20 @@ class ChangeEventsTest < Minitest::Test
     assert_equal({ old: nil, new: nil }, event.fetch(:attribute_changes).fetch("id"))
     assert_equal :columns, event.fetch(:predicate_coverage).to_sym
     assert_includes event.fetch(:predicate_table_columns).fetch("change_event_cards"), "status"
+    refute_includes event, :id
+  end
+
+  def test_bulk_delete_event_includes_id_for_single_primary_key_predicate
+    card = ChangeEventCard.create!(title: "Plan", status: "open", position: 1)
+
+    Upkeep::Runtime::ChangeLog.reset
+    ChangeEventCard.where(id: card.id).delete_all
+
+    event = Upkeep::Runtime::ChangeLog.events.fetch(0)
+
+    assert_equal "bulk_delete", event.fetch(:type)
+    assert_equal card.id, event.fetch(:id)
+    assert_includes event.fetch(:changed_attributes), "id"
   end
 
   def test_relation_materialization_records_provenance_without_collection_dependency
