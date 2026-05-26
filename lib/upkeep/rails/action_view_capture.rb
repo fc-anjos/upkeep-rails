@@ -605,6 +605,13 @@ module Upkeep
       def snapshot_value(value, rendered_collection: nil, relation_analysis: nil)
         if value.is_a?(ActiveRecord::Base)
           ::Upkeep::Replay.active_record_value(value)
+        elsif form_builder?(value)
+          ::Upkeep::Replay::RailsFormBuilderValue.new(
+            builder_class: value.class.name,
+            object_name: value.object_name,
+            object: snapshot_value(value.object),
+            options: snapshot_hash(replayable_form_builder_options(value.options))
+          )
         elsif active_record_relation?(value)
           if refused_collection_analysis?(relation_analysis)
             return refused_relation_snapshot(value, relation_analysis)
@@ -657,6 +664,19 @@ module Upkeep
 
       def active_record_relation?(value)
         value.respond_to?(:klass) && value.respond_to?(:to_sql)
+      end
+
+      def form_builder?(value)
+        defined?(ActionView::Helpers::FormBuilder) && value.is_a?(ActionView::Helpers::FormBuilder)
+      end
+
+      def replayable_form_builder_options(options)
+        options.to_h.slice(
+          :allow_method_names_outside_object,
+          :index,
+          :namespace,
+          :skip_default_ids
+        )
       end
 
       def handle_refused_collection(error)
@@ -716,6 +736,8 @@ module Upkeep
       def replay_value(value)
         if value.is_a?(ActiveRecord::Base)
           value.class.find(value.id)
+        elsif form_builder?(value)
+          replay_form_builder(value)
         elsif value.respond_to?(:spawn) && value.respond_to?(:klass)
           value.spawn
         elsif value.is_a?(Array)
@@ -723,6 +745,15 @@ module Upkeep
         else
           value
         end
+      end
+
+      def replay_form_builder(builder)
+        builder.class.new(
+          builder.object_name,
+          replay_value(builder.object),
+          builder.instance_variable_get(:@template),
+          replayable_form_builder_options(builder.options)
+        )
       end
 
       def replay_collection_value(collection, collection_analysis)

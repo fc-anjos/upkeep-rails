@@ -46,6 +46,11 @@ class RailsCaptureCardsController < ActionController::Base
     render template: "controller_cards/assigned_partial"
   end
 
+  def form
+    @card = RailsCaptureCard.find(params.fetch(:id))
+    render template: "controller_cards/form"
+  end
+
   def session_index
     @viewer = session[:viewer]
     @cards = RailsCaptureCard.order(:id)
@@ -799,6 +804,32 @@ class ActionViewCaptureTest < Minitest::Test
     refute_includes replayed_html, ">Plan<"
   end
 
+  def test_fragment_replay_rebuilds_form_builder_locals_with_fresh_records
+    card = create_card!("Plan")
+
+    _html, recorder = capture_controller_request(
+      :form,
+      "/cards/#{card.id}/edit",
+      path_parameters: {controller: "rails_capture_cards", action: "form", id: card.id}
+    )
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.update!(title: "Plan v2")
+
+    targets = Upkeep::Targeting::Selector.new.select(recorder, Upkeep::Runtime::ChangeLog.events)
+    fragment = targets.find { |target| target.id.include?("cards/_form_fields") }
+    refute_nil fragment
+
+    recipe = recorder.graph.node(fragment.id).payload.fetch(:recipe)
+    replayed_html = recipe.render
+    serialized_replayed_html = ::Upkeep::Replay::Recipe.from_h(JSON.parse(JSON.generate(recipe.to_h))).render
+
+    [replayed_html, serialized_replayed_html].each do |html|
+      assert_includes html, %(value="Plan v2")
+      refute_includes html, %(value="Plan")
+    end
+  end
+
   private
 
   def create_card!(title, status: "open", author: nil)
@@ -981,6 +1012,13 @@ class ActionViewCaptureTest < Minitest::Test
           <%= render partial: "cards/assigned_card" %>
         </main>
       ERB
+      "controller_cards/form.html.erb" => <<~ERB,
+        <main>
+          <%= form_with(model: @card, url: "/cards/\#{@card.id}") do |form| %>
+            <%= render partial: "cards/form_fields", locals: { card: @card, form: form } %>
+          <% end %>
+        </main>
+      ERB
       "controller_cards/session_index.html.erb" => <<~ERB,
         <main>
           <p><%= @viewer %></p>
@@ -1006,6 +1044,12 @@ class ActionViewCaptureTest < Minitest::Test
         <li id="assigned_card_<%= @card.id %>">
           <span class="title"><%= @card.title %></span>
         </li>
+      ERB
+      "cards/_form_fields.html.erb" => <<~ERB,
+        <section id="card_form_fields">
+          <%= form.text_field :title %>
+          <span><%= card.status %></span>
+        </section>
       ERB
       "cards/_preloaded_card.html.erb" => <<~ERB,
         <li id="card_<%= card.id %>">
