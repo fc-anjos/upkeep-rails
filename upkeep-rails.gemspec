@@ -33,6 +33,7 @@ Gem::Specification.new do |spec|
 
   spec.files = (Dir[
     "README.md",
+    "docs/**/*.md",
     "LICENSE.txt",
     "upkeep-rails.gemspec",
     "lib/**/*.rb",

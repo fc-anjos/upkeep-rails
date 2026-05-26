@@ -161,10 +161,15 @@ module Upkeep
           attribute(value)
         when Arel::Nodes::Equality
           equality_predicate(value)
-          walk_arel_node(value, source: source)
+          walk(value.left, source: source)
+          walk(value.right, source: source) if value.right.is_a?(Arel::Attributes::Attribute)
         when Arel::Nodes::HomogeneousIn
           homogeneous_in_predicate(value)
-          walk_arel_node(value, source: source)
+          walk(value.attribute, source: source)
+        when defined?(Arel::Nodes::In) && Arel::Nodes::In
+          in_predicate(value)
+          walk(value.left, source: source)
+          walk(value.right, source: source) if value.right.is_a?(Arel::Attributes::Attribute)
         when Arel::Table
           table(value.name)
         when Arel::Nodes::TableAlias
@@ -248,6 +253,11 @@ module Upkeep
 
       def homogeneous_in_predicate(node)
         predicate = predicate_for(node.attribute, "in", Array(node.values).map { |value| predicate_value(value) })
+        @predicates << predicate if predicate
+      end
+
+      def in_predicate(node)
+        predicate = predicate_for(node.left, "in", Array(node.right).map { |value| predicate_value(value) })
         @predicates << predicate if predicate
       end
 
