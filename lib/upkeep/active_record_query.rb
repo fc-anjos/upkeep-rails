@@ -160,6 +160,10 @@ module Upkeep
           value.each { |entry| walk(entry, source: source) }
         when Hash
           value.each_value { |entry| walk(entry, source: source) }
+        when defined?(Arel::Nodes::Quoted) && Arel::Nodes::Quoted
+          nil
+        when defined?(Arel::Nodes::Casted) && Arel::Nodes::Casted
+          nil
         when Arel::Attributes::Attribute
           attribute(value)
         when Arel::Nodes::Equality
