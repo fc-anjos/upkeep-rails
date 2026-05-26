@@ -110,6 +110,7 @@ module Upkeep
       # @return [Upkeep::Delivery::Transport::DispatchReport]
       def deliver_changes!(changes = Runtime::ChangeLog.drain)
         changes = deliverable_changes(changes)
+        record_testing_change_facts(changes)
         return Delivery::Transport::DispatchReport.new([]) if changes.empty?
 
         dispatch_changes(changes)
@@ -130,10 +131,11 @@ module Upkeep
       # @return [Upkeep::Delivery::TurboStreams::Batch, Upkeep::Delivery::Transport::DispatchReport]
       def deliver_changes_now!(changes = Runtime::ChangeLog.drain)
         changes = deliverable_changes(changes)
+        record_testing_change_facts(changes)
         return Delivery::Transport::DispatchReport.new([]) if changes.empty?
 
         batch = delivery_batch_for([changes])
-        transport.deliver(batch)
+        deliver_batch(batch)
       end
 
       def validate_configuration!(environment: rails_environment)
@@ -148,7 +150,7 @@ module Upkeep
       def delivery_dispatcher
         @delivery_dispatcher ||= Delivery::AsyncDispatcher.new(batch_window: configuration.delivery_batch_window) do |change_sets|
           batch = delivery_batch_for(change_sets)
-          transport.deliver(batch)
+          deliver_batch(batch)
         end
       end
 
@@ -210,6 +212,11 @@ module Upkeep
         Delivery::TurboStreams.new.build_many(plans)
       end
 
+      def deliver_batch(batch)
+        record_testing_delivery_batch(batch)
+        transport.deliver(batch)
+      end
+
       def compact_change_sets(change_sets)
         change_sets
           .map { |changes| deliverable_changes(changes) }
@@ -219,6 +226,20 @@ module Upkeep
 
       def deliverable_changes(changes)
         Array(changes).reject { |change| internal_delivery_change?(change) }
+      end
+
+      def record_testing_change_facts(changes)
+        return unless defined?(Testing) && Testing.respond_to?(:record_change_facts)
+        return if Testing.respond_to?(:capturing_change_facts?) && !Testing.capturing_change_facts?
+
+        Testing.record_change_facts(changes)
+      end
+
+      def record_testing_delivery_batch(batch)
+        return unless defined?(Testing) && Testing.respond_to?(:record_delivery_batch)
+        return if Testing.respond_to?(:capturing_broadcasts?) && !Testing.capturing_broadcasts?
+
+        Testing.record_delivery_batch(batch)
       end
 
       def internal_delivery_change?(change)

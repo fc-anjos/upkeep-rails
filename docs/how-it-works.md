@@ -249,3 +249,21 @@ Useful helpers:
 - `activate_upkeep_subscription!`
 - `capture_upkeep_broadcasts`
 - `drain_upkeep_delivery!`
+- `capture_upkeep_change_facts`
+- `upkeep_match_report`
+
+Use `capture_upkeep_broadcasts` when an app test needs to assert rendered
+Turbo Stream payloads without depending on the host app's Action Cable test
+adapter. The helper captures Upkeep delivery after planning and rendering, but
+before the transport broadcasts.
+
+Use `capture_upkeep_change_facts` and `upkeep_match_report` when debugging an
+invalidation miss. Capture the committed facts produced by the request, then
+dry-run them against the current subscription store. The report returns the
+candidate count, matched count, miss reason, and render targets without
+broadcasting.
+
+For structural subscription debugging, call `subscription.explain` or
+`Upkeep::Rails.subscriptions.explain(subscription.id)`. Explanations summarize
+the dependency tables and attributes, identity, frame count, lookup keys, and
+metadata without requiring store-specific instance-variable inspection.
