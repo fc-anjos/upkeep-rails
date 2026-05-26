@@ -22,13 +22,15 @@ module Upkeep
           Template.new(
             controller_class: snapshot[:controller_class],
             template: snapshot.fetch(:template),
-            locals: Replay.value_hash_from_h(snapshot.fetch(:locals))
+            locals: Replay.value_hash_from_h(snapshot.fetch(:locals)),
+            assigns: Replay.value_hash_from_h(snapshot.fetch(:assigns, {}))
           )
         when "fragment"
           Fragment.new(
             controller_class: snapshot[:controller_class],
             template: snapshot.fetch(:template),
-            locals: Replay.value_hash_from_h(snapshot.fetch(:locals))
+            locals: Replay.value_hash_from_h(snapshot.fetch(:locals)),
+            assigns: Replay.value_hash_from_h(snapshot.fetch(:assigns, {}))
           )
         when "collection"
           Collection.new(
@@ -126,33 +128,39 @@ module Upkeep
       end
     end
 
-    class Template < Data.define(:controller_class, :template, :locals)
+    class Template < Data.define(:controller_class, :template, :locals, :assigns)
       include Payload
 
       def type = "template"
 
       def to_h
-        {
+        payload = {
           type: type,
           controller_class: controller_class,
           template: template,
           locals: Replay.value_hash_to_h(locals)
         }.compact
+        replay_assigns = Replay.value_hash_to_h(assigns)
+        payload[:assigns] = replay_assigns if replay_assigns.any?
+        payload
       end
     end
 
-    class Fragment < Data.define(:controller_class, :template, :locals)
+    class Fragment < Data.define(:controller_class, :template, :locals, :assigns)
       include Payload
 
       def type = "fragment"
 
       def to_h
-        {
+        payload = {
           type: type,
           controller_class: controller_class,
           template: template,
           locals: Replay.value_hash_to_h(locals)
         }.compact
+        replay_assigns = Replay.value_hash_to_h(assigns)
+        payload[:assigns] = replay_assigns if replay_assigns.any?
+        payload
       end
     end
 
