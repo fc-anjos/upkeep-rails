@@ -73,6 +73,55 @@ class ActiveRecordQueryTest < Minitest::Test
     refute dependency.matches_change?(change(table: "query_analysis_cards", attributes: ["title"]))
   end
 
+  def test_structural_in_predicate_with_string_values_records_proven_columns
+    analysis = analyze(QueryAnalysisCard.where(status: ["open", "done"]).order(:position))
+    dependency = dependency_for(analysis)
+
+    assert_equal :columns, analysis.coverage
+    assert_equal({
+      "query_analysis_cards" => %w[id position status]
+    }, analysis.table_columns)
+    assert_equal [
+      {
+        table: "query_analysis_cards",
+        column: "status",
+        operator: "in",
+        values: ["open", "done"]
+      }
+    ], analysis.predicates
+    assert dependency.matches_change?(
+      change(
+        table: "query_analysis_cards",
+        attributes: ["status"],
+        old_values: { "status" => "open" },
+        new_values: { "status" => "archived" }
+      )
+    )
+    refute dependency.matches_change?(
+      change(
+        table: "query_analysis_cards",
+        attributes: ["status"],
+        old_values: { "status" => "archived" },
+        new_values: { "status" => "closed" }
+      )
+    )
+  end
+
+  def test_arel_in_node_with_string_values_records_proven_columns
+    cards = QueryAnalysisCard.arel_table
+    analysis = analyze(QueryAnalysisCard.where(cards[:status].in(["open", "done"])))
+
+    assert_equal :columns, analysis.coverage
+    assert_equal [
+      {
+        table: "query_analysis_cards",
+        column: "status",
+        operator: "in",
+        values: ["open", "done"]
+      }
+    ], analysis.predicates
+  end
+
   def test_collection_dependency_uses_predicate_values_to_filter_updates
     analysis = analyze(QueryAnalysisCard.where(status: "open").order(:position))
     dependency = dependency_for(analysis)

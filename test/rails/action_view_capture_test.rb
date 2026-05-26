@@ -6,9 +6,17 @@ require "test_helper"
 class RailsCaptureCard < ActiveRecord::Base
   self.table_name = "rails_capture_cards"
 
+  belongs_to :author, class_name: "RailsCaptureAuthor", optional: true
+
   def to_partial_path
     "cards/card"
   end
+end
+
+class RailsCaptureAuthor < ActiveRecord::Base
+  self.table_name = "rails_capture_authors"
+
+  has_many :cards, class_name: "RailsCaptureCard", foreign_key: :author_id
 end
 
 class RailsCaptureCardsController < ActionController::Base
@@ -131,7 +139,12 @@ class ActionViewCaptureTest < Minitest::Test
     ActiveRecord::Schema.verbose = false
 
     ActiveRecord::Schema.define do
+      create_table :rails_capture_authors, force: true do |table|
+        table.string :name, null: false
+      end
+
       create_table :rails_capture_cards, force: true do |table|
+        table.references :author
         table.string :title, null: false
         table.string :status, null: false
       end
@@ -618,6 +631,19 @@ class ActionViewCaptureTest < Minitest::Test
     ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
   end
 
+  def test_preloaded_association_in_queries_do_not_refuse_collection_boundary
+    author = RailsCaptureAuthor.create!(name: "Ada")
+    create_card!("Plan", author: author)
+    create_card!("Build", author: author)
+
+    html, recorder = capture_render("boards/preloaded_collection", cards: RailsCaptureCard.includes(:author).order(:id))
+
+    assert_includes html, "Ada"
+    assert recorder.reactive?
+    assert_includes recorder.graph.summary.fetch(:dependency_sources), "active_record_collection"
+    assert_empty recorder.refused_boundaries
+  end
+
   def test_opaque_collection_relation_raises_before_materialization
     select_sql = []
     subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |_name, _started, _finished, _id, payload|
@@ -728,8 +754,8 @@ class ActionViewCaptureTest < Minitest::Test
 
   private
 
-  def create_card!(title, status: "open")
-    RailsCaptureCard.create!(title: title, status: status)
+  def create_card!(title, status: "open", author: nil)
+    RailsCaptureCard.create!(title: title, status: status, author: author)
   end
 
   def capture_render(template, locals)
@@ -814,6 +840,13 @@ class ActionViewCaptureTest < Minitest::Test
           <%= tag.ul id: "cards" do %>
             <%= render partial: "cards/card", collection: cards, as: :card %>
           <% end %>
+        </main>
+      ERB
+      "boards/preloaded_collection.html.erb" => <<~ERB,
+        <main>
+          <ul>
+            <%= render partial: "cards/preloaded_card", collection: cards, as: :card %>
+          </ul>
         </main>
       ERB
       "boards/manual_frame.html.erb" => <<~ERB,
@@ -906,6 +939,12 @@ class ActionViewCaptureTest < Minitest::Test
         <li id="card_<%= card.id %>">
           <span class="title"><%= card.title %></span>
           <span class="status"><%= card.status %></span>
+        </li>
+      ERB
+      "cards/_preloaded_card.html.erb" => <<~ERB,
+        <li id="card_<%= card.id %>">
+          <span class="title"><%= card.title %></span>
+          <span class="author"><%= card.author&.name %></span>
         </li>
       ERB
       "cards/_session_card.html.erb" => <<~ERB
