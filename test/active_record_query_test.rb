@@ -122,6 +122,20 @@ class ActiveRecordQueryTest < Minitest::Test
     ], analysis.predicates
   end
 
+  def test_arel_matches_node_records_proven_column_without_opaque_pattern
+    cards = QueryAnalysisCard.arel_table
+    analysis = analyze(QueryAnalysisCard.where(cards[:title].matches("%Plan%")))
+    dependency = dependency_for(analysis)
+
+    assert_equal :columns, analysis.coverage
+    assert_equal({
+      "query_analysis_cards" => %w[id title]
+    }, analysis.table_columns)
+    assert_empty analysis.predicates
+    assert dependency.matches_change?(change(table: "query_analysis_cards", attributes: ["title"]))
+    refute dependency.matches_change?(change(table: "query_analysis_cards", attributes: ["status"]))
+  end
+
   def test_collection_dependency_uses_predicate_values_to_filter_updates
     analysis = analyze(QueryAnalysisCard.where(status: "open").order(:position))
     dependency = dependency_for(analysis)
