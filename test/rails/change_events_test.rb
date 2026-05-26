@@ -288,6 +288,34 @@ class ChangeEventsTest < Minitest::Test
     refute_includes dependency_sources, "active_record_collection"
   end
 
+  def test_relation_materialization_records_query_dependency_for_empty_result
+    result, recorder = Upkeep::Runtime::Observation.capture_request do
+      Upkeep::Runtime::Observation.capture_frame("page:test", kind: "page") do
+        ChangeEventCard.where(status: "open").to_a
+      end
+    end
+
+    dependency_sources = recorder.graph.summary.fetch(:dependency_sources)
+    dependency = recorder.graph.dependency_nodes.map(&:payload).find do |candidate|
+      candidate.source == :active_record_query
+    end
+
+    assert_empty result
+    assert dependency
+    assert_includes dependency.metadata.fetch(:table_columns).fetch("change_event_cards"), "status"
+    assert_includes dependency_sources, "active_record_query"
+    refute_includes dependency_sources, "active_record_collection"
+  end
+
+  def test_controller_relation_materialization_keeps_query_dependency_out_of_request_root
+    result, recorder = Upkeep::Runtime::Observation.capture_request do
+      ChangeEventCard.where(status: "open").to_a
+    end
+
+    assert_empty result
+    refute_includes recorder.graph.summary.fetch(:dependency_sources), "active_record_query"
+  end
+
   def test_opaque_pluck_column_raises_before_querying
     ChangeEventCard.create!(title: "Plan", status: "open", position: 1)
     select_sql = []

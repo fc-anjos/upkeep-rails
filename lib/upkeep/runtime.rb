@@ -910,11 +910,18 @@ module Upkeep
 
       def exec_queries(...)
         analysis = relation_analysis_for_observation
-        super.tap { |records| record_relation_provenance(records, analysis) }
+        super.tap do |records|
+          record_relation_provenance(records, analysis)
+          record_relation_dependency(analysis)
+        end
       end
 
       def to_ary
-        super.tap { |records| record_relation_provenance(records, relation_analysis_for_observation) }
+        analysis = relation_analysis_for_observation
+        super.tap do |records|
+          record_relation_provenance(records, analysis)
+          record_relation_dependency(analysis)
+        end
       end
 
       def to_a
@@ -973,6 +980,21 @@ module Upkeep
 
       def record_relation_provenance(records, analysis)
         Observation.record_relation_provenance(records, model_name: klass.name, analysis: analysis) if analysis
+      end
+
+      def record_relation_dependency(analysis)
+        return unless analysis
+        return unless Observation.recorder&.current_frame
+
+        Observation.record_dependency(
+          Dependencies::ActiveRecordQuery.new(
+            primary_table: analysis.primary_table,
+            table_columns: analysis.table_columns,
+            coverage: analysis.coverage,
+            sql: analysis.sql,
+            predicates: analysis.predicates
+          )
+        )
       end
 
       def record_query_dependency(column_names)

@@ -136,6 +136,21 @@ class ActiveRecordQueryTest < Minitest::Test
     refute dependency.matches_change?(change(table: "query_analysis_cards", attributes: ["status"]))
   end
 
+  def test_arel_named_function_records_expression_columns_without_treating_function_name_as_sql
+    cards = QueryAnalysisCard.arel_table
+    lower_title = Arel::Nodes::NamedFunction.new("LOWER", [cards[:title]])
+    lower_pattern = Arel::Nodes::NamedFunction.new("LOWER", [Arel::Nodes.build_quoted("%plan%")])
+    analysis = analyze(QueryAnalysisCard.where(lower_title.matches(lower_pattern)))
+    dependency = dependency_for(analysis)
+
+    assert_equal :columns, analysis.coverage
+    assert_equal({
+      "query_analysis_cards" => %w[id title]
+    }, analysis.table_columns)
+    assert dependency.matches_change?(change(table: "query_analysis_cards", attributes: ["title"]))
+    refute dependency.matches_change?(change(table: "query_analysis_cards", attributes: ["status"]))
+  end
+
   def test_collection_dependency_uses_predicate_values_to_filter_updates
     analysis = analyze(QueryAnalysisCard.where(status: "open").order(:position))
     dependency = dependency_for(analysis)
