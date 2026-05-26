@@ -122,6 +122,98 @@ class ActiveRecordQueryTest < Minitest::Test
     ], analysis.predicates
   end
 
+  def test_structural_null_predicate_records_nil_value
+    analysis = analyze(QueryAnalysisCard.where(status: nil))
+    dependency = dependency_for(analysis)
+
+    assert_equal [
+      {
+        table: "query_analysis_cards",
+        column: "status",
+        operator: "eq",
+        values: [nil]
+      }
+    ], analysis.predicates
+    assert dependency.matches_change?(
+      change(table: "query_analysis_cards", attributes: %w[id status], type: "create", new_values: { "status" => nil })
+    )
+    refute dependency.matches_change?(
+      change(table: "query_analysis_cards", attributes: %w[id status], type: "create", new_values: { "status" => "open" })
+    )
+  end
+
+  def test_structural_not_equal_predicate_filters_values_and_nulls
+    analysis = analyze(QueryAnalysisCard.where.not(status: "closed"))
+    dependency = dependency_for(analysis)
+
+    assert_equal [
+      {
+        table: "query_analysis_cards",
+        column: "status",
+        operator: "not_eq",
+        values: ["closed"]
+      }
+    ], analysis.predicates
+    assert dependency.matches_change?(
+      change(table: "query_analysis_cards", attributes: %w[id status], type: "create", new_values: { "status" => "open" })
+    )
+    refute dependency.matches_change?(
+      change(table: "query_analysis_cards", attributes: %w[id status], type: "create", new_values: { "status" => "closed" })
+    )
+    refute dependency.matches_change?(
+      change(table: "query_analysis_cards", attributes: %w[id status], type: "create", new_values: { "status" => nil })
+    )
+  end
+
+  def test_structural_null_or_not_equal_predicate_preserves_or_groups
+    base = QueryAnalysisCard.where(position: 1)
+    analysis = analyze(base.where(status: nil).or(base.where.not(status: "closed")))
+    dependency = dependency_for(analysis)
+
+    assert_equal [
+      {
+        table: "query_analysis_cards",
+        column: "position",
+        operator: "eq",
+        values: [1],
+        group: 0
+      },
+      {
+        table: "query_analysis_cards",
+        column: "status",
+        operator: "eq",
+        values: [nil],
+        group: 0
+      },
+      {
+        table: "query_analysis_cards",
+        column: "position",
+        operator: "eq",
+        values: [1],
+        group: 1
+      },
+      {
+        table: "query_analysis_cards",
+        column: "status",
+        operator: "not_eq",
+        values: ["closed"],
+        group: 1
+      }
+    ], analysis.predicates
+    assert dependency.matches_change?(
+      change(table: "query_analysis_cards", attributes: %w[id position status], type: "create", new_values: { "position" => 1, "status" => nil })
+    )
+    assert dependency.matches_change?(
+      change(table: "query_analysis_cards", attributes: %w[id position status], type: "create", new_values: { "position" => 1, "status" => "open" })
+    )
+    refute dependency.matches_change?(
+      change(table: "query_analysis_cards", attributes: %w[id position status], type: "create", new_values: { "position" => 1, "status" => "closed" })
+    )
+    refute dependency.matches_change?(
+      change(table: "query_analysis_cards", attributes: %w[id position status], type: "create", new_values: { "position" => 2, "status" => "open" })
+    )
+  end
+
   def test_arel_matches_node_records_proven_column_without_opaque_pattern
     cards = QueryAnalysisCard.arel_table
     analysis = analyze(QueryAnalysisCard.where(cards[:title].matches("%Plan%")))
