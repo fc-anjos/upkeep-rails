@@ -47,24 +47,27 @@ module Upkeep
       end
 
       def render_template(replay)
+        template_context = replay_template_context
         renderer_for(replay).render(
           template: replay.template,
-          locals: revive_hash(replay.locals),
-          assigns: revive_hash(replay.assigns)
+          locals: revive_hash(replay.locals, template: template_context),
+          assigns: revive_hash(replay.assigns, template: template_context)
         )
       end
 
       def render_fragment(replay)
+        template_context = replay_template_context
         renderer_for(replay).render(
           partial: partial_path(replay.template),
-          locals: revive_hash(replay.locals),
-          assigns: revive_hash(replay.assigns)
+          locals: revive_hash(replay.locals, template: template_context),
+          assigns: revive_hash(replay.assigns, template: template_context)
         )
       end
 
       def render_collection(replay)
-        options = revive_hash(replay.options)
-        collection = revive_value(replay.collection)
+        template_context = replay_template_context
+        options = revive_hash(replay.options, template: template_context)
+        collection = revive_value(replay.collection, template: template_context)
 
         if replay.derived_partial?
           renderer_for(replay).render(collection)
@@ -77,8 +80,9 @@ module Upkeep
       end
 
       def render_collection_member(replay)
-        options = revive_hash(replay.options)
-        record = revive_value(replay.record)
+        template_context = replay_template_context
+        options = revive_hash(replay.options, template: template_context)
+        record = revive_value(replay.record, template: template_context)
         locals = options.fetch(:locals, {})
         local_name = (options[:as] || inferred_local_name(replay.partial)).to_sym
 
@@ -103,15 +107,15 @@ module Upkeep
         env
       end
 
-      def revive_hash(values)
+      def revive_hash(values, template: replay_template_context)
         values = values.entries if values.is_a?(::Upkeep::Replay::HashValue)
 
         values.each_with_object({}) do |(key, value), revived|
-          revived[key.to_sym] = revive_value(value)
+          revived[key.to_sym] = revive_value(value, template: template)
         end
       end
 
-      def revive_value(snapshot)
+      def revive_value(snapshot, template: replay_template_context)
         snapshot = ::Upkeep::Replay.value(snapshot)
 
         case snapshot
@@ -120,14 +124,29 @@ module Upkeep
         when ::Upkeep::Replay::ActiveRecordRelationValue
           constantize(snapshot.model).find_by_sql(snapshot.sql)
         when ::Upkeep::Replay::ArrayValue
-          snapshot.items.map { |item| revive_value(item) }
+          snapshot.items.map { |item| revive_value(item, template: template) }
         when ::Upkeep::Replay::HashValue
-          revive_hash(snapshot.entries)
+          revive_hash(snapshot.entries, template: template)
         when ::Upkeep::Replay::LiteralValue
           snapshot.value
+        when ::Upkeep::Replay::RailsFormBuilderValue
+          revive_form_builder(snapshot, template: template)
         else
           raise "unsupported Rails replay value type: #{snapshot.class.name}"
         end
+      end
+
+      def revive_form_builder(snapshot, template:)
+        constantize(snapshot.builder_class).new(
+          snapshot.object_name,
+          revive_value(snapshot.object, template: template),
+          template,
+          revive_hash(snapshot.options, template: template)
+        )
+      end
+
+      def replay_template_context
+        ::ActionView::Base.empty
       end
 
       def revive_env_value(value)

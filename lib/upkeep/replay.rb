@@ -87,6 +87,13 @@ module Upkeep
           HashValue.new(entries: Replay.value_hash_from_h(snapshot.fetch(:entries)))
         when "literal"
           LiteralValue.new(value: snapshot[:value])
+        when "rails_form_builder"
+          RailsFormBuilderValue.new(
+            builder_class: snapshot.fetch(:builder_class),
+            object_name: snapshot.fetch(:object_name),
+            object: Value.from_h(snapshot.fetch(:object)),
+            options: Replay.value_hash_from_h(snapshot.fetch(:options, {}))
+          )
         when "unsupported"
           UnsupportedValue.new(class_name: snapshot.fetch(:class))
         when "refused_active_record_relation"
@@ -260,6 +267,22 @@ module Upkeep
 
       def to_h
         { type: type, value: value }
+      end
+    end
+
+    class RailsFormBuilderValue < Data.define(:builder_class, :object_name, :object, :options)
+      include Value
+
+      def type = "rails_form_builder"
+
+      def to_h
+        {
+          type: type,
+          builder_class: builder_class,
+          object_name: object_name,
+          object: Value.from_h(object).to_h,
+          options: Replay.value_hash_to_h(options)
+        }
       end
     end
 
