@@ -243,6 +243,23 @@ class ActiveRecordQueryTest < Minitest::Test
     refute dependency.matches_change?(change(table: "query_analysis_cards", attributes: ["status"]))
   end
 
+  def test_arel_named_function_ignores_quoted_literal_arguments
+    cards = QueryAnalysisCard.arel_table
+    extracted_status = Arel::Nodes::NamedFunction.new(
+      "json_extract",
+      [cards[:status], Arel::Nodes.build_quoted("$.state")]
+    )
+    analysis = analyze(QueryAnalysisCard.where(extracted_status.not_eq(nil)))
+    dependency = dependency_for(analysis)
+
+    assert_equal :columns, analysis.coverage
+    assert_equal({
+      "query_analysis_cards" => %w[id status]
+    }, analysis.table_columns)
+    assert dependency.matches_change?(change(table: "query_analysis_cards", attributes: ["status"]))
+    refute dependency.matches_change?(change(table: "query_analysis_cards", attributes: ["title"]))
+  end
+
   def test_collection_dependency_uses_predicate_values_to_filter_updates
     analysis = analyze(QueryAnalysisCard.where(status: "open").order(:position))
     dependency = dependency_for(analysis)
