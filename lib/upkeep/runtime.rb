@@ -840,6 +840,22 @@ module Upkeep
     end
 
     module PersistenceObserver
+      def touch(*names, **options)
+        changed_attributes = upkeep_touch_column_names(names)
+
+        super.tap do |result|
+          if result && changed_attributes.any?
+            ChangeLog.record(
+              ChangeEvents.active_record_update_columns(
+                self,
+                changed_attributes: changed_attributes,
+                new_values: upkeep_touch_column_values(changed_attributes)
+              )
+            )
+          end
+        end
+      end
+
       def update_columns(attributes)
         new_values = upkeep_update_column_values(attributes)
         changed_attributes = new_values.keys
@@ -858,6 +874,17 @@ module Upkeep
       end
 
       private
+
+      def upkeep_touch_column_names(names)
+        (self.class.timestamp_attributes_for_update_in_model + Array(names)).filter_map do |attribute|
+          attribute = self.class.attribute_aliases.fetch(attribute.to_s, attribute.to_s)
+          attribute if self.class.column_names.include?(attribute)
+        end.uniq
+      end
+
+      def upkeep_touch_column_values(attributes)
+        attributes.to_h { |attribute| [attribute, public_send(attribute)] }
+      end
 
       def upkeep_update_column_values(attributes)
         attributes.to_h.reject { |attribute, _value| attribute.to_s == "touch" }.transform_keys do |attribute|
