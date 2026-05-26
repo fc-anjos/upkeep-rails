@@ -307,7 +307,7 @@ module Upkeep
             as: token_value(keywords&.as_name),
             locals: Array(keywords&.locals).map { |local| token_value(local.name) },
             block_arguments: Array(node.block_arguments).map { |argument| token_value(argument.name) },
-            render_site_container: render_site_container_for(node, keywords),
+            render_site_container: block_render?(node) ? nil : render_site_container_for(node, keywords),
             render_site_source: render_site_source(keywords)
           }
         end
@@ -417,6 +417,10 @@ module Upkeep
           return "object_shorthand" if token_value(keywords&.object)
 
           nil
+        end
+
+        def block_render?(node)
+          token_value(node.content).to_s.match?(/\bdo(?:\s*\|[^|]*\|)?\s*\z/)
         end
 
         def safe_collection_container?(container, render_node)
