@@ -173,6 +173,8 @@ module Upkeep
         when Arel::Nodes::Matches, Arel::Nodes::DoesNotMatch
           walk(value.left, source: source)
           walk(value.right, source: source) if value.right.is_a?(Arel::Attributes::Attribute)
+        when Arel::Nodes::NamedFunction
+          walk(value.expressions, source: source)
         when Arel::Table
           table(value.name)
         when Arel::Nodes::TableAlias
