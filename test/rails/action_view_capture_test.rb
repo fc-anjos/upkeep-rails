@@ -41,6 +41,11 @@ class RailsCaptureCardsController < ActionController::Base
     render template: "controller_cards/show"
   end
 
+  def assigned_partial
+    @card = RailsCaptureCard.find(params.fetch(:id))
+    render template: "controller_cards/assigned_partial"
+  end
+
   def session_index
     @viewer = session[:viewer]
     @cards = RailsCaptureCard.order(:id)
@@ -771,6 +776,29 @@ class ActionViewCaptureTest < Minitest::Test
     refute_includes replayed_html, ">Plan<"
   end
 
+  def test_fragment_replay_reloads_active_record_view_assigns
+    card = create_card!("Plan")
+
+    _html, recorder = capture_controller_request(
+      :assigned_partial,
+      "/cards/#{card.id}",
+      path_parameters: {controller: "rails_capture_cards", action: "assigned_partial", id: card.id}
+    )
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.update!(title: "Plan v2")
+
+    targets = Upkeep::Targeting::Selector.new.select(recorder, Upkeep::Runtime::ChangeLog.events)
+    fragment = targets.find { |target| target.kind == "fragment" }
+    refute_nil fragment
+
+    recipe = recorder.graph.node(fragment.id).payload.fetch(:recipe)
+    replayed_html = recipe.render
+
+    assert_includes replayed_html, "Plan v2"
+    refute_includes replayed_html, ">Plan<"
+  end
+
   private
 
   def create_card!(title, status: "open", author: nil)
@@ -948,6 +976,11 @@ class ActionViewCaptureTest < Minitest::Test
           <%= render partial: "cards/card", locals: { card: @card } %>
         </main>
       ERB
+      "controller_cards/assigned_partial.html.erb" => <<~ERB,
+        <main>
+          <%= render partial: "cards/assigned_card" %>
+        </main>
+      ERB
       "controller_cards/session_index.html.erb" => <<~ERB,
         <main>
           <p><%= @viewer %></p>
@@ -967,6 +1000,11 @@ class ActionViewCaptureTest < Minitest::Test
         <li id="card_<%= card.id %>">
           <span class="title"><%= card.title %></span>
           <span class="status"><%= card.status %></span>
+        </li>
+      ERB
+      "cards/_assigned_card.html.erb" => <<~ERB,
+        <li id="assigned_card_<%= @card.id %>">
+          <span class="title"><%= @card.title %></span>
         </li>
       ERB
       "cards/_preloaded_card.html.erb" => <<~ERB,

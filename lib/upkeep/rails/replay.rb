@@ -49,14 +49,16 @@ module Upkeep
       def render_template(replay)
         renderer_for(replay).render(
           template: replay.template,
-          locals: revive_hash(replay.locals)
+          locals: revive_hash(replay.locals),
+          assigns: revive_hash(replay.assigns)
         )
       end
 
       def render_fragment(replay)
         renderer_for(replay).render(
           partial: partial_path(replay.template),
-          locals: revive_hash(replay.locals)
+          locals: revive_hash(replay.locals),
+          assigns: revive_hash(replay.assigns)
         )
       end
 

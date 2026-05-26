@@ -147,6 +147,7 @@ module Upkeep
 
       def template_recipe(frame_id:, template:, view:, controller:, locals:, metadata:, implicit_locals:, add_to_stack:, block:)
         target_kind = metadata.fetch(:kind) == "fragment" ? "fragment" : "page"
+        assigns = replayable_view_assigns(view, controller: controller)
         ::Upkeep::Replay::Recipe.new(
           kind: metadata.fetch(:kind).to_sym,
           frame_id: frame_id,
@@ -158,17 +159,20 @@ module Upkeep
           replay: (target_kind == "fragment" ? ::Upkeep::Replay::Fragment : ::Upkeep::Replay::Template).new(
             controller_class: controller&.class&.name,
             template: metadata.fetch(:template),
-            locals: snapshot_hash(locals)
+            locals: snapshot_hash(locals),
+            assigns: snapshot_hash(assigns)
           )
         ) do
-          template.render(
-            view,
-            replay_locals(locals),
-            nil,
-            implicit_locals: implicit_locals,
-            add_to_stack: add_to_stack,
-            &block
-          )
+          with_replayed_view_assigns(view, assigns) do
+            template.render(
+              view,
+              replay_locals(locals),
+              nil,
+              implicit_locals: implicit_locals,
+              add_to_stack: add_to_stack,
+              &block
+            )
+          end
         end
       end
 
@@ -537,6 +541,51 @@ module Upkeep
 
       def replay_locals(locals)
         locals.transform_values { |value| replay_value(value) }
+      end
+
+      def replayable_view_assigns(view, controller: nil)
+        source = if controller&.respond_to?(:view_assigns)
+          controller
+        elsif view.respond_to?(:view_assigns)
+          view
+        end
+        return {} unless source
+
+        source.view_assigns.each_with_object({}) do |(name, value), assigns|
+          assigns[name.to_s] = value if replayable_view_assign_value?(value)
+        end
+      end
+
+      def replayable_view_assign_value?(value)
+        return true if value.is_a?(ActiveRecord::Base)
+        return value.all? { |item| replayable_view_assign_value?(item) } if value.is_a?(Array)
+        return value.all? { |_key, item| replayable_view_assign_value?(item) } if value.is_a?(Hash)
+
+        false
+      end
+
+      def with_replayed_view_assigns(view, assigns)
+        originals = {}
+
+        assigns.each do |name, value|
+          ivar = :"@#{name}"
+          originals[ivar] = if view.instance_variable_defined?(ivar)
+            [true, view.instance_variable_get(ivar)]
+          else
+            [false, nil]
+          end
+          view.instance_variable_set(ivar, replay_value(value))
+        end
+
+        yield
+      ensure
+        originals&.each do |ivar, (defined, value)|
+          if defined
+            view.instance_variable_set(ivar, value)
+          else
+            view.remove_instance_variable(ivar) if view.instance_variable_defined?(ivar)
+          end
+        end
       end
 
       def snapshot_hash(values)
