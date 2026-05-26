@@ -6,6 +6,10 @@ class ChangeEventCard < ActiveRecord::Base
   self.table_name = "change_event_cards"
 end
 
+class TouchEventCard < ActiveRecord::Base
+  self.table_name = "touch_event_cards"
+end
+
 class ChangeEventsTest < Minitest::Test
   def setup
     Upkeep::Rails::Install.call
@@ -19,6 +23,11 @@ class ChangeEventsTest < Minitest::Test
         table.string :title, null: false
         table.string :status, null: false
         table.integer :position, null: false
+      end
+
+      create_table :touch_event_cards, force: true do |table|
+        table.string :title, null: false
+        table.timestamps
       end
     end
 
@@ -72,6 +81,47 @@ class ChangeEventsTest < Minitest::Test
     assert_empty event.fetch(:old_values)
     assert_equal 2, event.fetch(:new_values).fetch("position")
     assert_equal({ old: nil, new: 2 }, event.fetch(:attribute_changes).fetch("position"))
+  end
+
+  def test_touch_records_timestamp_update_event
+    card = TouchEventCard.create!(title: "Plan")
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.touch
+
+    event = Upkeep::Runtime::ChangeLog.events.find do |candidate|
+      candidate.fetch(:type) == "update" &&
+        candidate.fetch(:table) == "touch_event_cards" &&
+        candidate.fetch(:changed_attributes).include?("updated_at") &&
+        candidate.fetch(:old_values).empty?
+    end
+
+    refute_nil event
+    assert_equal "TouchEventCard", event.fetch(:model)
+    assert_equal card.id, event.fetch(:id)
+    assert event.fetch(:new_values).fetch("updated_at")
+    assert_equal(
+      { old: nil, new: event.fetch(:new_values).fetch("updated_at") },
+      event.fetch(:attribute_changes).fetch("updated_at")
+    )
+  end
+
+  def test_touch_later_records_timestamp_update_event
+    card = TouchEventCard.create!(title: "Plan")
+
+    Upkeep::Runtime::ChangeLog.reset
+    TouchEventCard.transaction { card.touch_later }
+
+    event = Upkeep::Runtime::ChangeLog.events.find do |candidate|
+      candidate.fetch(:type) == "update" &&
+        candidate.fetch(:table) == "touch_event_cards" &&
+        candidate.fetch(:changed_attributes).include?("updated_at") &&
+        candidate.fetch(:old_values).empty?
+    end
+
+    refute_nil event
+    assert_equal card.id, event.fetch(:id)
+    assert event.fetch(:new_values).fetch("updated_at")
   end
 
   def test_destroy_event_records_old_values_for_deleted_record
