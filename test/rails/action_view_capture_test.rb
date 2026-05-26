@@ -96,6 +96,14 @@ class ActionViewCaptureTest < Minitest::Test
     end
   end
 
+  class MatrixModalComponent
+    def render_in(view_context, &block)
+      view_context.content_tag(:section, class: "modal-component") do
+        view_context.capture(&block)
+      end
+    end
+  end
+
   class TestRackSession < ActiveSupport::HashWithIndifferentAccess
     def enabled? = true
 
@@ -127,6 +135,10 @@ class ActionViewCaptureTest < Minitest::Test
 
     def card_list_component(cards)
       MatrixCardListComponent.new(cards: cards)
+    end
+
+    def modal_component
+      MatrixModalComponent.new
     end
   end
 
@@ -504,6 +516,13 @@ class ActionViewCaptureTest < Minitest::Test
     assert_empty Upkeep::SharedStreams.names_for_recorder(recorder)
   end
 
+  def test_block_component_render_is_not_source_wrapped_as_render_site
+    html, recorder = capture_render("boards/block_component", {})
+
+    assert_includes html, "Block content"
+    refute_includes html, "data-upkeep-render-site"
+    refute recorder.graph.frame_nodes.any? { |frame| frame.payload.fetch(:kind) == "render_site" }
+  end
 
   def test_collection_render_records_render_site_and_replays_membership_change
     plan = create_card!("Plan")
@@ -847,6 +866,15 @@ class ActionViewCaptureTest < Minitest::Test
           <ul>
             <%= render partial: "cards/preloaded_card", collection: cards, as: :card %>
           </ul>
+        </main>
+      ERB
+      "boards/block_component.html.erb" => <<~ERB,
+        <main>
+          <div id="modal">
+            <%= render modal_component do %>
+              <p>Block content</p>
+            <% end %>
+          </div>
         </main>
       ERB
       "boards/manual_frame.html.erb" => <<~ERB,
