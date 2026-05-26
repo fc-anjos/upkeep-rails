@@ -56,6 +56,15 @@ class SubscriptionStoreTest < Minitest::Test
     assert_equal [subscription.id], entries.map(&:subscription_id)
   end
 
+  def test_nil_id_attribute_dependency_matches_specific_record_changes
+    subscription = store.register(subscriber_id: "subscriber-a", recorder: recorder_with_nil_id_dependency)
+    store.activate(subscription.id)
+
+    entries = store.reverse_index.entries_for([change])
+
+    assert_equal [subscription.id], entries.map(&:subscription_id)
+  end
+
   def test_collection_dependency_indexes_proven_columns
     subscription = store.register(subscriber_id: "subscriber-a", recorder: recorder_with_collection_dependency)
     store.activate(subscription.id)

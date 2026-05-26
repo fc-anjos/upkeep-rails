@@ -117,11 +117,14 @@ module Upkeep
         table = change.fetch(:table)
         attributes = change.fetch(:changed_attributes, [])
 
-        keys = attributes.map do |attribute|
+        keys = attributes.flat_map do |attribute|
           if change[:id]
-            [:active_record_attribute, table, change.fetch(:id), attribute]
+            [
+              [:active_record_attribute, table, change.fetch(:id), attribute],
+              [:active_record_attribute_any_id, table, attribute]
+            ]
           else
-            [:active_record_attribute_any_id, table, attribute]
+            [[:active_record_attribute_any_id, table, attribute]]
           end
         end
 
