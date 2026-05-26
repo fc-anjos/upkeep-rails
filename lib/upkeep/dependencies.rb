@@ -64,7 +64,7 @@ module Upkeep
 
       def matches_change?(change)
         key.fetch(:table) == change.fetch(:table) &&
-          (!change[:id] || key.fetch(:id) == change[:id]) &&
+          (key.fetch(:id).nil? || !change[:id] || key.fetch(:id) == change[:id]) &&
           change.fetch(:changed_attributes, []).include?(key.fetch(:attribute))
       end
 
