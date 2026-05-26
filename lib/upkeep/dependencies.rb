@@ -169,12 +169,42 @@ module Upkeep
 
       def values_match_predicates(values, predicates)
         values = stringify_keys(values)
+        group_matches = predicate_groups(predicates).map do |_group, group_predicates|
+          values_match_predicate_group(values, group_predicates)
+        end
+
+        return true if group_matches.include?(true)
+        return false if group_matches.all?(false)
+
+        UNKNOWN
+      end
+
+      def values_match_predicate_group(values, predicates)
         return UNKNOWN unless predicates.all? { |predicate| values.key?(predicate.fetch(:column)) }
 
-        predicates.all? do |predicate|
-          value = values.fetch(predicate.fetch(:column))
-          predicate.fetch(:values).include?(value)
+        matches = predicates.map do |predicate|
+          predicate_matches_value?(predicate, values.fetch(predicate.fetch(:column)))
         end
+        return UNKNOWN if matches.include?(UNKNOWN)
+
+        matches.all?
+      end
+
+      def predicate_matches_value?(predicate, value)
+        values = predicate.fetch(:values)
+
+        case predicate.fetch(:operator).to_s
+        when "eq", "in"
+          values.include?(value)
+        when "not_eq", "not_in"
+          !value.nil? && !values.include?(value)
+        else
+          UNKNOWN
+        end
+      end
+
+      def predicate_groups(predicates)
+        predicates.group_by { |predicate| predicate.fetch(:group, "__all__").to_s }
       end
 
       def predicates_for_table(table)
@@ -208,15 +238,17 @@ module Upkeep
       def normalize_predicates(value)
         Array(value).filter_map do |predicate|
           predicate = Dependencies.symbolize_keys(predicate)
-          values = Array(predicate[:values]).compact
+          values = Array(predicate[:values])
           next if predicate[:table].nil? || predicate[:column].nil? || values.empty?
 
-          {
+          normalized = {
             table: predicate.fetch(:table).to_s,
             column: predicate.fetch(:column).to_s,
             operator: predicate.fetch(:operator, "eq").to_s,
             values: values.uniq
           }
+          normalized[:group] = predicate.fetch(:group).to_s if predicate.key?(:group)
+          normalized
         end
       end
 

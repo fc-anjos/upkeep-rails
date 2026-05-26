@@ -4,6 +4,8 @@ require "active_record"
 
 module Upkeep
   module ActiveRecordQuery
+    UNKNOWN_PREDICATE_VALUE = Object.new.freeze
+
     class OpaqueRelationError < StandardError
       attr_reader :model_name, :table_name, :sql, :reasons
 
@@ -87,7 +89,7 @@ module Upkeep
         @opaque_tables = false
         @opaque_table_reasons = []
         @opaque_column_reasons = []
-        @predicates = []
+        @predicate_groups = []
       end
 
       def analyze
@@ -115,6 +117,7 @@ module Upkeep
         ast.cores.each do |core|
           walk(core.source, source: true)
           walk(core.wheres)
+          record_predicate_groups(core.wheres)
           walk(core.groups)
           walk(core.havings)
         end
@@ -160,14 +163,14 @@ module Upkeep
         when Arel::Attributes::Attribute
           attribute(value)
         when Arel::Nodes::Equality
-          equality_predicate(value)
+          walk(value.left, source: source)
+          walk(value.right, source: source) if value.right.is_a?(Arel::Attributes::Attribute)
+        when defined?(Arel::Nodes::NotEqual) && Arel::Nodes::NotEqual
           walk(value.left, source: source)
           walk(value.right, source: source) if value.right.is_a?(Arel::Attributes::Attribute)
         when Arel::Nodes::HomogeneousIn
-          homogeneous_in_predicate(value)
           walk(value.attribute, source: source)
         when defined?(Arel::Nodes::In) && Arel::Nodes::In
-          in_predicate(value)
           walk(value.left, source: source)
           walk(value.right, source: source) if value.right.is_a?(Arel::Attributes::Attribute)
         when Arel::Nodes::Matches, Arel::Nodes::DoesNotMatch
@@ -251,19 +254,68 @@ module Upkeep
         @table_columns[table_name.to_s] << column_name.to_s
       end
 
-      def equality_predicate(node)
-        predicate = predicate_for(node.left, "eq", [predicate_value(node.right)])
-        @predicates << predicate if predicate
+      def record_predicate_groups(value)
+        groups = predicate_groups_for(value)
+        return if groups.empty?
+
+        @predicate_groups = and_predicate_groups(@predicate_groups, groups)
       end
 
-      def homogeneous_in_predicate(node)
-        predicate = predicate_for(node.attribute, "in", Array(node.values).map { |value| predicate_value(value) })
-        @predicates << predicate if predicate
+      def predicate_groups_for(value)
+        case value
+        when nil, true, false, Numeric, Symbol, Class, Module, String
+          []
+        when Array
+          value.reduce([]) do |groups, entry|
+            and_predicate_groups(groups, predicate_groups_for(entry))
+          end
+        when Hash
+          predicate_groups_for(value.values)
+        when Arel::Nodes::Equality
+          group_for_predicate(predicate_for(value.left, "eq", [predicate_value(value.right)]))
+        when defined?(Arel::Nodes::NotEqual) && Arel::Nodes::NotEqual
+          group_for_predicate(predicate_for(value.left, "not_eq", [predicate_value(value.right)]))
+        when Arel::Nodes::HomogeneousIn
+          group_for_predicate(predicate_for(value.attribute, homogeneous_in_operator(value), Array(value.values).map { |entry| predicate_value(entry) }))
+        when defined?(Arel::Nodes::In) && Arel::Nodes::In
+          group_for_predicate(predicate_for(value.left, "in", Array(value.right).map { |entry| predicate_value(entry) }))
+        when Arel::Nodes::Grouping
+          predicate_groups_for(value.expr)
+        when Arel::Nodes::And
+          predicate_groups_for(value.children)
+        when Arel::Nodes::Or
+          child_groups = or_children(value).map { |child| predicate_groups_for(child) }
+          return [] if child_groups.any?(&:empty?)
+
+          child_groups.flatten(1)
+        else
+          []
+        end
       end
 
-      def in_predicate(node)
-        predicate = predicate_for(node.left, "in", Array(node.right).map { |value| predicate_value(value) })
-        @predicates << predicate if predicate
+      def homogeneous_in_operator(node)
+        node.respond_to?(:type) && node.type.to_sym == :notin ? "not_in" : "in"
+      end
+
+      def or_children(node)
+        if node.respond_to?(:children)
+          node.children
+        else
+          [node.left, node.right]
+        end
+      end
+
+      def group_for_predicate(predicate)
+        predicate ? [[predicate]] : []
+      end
+
+      def and_predicate_groups(left_groups, right_groups)
+        return right_groups if left_groups.empty?
+        return left_groups if right_groups.empty?
+
+        left_groups.flat_map do |left_group|
+          right_groups.map { |right_group| left_group + right_group }
+        end
       end
 
       def predicate_for(attribute, operator, values)
@@ -272,7 +324,7 @@ module Upkeep
         table_name = table_name_for(attribute.relation)
         return unless table_name
 
-        values = values.compact
+        values = values.reject { |value| value.equal?(UNKNOWN_PREDICATE_VALUE) }
         return if values.empty?
 
         {
@@ -290,13 +342,34 @@ module Upkeep
           value.value
         elsif value.nil? || value.is_a?(String) || value.is_a?(Numeric) || value == true || value == false || value.is_a?(Symbol)
           value
+        else
+          UNKNOWN_PREDICATE_VALUE
         end
       end
 
       def normalized_predicates
-        @predicates
+        grouped = normalized_predicate_groups
+        predicates = if grouped.one?
+          grouped.first
+        else
+          grouped.each_with_index.flat_map do |group, index|
+            group.map { |predicate| predicate.merge(group: index) }
+          end
+        end
+
+        predicates
           .uniq
-          .sort_by { |predicate| [predicate.fetch(:table), predicate.fetch(:column), predicate.fetch(:operator), predicate.fetch(:values).inspect] }
+          .sort_by { |predicate| [predicate.fetch(:group, -1), predicate.fetch(:table), predicate.fetch(:column), predicate.fetch(:operator), predicate.fetch(:values).inspect] }
+      end
+
+      def normalized_predicate_groups
+        @predicate_groups
+          .map do |group|
+            group
+              .uniq
+              .sort_by { |predicate| [predicate.fetch(:table), predicate.fetch(:column), predicate.fetch(:operator), predicate.fetch(:values).inspect] }
+          end
+          .uniq
       end
 
       def safe_sql
