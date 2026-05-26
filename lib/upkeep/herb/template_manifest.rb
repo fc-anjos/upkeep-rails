@@ -420,7 +420,7 @@ module Upkeep
         end
 
         def block_render?(node)
-          token_value(node.content).to_s.match?(/\bdo(?:\s*\|[^|]*\|)?\s*\z/)
+          !!node.end_node
         end
 
         def safe_collection_container?(container, render_node)
