@@ -24,6 +24,12 @@ class RuntimeDeliveryCardsController < ActionController::Base
     render template: "runtime_delivery_cards/index"
   end
 
+  def self_mutating_index
+    @cards = RuntimeDeliveryCard.order(:id)
+    RuntimeDeliveryCard.create!(title: "Created during GET")
+    render template: "runtime_delivery_cards/anonymous"
+  end
+
   def raw
     @cards = RuntimeDeliveryCard.where("title IS NOT NULL").order(:id)
     render template: "runtime_delivery_cards/index"
@@ -194,6 +200,29 @@ class ControllerRuntimeTest < Minitest::Test
     refute_equal subscriptions.first.id, subscriptions.last.id
     assert_includes @first_html, subscriptions.first.id
     assert_includes @second_html, subscriptions.last.id
+  end
+
+  def test_subscription_request_does_not_deliver_its_own_changes_to_new_subscription
+    previous_adapter = Upkeep::Rails.configuration.delivery_adapter
+    previous_batch_window = Upkeep::Rails.configuration.delivery_batch_window
+    Upkeep::Rails.configuration.delivery_adapter = :async
+    Upkeep::Rails.configuration.delivery_batch_window = 0.05
+    RuntimeDeliveryCard.create!(title: "Plan")
+
+    _status, _headers, body = RuntimeDeliveryCardsController.action(:self_mutating_index).call(env_for("/cards"))
+    html = collect_body(body)
+    subscription = Upkeep::Rails.subscriptions.subscriptions.first
+    adapter = RecordingAdapter.new
+
+    Upkeep::Rails.subscriptions.activate(subscription.id)
+    Upkeep::Rails.transport.connect(subscriber_id: subscription.subscriber_id, adapter: adapter)
+    Upkeep::Rails::Testing.drain_delivery!
+
+    assert_includes html, "Created during GET"
+    assert_empty adapter.bodies
+  ensure
+    Upkeep::Rails.configuration.delivery_adapter = previous_adapter if previous_adapter
+    Upkeep::Rails.configuration.delivery_batch_window = previous_batch_window if previous_batch_window
   end
 
   def test_get_reports_request_capture_phase_timings

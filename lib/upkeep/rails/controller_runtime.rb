@@ -79,6 +79,14 @@ module Upkeep
         end
         record_capture_payload(payload, capture) if capture
 
+        measure_phase(payload, :deliver_changes_ms) do
+          if capture
+            Upkeep::Rails.deliver_changes_now!(changes)
+          else
+            Upkeep::Rails.deliver_changes!(changes)
+          end
+        end
+
         registration = nil
         if capture
           measure_phase(payload, :register_ms) do
@@ -96,7 +104,6 @@ module Upkeep
           end
           payload[:subscription_id] = registration.subscription.id
         end
-        measure_phase(payload, :deliver_changes_ms) { Upkeep::Rails.deliver_changes!(changes) }
 
         result
       end
