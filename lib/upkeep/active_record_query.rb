@@ -182,6 +182,12 @@ module Upkeep
           walk(value.right, source: source) if value.right.is_a?(Arel::Attributes::Attribute)
         when Arel::Nodes::NamedFunction
           walk(value.expressions, source: source)
+        when Arel::Nodes::InfixOperation
+          # Operator-style expressions (jsonb `->>`/`#>>`, arithmetic, etc.). The reactive
+          # surface is the operands; the operator itself is a SQL token, not a data
+          # dependency, so walk left/right and ignore the operator (mirrors NamedFunction).
+          walk(value.left, source: source)
+          walk(value.right, source: source)
         when Arel::Table
           table(value.name)
         when Arel::Nodes::TableAlias
