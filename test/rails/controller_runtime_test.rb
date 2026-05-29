@@ -55,6 +55,21 @@ class RuntimeDeliveryCardsController < ActionController::Base
     @user_agent = request.user_agent
     render template: "runtime_delivery_cards/request_variant"
   end
+
+  # Renders an opaque relation but opts out of reactivity via upkeep_reactive_request?,
+  # so Upkeep skips capture entirely.
+  def non_reactive
+    @cards = RuntimeDeliveryCard.where("title IS NOT NULL").order(:id)
+    render template: "runtime_delivery_cards/anonymous"
+  end
+
+  private
+
+  def upkeep_reactive_request?
+    return false if action_name == "non_reactive"
+
+    super
+  end
 end
 
 class ControllerRuntimeTest < Minitest::Test
@@ -181,6 +196,21 @@ class ControllerRuntimeTest < Minitest::Test
       marker_payload.fetch("activation_token"),
       subscription.id
     )
+  end
+
+  def test_non_reactive_request_skips_capture_without_registering_or_refusing
+    RuntimeDeliveryCard.create!(title: "Plan")
+
+    # The action renders an opaque relation; without the opt-out this would refuse the
+    # boundary. upkeep_reactive_request? => false makes Upkeep skip capture entirely, so
+    # nothing is analyzed, registered, or injected and the page still renders.
+    _status, _headers, body = RuntimeDeliveryCardsController.action(:non_reactive).call(env_for("/cards/non_reactive"))
+    html = collect_body(body)
+
+    assert_empty Upkeep::Rails.subscriptions.subscriptions
+    refute_includes html, "<upkeep-subscription-source"
+    refute_includes html, "data-upkeep-subscription"
+    assert_includes html, "Plan"
   end
 
   def test_identity_free_get_reuses_subscription_shape_without_reusing_response_html

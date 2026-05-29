@@ -13,6 +13,16 @@ module Upkeep
         prepend_around_action :upkeep_capture_request
       end
 
+      # Public override point for host controllers. Return false to opt a request out
+      # of Upkeep capture and live registration: the action still runs and the page
+      # renders normally, but no subscription is recorded, no source is injected, and
+      # no boundary is analyzed (so an opaque relation on that request neither raises
+      # nor warns). Use for render paths Upkeep cannot prove and that should not be
+      # made reactive, e.g. full-text search results backed by raw tsvector SQL.
+      def upkeep_reactive_request?
+        true
+      end
+
       module_function
 
       def install
@@ -133,7 +143,7 @@ module Upkeep
       end
 
       def upkeep_subscription_request?
-        request.get? || request.head?
+        upkeep_reactive_request? && (request.get? || request.head?)
       end
 
       def request_capture_profile?

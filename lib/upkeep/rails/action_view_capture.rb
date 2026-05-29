@@ -82,6 +82,12 @@ module Upkeep
       end
 
       def capture_collection(partial, collection, rendered_collection, context, options, block, collection_analysis: nil)
+        # No active capture (e.g. a request that opted out via upkeep_reactive_request?):
+        # render the collection normally without building dependencies or replay
+        # snapshots, which would otherwise analyze and refuse an opaque relation on a
+        # page that is deliberately not reactive.
+        return yield unless Runtime::Observation.recording?
+
         render_site = current_render_site
         unless render_site
           record_collection_dependency(collection, collection_analysis: collection_analysis)
@@ -111,6 +117,12 @@ module Upkeep
       end
 
       def collection_analysis(collection)
+        # Only analyze rendered collections during an active capture. Outside a capture
+        # (e.g. a request that opted out via upkeep_reactive_request?) there is no
+        # dependency to build, and analyzing would refuse/raise on an opaque relation
+        # that the page deliberately keeps non-reactive.
+        return unless Runtime::Observation.recording?
+
         provenance = Runtime::Observation.relation_provenance_for(collection)
         return provenance if provenance
         return unless active_record_relation?(collection)
@@ -481,6 +493,13 @@ module Upkeep
       end
 
       def record_collection_dependency(collection, collection_analysis: nil)
+        # Collection dependencies only matter to an active capture. When nothing is
+        # recording (e.g. a request that opted out via upkeep_reactive_request?, or any
+        # render outside a captured request) there is no dependency to record, and we
+        # must not analyze -- otherwise an opaque relation would raise/refuse on a page
+        # that is deliberately not reactive. This mirrors the relation-load observer,
+        # which also no-ops without a recorder.
+        return unless Runtime::Observation.recording?
         return if refused_collection_analysis?(collection_analysis)
 
         analysis = collection_analysis
