@@ -274,6 +274,37 @@ arrays, hashes, literals, and observed request, session, or cookie values. Avoid
 passing procs, IO handles, open clients, or process-local objects into live
 render boundaries.
 
+Some boundaries are intractable on purpose. A full-text search backed by raw
+`tsvector`/`tsquery` SQL has no structural column coverage to prove, and
+rewriting it would defeat the search. When a request should not be made
+reactive at all, opt it out instead of refusing a boundary mid-render. Override
+`upkeep_reactive_request?` in the controller and return `false` for those
+requests:
+
+```ruby
+# app/controllers/stories_controller.rb
+def index
+  @stories = params[:query].present? ? Story.search(params[:query]) : Story.recent
+end
+
+private
+
+# Search results use a raw full-text scope Upkeep cannot prove; render them
+# normally but do not register them for live refresh.
+def upkeep_reactive_request?
+  return false if params[:query].present?
+
+  super
+end
+```
+
+An opted-out request still runs the action and renders the page; Upkeep simply
+records no subscription, injects no source, and analyzes no boundary — so an
+opaque relation on that request neither raises nor warns. The unfiltered page
+(no `query`) stays reactive. Reach for this only when the boundary is
+genuinely unprovable; prefer the structural refactors above whenever the shape
+*can* be made explicit.
+
 The rule of thumb: when Rails and Arel can describe the table, column,
 predicate, order, and value shape, Upkeep can usually reason about it. When the
 shape is hidden inside a string or arbitrary Ruby object, Upkeep refuses the
