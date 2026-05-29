@@ -260,6 +260,24 @@ class ActiveRecordQueryTest < Minitest::Test
     refute dependency.matches_change?(change(table: "query_analysis_cards", attributes: ["title"]))
   end
 
+  def test_arel_infix_operation_records_operand_columns_without_treating_operator_as_sql
+    cards = QueryAnalysisCard.arel_table
+    extracted_status = Arel::Nodes::InfixOperation.new(
+      "->>",
+      cards[:status],
+      Arel::Nodes.build_quoted("state")
+    )
+    analysis = analyze(QueryAnalysisCard.where(extracted_status.eq("open")))
+    dependency = dependency_for(analysis)
+
+    assert_equal :columns, analysis.coverage
+    assert_equal({
+      "query_analysis_cards" => %w[id status]
+    }, analysis.table_columns)
+    assert dependency.matches_change?(change(table: "query_analysis_cards", attributes: ["status"]))
+    refute dependency.matches_change?(change(table: "query_analysis_cards", attributes: ["title"]))
+  end
+
   def test_collection_dependency_uses_predicate_values_to_filter_updates
     analysis = analyze(QueryAnalysisCard.where(status: "open").order(:position))
     dependency = dependency_for(analysis)
