@@ -106,13 +106,14 @@ module Upkeep
         end
 
         def log_subscription_rejection(reason)
-          return unless reason == "missing_activation_token"
           return unless defined?(::Rails) && ::Rails.respond_to?(:logger) && ::Rails.logger
 
-          ::Rails.logger.warn(
-            "[upkeep] subscription rejected: missing activation_token. " \
-            "If this started after upgrading upkeep-rails, refresh app/javascript/upkeep/subscription.js from the install generator."
-          )
+          message = +"[upkeep] subscription rejected (#{reason}) subscription_id=#{safe_subscription_id.inspect}."
+          if reason == "missing_activation_token"
+            message << " If this started after upgrading upkeep-rails, " \
+              "refresh app/javascript/upkeep/subscription.js from the install generator."
+          end
+          ::Rails.logger.warn(message)
         end
 
         def authorized_subscription?(subscription)
