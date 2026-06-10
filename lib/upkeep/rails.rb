@@ -4,8 +4,8 @@ require "active_support/notifications"
 require_relative "capture/request"
 require_relative "subscriptions/registrar"
 require_relative "rails/configuration"
+require_relative "rails/cluster_guard"
 require_relative "rails/activation_token"
-require_relative "rails/delivery_job"
 require_relative "rails/replay"
 require_relative "rails/action_view_capture"
 require_relative "rails/cable"
@@ -99,8 +99,8 @@ module Upkeep
         nil
       end
 
-      # Dispatches committed application changes through the configured delivery
-      # adapter.
+      # Dispatches committed application changes onto the in-process delivery
+      # dispatcher (or synchronously when config.deliver_inline is set).
       #
       # ControllerRuntime calls this automatically after non-GET actions. Apps
       # usually should not call it from controllers or models.
@@ -122,9 +122,9 @@ module Upkeep
       # Delivers committed application changes immediately in the current
       # process.
       #
-      # This is used by the inline delivery adapter and Active Job worker. Tests
-      # that need deterministic async delivery should use
-      # Upkeep::Rails::Testing instead of calling this directly.
+      # This is used by inline delivery (config.deliver_inline). Tests that
+      # need deterministic async delivery should use Upkeep::Rails::Testing
+      # instead of calling this directly.
       #
       # @param changes [Array<#to_h>] change events to deliver. Defaults to the
       #   current runtime change log.
@@ -142,6 +142,7 @@ module Upkeep
         return true unless configuration.enabled
 
         validate_subscription_store!(environment: environment)
+        validate_cluster_safety!(environment: environment)
         true
       end
 
@@ -160,20 +161,15 @@ module Upkeep
 
       def dispatch_changes(changes)
         payload = {
-          adapter: configuration.delivery_adapter,
-          queue: configuration.delivery_queue,
+          inline: configuration.deliver_inline,
           change_count: changes.size
         }
 
         ActiveSupport::Notifications.instrument(DELIVERY_ENQUEUE, payload) do
-          case configuration.delivery_adapter
-          when :active_job
-            DeliveryJob.perform_later(changes)
-            Delivery::Transport::DispatchReport.new([])
-          when :async
-            delivery_dispatcher.enqueue(changes)
-          when :inline
+          if configuration.deliver_inline
             deliver_changes_now!(changes)
+          else
+            delivery_dispatcher.enqueue(changes)
           end
         end
       end
@@ -181,8 +177,7 @@ module Upkeep
       def instrument_delivery_enqueue_error(changes, error)
         ActiveSupport::Notifications.instrument(
           DELIVERY_ENQUEUE_ERROR,
-          adapter: configuration.delivery_adapter,
-          queue: configuration.delivery_queue,
+          inline: configuration.deliver_inline,
           change_count: changes.size,
           error_class: error.class.name,
           error_message: error.message
@@ -352,6 +347,52 @@ module Upkeep
         "#{prefix} Schema errors: #{schema_errors.join("; ")}. Run bin/rails generate upkeep:install " \
           "and bin/rails db:migrate, rebuild stale development/test databases, or set " \
           "config.upkeep.subscription_store = :memory in development/test."
+      end
+
+      def validate_cluster_safety!(environment:, guard: nil)
+        guard ||= ClusterGuard.new(
+          cable_adapter: resolved_action_cable_adapter,
+          worker_count: detected_worker_count,
+          subscription_store: configuration.subscription_store,
+          environment: environment
+        )
+        return true if guard.problems.empty?
+        raise ConfigurationError, guard.message if guard.error?
+
+        log_cluster_warning(guard.message)
+        true
+      end
+
+      def log_cluster_warning(message)
+        return if @cluster_warning_logged
+
+        @cluster_warning_logged = true
+        if defined?(::Rails) && ::Rails.respond_to?(:logger) && ::Rails.logger
+          ::Rails.logger.warn("[upkeep] #{message}")
+        else
+          warn("[upkeep] #{message}")
+        end
+      end
+
+      def resolved_action_cable_adapter
+        return unless defined?(::ActionCable) && ::ActionCable.respond_to?(:server)
+
+        cable = ::ActionCable.server.config.cable
+        cable && (cable["adapter"] || cable[:adapter])
+      rescue StandardError
+        nil
+      end
+
+      def detected_worker_count
+        puma_worker_count || ENV["WEB_CONCURRENCY"].to_i
+      end
+
+      def puma_worker_count
+        return unless defined?(::Puma) && ::Puma.respond_to?(:cli_config)
+
+        ::Puma.cli_config&.options&.[](:workers)
+      rescue StandardError
+        nil
       end
 
       def production_environment?(environment)

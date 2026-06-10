@@ -14,7 +14,7 @@ module Upkeep
         # broadcast assertions.
         #
         # Production code should not call this; normal app delivery runs
-        # through the configured adapter.
+        # on the in-process dispatcher.
         #
         # @return [void]
         def drain_delivery!

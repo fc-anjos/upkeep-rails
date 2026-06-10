@@ -233,9 +233,9 @@ class ControllerRuntimeTest < Minitest::Test
   end
 
   def test_subscription_request_does_not_deliver_its_own_changes_to_new_subscription
-    previous_adapter = Upkeep::Rails.configuration.delivery_adapter
+    previous_inline = Upkeep::Rails.configuration.deliver_inline
     previous_batch_window = Upkeep::Rails.configuration.delivery_batch_window
-    Upkeep::Rails.configuration.delivery_adapter = :async
+    Upkeep::Rails.configuration.deliver_inline = false
     Upkeep::Rails.configuration.delivery_batch_window = 0.05
     RuntimeDeliveryCard.create!(title: "Plan")
 
@@ -251,7 +251,7 @@ class ControllerRuntimeTest < Minitest::Test
     assert_includes html, "Created during GET"
     assert_empty adapter.bodies
   ensure
-    Upkeep::Rails.configuration.delivery_adapter = previous_adapter if previous_adapter
+    Upkeep::Rails.configuration.deliver_inline = previous_inline
     Upkeep::Rails.configuration.delivery_batch_window = previous_batch_window if previous_batch_window
   end
 
