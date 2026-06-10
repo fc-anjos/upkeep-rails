@@ -19,7 +19,7 @@ module Upkeep
       REGISTER_NOTIFICATION = "register_subscription_store.upkeep"
       ACTIVATE_NOTIFICATION = "activate_subscription_store.upkeep"
       PERSIST_NOTIFICATION = ActiveRecordSubscriptionPersistence::PERSIST_NOTIFICATION
-      DURABILITY_MODE = "async_subscription_row_index_on_subscribe"
+      DURABILITY_MODE = "sync_subscription_row_index_on_subscribe"
       INDEX_DURABILITY = "on_subscribe"
       REQUIRED_SCHEMA = {
         "upkeep_subscriptions" => {
@@ -296,7 +296,7 @@ module Upkeep
         end
 
         pending_registry.register(subscription, entries: entries)
-        durable_writer.enqueue(subscription, entries: entries, operation: :persist_subscription)
+        persist_now(subscription, entries, operation: :persist_subscription)
         defer_index_write(subscription, entries)
         subscription
       end
@@ -312,7 +312,7 @@ module Upkeep
         unless source == :active
           active_registry.register(subscription, entries: entries)
           pending_registry.unregister(id)
-          durable_writer.enqueue(subscription, entries: entries, operation: :persist_index)
+          persist_now(subscription, entries, operation: :persist_index)
         end
 
         if payload
@@ -324,6 +324,25 @@ module Upkeep
         end
 
         true
+      end
+
+      # Synchronous so other processes see the row (registration) and the index
+      # entries (activation) immediately. Persistence failures degrade to
+      # in-process liveness instead of failing the request or the activation.
+      def persist_now(subscription, entries, operation:)
+        persistence.persist_jobs([AsyncDurableWriter::Job.new(subscription, entries, operation)])
+      rescue StandardError => error
+        warn_persist_failure(subscription, operation, error)
+      end
+
+      def warn_persist_failure(subscription, operation, error)
+        return unless defined?(::Rails) && ::Rails.respond_to?(:logger) && ::Rails.logger
+
+        target = operation == :persist_subscription ? "subscription row" : "index entries"
+        ::Rails.logger.warn(
+          "Upkeep could not persist #{target} for #{subscription.id} " \
+          "(#{error.class}: #{error.message}); the subscription stays live in this process only"
+        )
       end
 
       def defer_index_write(subscription, entries)
