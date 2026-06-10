@@ -240,10 +240,6 @@ module Upkeep
         end
       end
 
-      def drain
-        true
-      end
-
       def shutdown
         true
       end

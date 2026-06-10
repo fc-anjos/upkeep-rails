@@ -12,6 +12,7 @@ module Upkeep
     class ActiveRecordSubscriptionPersistence
       PERSIST_NOTIFICATION = "persist_subscription_store.upkeep"
       INDEX_ENTRIES_SNAPSHOT_KEY = "__upkeep_index_entries"
+      Job = Data.define(:subscription, :entries, :operation)
 
       def initialize(subscription_record:, index_record:, shape_index_record:, index_builder:)
         @subscription_record = subscription_record

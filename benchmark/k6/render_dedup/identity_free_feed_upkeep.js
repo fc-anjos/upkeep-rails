@@ -54,15 +54,7 @@ function subscriptionPayloadFrom(body) {
   const match = `${body}`.match(/<upkeep-subscription-source\b[^>]*\bdata-upkeep-subscription\b[^>]*>([\s\S]*?)<\/upkeep-subscription-source>/);
   if (!match) return "";
 
-  const fromAttributes = subscriptionPayloadFromAttributes(match[0]);
-  if (fromAttributes) return fromAttributes;
-
-  // Markers rendered by an older upkeep-rails carry the payload as JSON text.
-  try {
-    return JSON.parse(decodeHtmlEntities(match[1])) || "";
-  } catch {
-    return "";
-  }
+  return subscriptionPayloadFromAttributes(match[0]) || "";
 }
 
 function subscriptionPayloadFromAttributes(tag) {
