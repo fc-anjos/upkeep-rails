@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "cgi"
-require "json"
 
 module Upkeep
   module Rails
@@ -16,20 +15,21 @@ module Upkeep
           "#{html}#{marker}"
       end
 
+      # The payload travels as attributes (like turbo-cable-stream-source), never
+      # as text content, so it can't show up as page text when JS is absent.
       def marker_for(identity:, subscription:)
-        payload = JSON.generate(
-          channel: CHANNEL,
-          subscription_id: subscription.id,
-          activation_token: ActivationToken.generate(subscription),
-          stream_name: identity.stream_name
-        ).gsub("</", '<\/')
-
-        id = "upkeep-subscription-source-#{subscription.id}"
+        attributes = {
+          "id" => "upkeep-subscription-source-#{subscription.id}",
+          "channel" => CHANNEL,
+          "subscription-id" => subscription.id,
+          "activation-token" => ActivationToken.generate(subscription),
+          "stream-name" => identity.stream_name
+        }
 
         [
-          %(<upkeep-subscription-source id="#{CGI.escapeHTML(id)}" ),
-          %(data-upkeep-subscription data-turbo-temporary>),
-          CGI.escapeHTML(payload),
+          %(<upkeep-subscription-source ),
+          attributes.map { |name, value| %(#{name}="#{CGI.escapeHTML(value.to_s)}") }.join(" "),
+          %( hidden style="display:none" data-upkeep-subscription data-turbo-temporary>),
           %(</upkeep-subscription-source>)
         ].join
       end

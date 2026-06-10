@@ -54,11 +54,32 @@ function subscriptionPayloadFrom(body) {
   const match = `${body}`.match(/<upkeep-subscription-source\b[^>]*\bdata-upkeep-subscription\b[^>]*>([\s\S]*?)<\/upkeep-subscription-source>/);
   if (!match) return "";
 
+  const fromAttributes = subscriptionPayloadFromAttributes(match[0]);
+  if (fromAttributes) return fromAttributes;
+
+  // Markers rendered by an older upkeep-rails carry the payload as JSON text.
   try {
     return JSON.parse(decodeHtmlEntities(match[1])) || "";
   } catch {
     return "";
   }
+}
+
+function subscriptionPayloadFromAttributes(tag) {
+  const attribute = (name) => {
+    const match = tag.match(new RegExp(`\\b${name}="([^"]*)"`));
+    return match ? decodeHtmlEntities(match[1]) : "";
+  };
+
+  const subscriptionId = attribute("subscription-id");
+  if (!subscriptionId) return null;
+
+  return {
+    channel: attribute("channel"),
+    subscription_id: subscriptionId,
+    activation_token: attribute("activation-token"),
+    stream_name: attribute("stream-name"),
+  };
 }
 
 function decodeHtmlEntities(value) {
