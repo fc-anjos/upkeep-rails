@@ -447,8 +447,11 @@ class ControllerRuntimeTest < Minitest::Test
   def subscription_marker_payload(html)
     marker = html.match(%r{<upkeep-subscription-source[^>]*data-upkeep-subscription[^>]*>(.*?)</upkeep-subscription-source>}m)
     raise "missing Upkeep subscription marker" unless marker
+    raise "Upkeep subscription marker must not carry text content" unless marker[1].empty?
 
-    JSON.parse(CGI.unescapeHTML(marker[1]))
+    marker[0].scan(/([a-z][a-z-]*)="([^"]*)"/).to_h do |name, value|
+      [name.tr("-", "_"), CGI.unescapeHTML(value)]
+    end
   end
 
   def delivery_change(table:)
