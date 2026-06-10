@@ -296,6 +296,58 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     assert_equal index_rows, Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.count
   end
 
+  def test_register_persists_subscription_row_without_drain
+    create_subscription_card!("Plan")
+
+    _html, recorder = capture_controller_request("/cards?status=open")
+    store = active_record_store
+    subscription = store.register(subscriber_id: "subscriber-a", recorder: recorder, metadata: { stream_name: "stream-a" })
+
+    assert_equal [subscription.id], Upkeep::Subscriptions::ActiveRecordStore::SubscriptionRecord.pluck(:id)
+    assert_equal 0, Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.count
+    assert_equal "stream-a", active_record_store.fetch(subscription.id).metadata.fetch(:stream_name)
+  end
+
+  def test_activate_persists_index_rows_without_drain
+    card = create_subscription_card!("Plan")
+
+    _html, recorder = capture_controller_request("/cards?status=open")
+    store = active_record_store
+    subscription = store.register(subscriber_id: "subscriber-a", recorder: recorder, metadata: { stream_name: "stream-a" })
+
+    assert store.activate(subscription.id)
+    assert_operator Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.count, :>, 0
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.update!(title: "Plan v2")
+    entries = active_record_store.reverse_index.entries_for(Upkeep::Runtime::ChangeLog.events)
+
+    assert_equal [subscription.id], entries.map(&:subscription_id).uniq
+  end
+
+  def test_register_degrades_to_in_process_liveness_when_row_persist_fails
+    create_subscription_card!("Plan")
+
+    _html, recorder = capture_controller_request("/cards?status=open")
+    store = active_record_store
+    io = StringIO.new
+    subscription = nil
+
+    with_rails_logger(ActiveSupport::Logger.new(io)) do
+      with_failing_persistence(store) do
+        subscription = store.register(subscriber_id: "subscriber-a", recorder: recorder, metadata: { stream_name: "stream-a" })
+      end
+    end
+
+    assert_equal 0, Upkeep::Subscriptions::ActiveRecordStore::SubscriptionRecord.count
+    assert_equal "stream-a", store.fetch(subscription.id).metadata.fetch(:stream_name)
+    assert_match(/could not persist subscription row/, io.string)
+    assert_includes io.string, subscription.id
+
+    assert store.activate(subscription.id)
+    assert_operator Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.count, :>, 0
+  end
+
   def test_persisted_subscription_snapshot_keeps_replay_and_identity_without_lifecycle_dependencies
     card = PersistentSubscriptionCard.create!(title: "Plan", status: "open")
 
@@ -335,7 +387,7 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     assert_equal 1, events.size
     assert_equal "active_record", events.first.payload.fetch(:store)
     assert_equal "pending_activation", events.first.payload.fetch(:mode)
-    assert_equal "async_subscription_row_index_on_subscribe", events.first.payload.fetch(:durability)
+    assert_equal "sync_subscription_row_index_on_subscribe", events.first.payload.fetch(:durability)
     assert_equal "on_subscribe", events.first.payload.fetch(:index_durability)
     assert_match(/\Asubscription-/, events.first.payload.fetch(:subscription_id))
     assert_operator events.first.payload.fetch(:dependency_entries), :>, 0
@@ -723,6 +775,27 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
 
   def create_subscription_card!(title, status: "open")
     PersistentSubscriptionCard.create!(title: title, status: status)
+  end
+
+  def with_failing_persistence(store)
+    persistence = store.send(:persistence)
+    persistence.define_singleton_method(:persist_jobs) do |_jobs|
+      raise ActiveRecord::StatementInvalid, "boom"
+    end
+    yield
+  ensure
+    persistence.singleton_class.send(:remove_method, :persist_jobs)
+  end
+
+  def with_rails_logger(logger)
+    rails_stub = Module.new
+    rails_stub.define_singleton_method(:logger) { logger }
+    previous_rails = defined?(::Rails) ? Object.send(:remove_const, :Rails) : nil
+    Object.const_set(:Rails, rails_stub)
+    yield
+  ensure
+    Object.send(:remove_const, :Rails)
+    Object.const_set(:Rails, previous_rails) if previous_rails
   end
 
   def persistent_index_row_count
