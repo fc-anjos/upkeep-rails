@@ -363,12 +363,19 @@ module Upkeep
     end
 
     class RequestValue < Identity
+      # Request values that are stable for a deployment/connection rather than a viewer.
+      # They never partition subscribers, but their fingerprints are folded into shared
+      # stream names (see SharedStreams.deployment_signature_for) so viewers with
+      # different values can never share a stream.
+      DEPLOYMENT_STABLE_KEYS = %w[host port protocol ssl request_method].freeze
+
       def initialize(key:, value:)
         super(
           source: :request,
           key: key.to_s,
           value: Dependencies.private_fingerprint(value),
-          metadata: { key: key.to_s, value_class: value.class.name }
+          metadata: { key: key.to_s, value_class: value.class.name },
+          partitioning: DEPLOYMENT_STABLE_KEYS.include?(key.to_s) ? false : nil
         )
       end
     end
@@ -486,6 +493,13 @@ module Upkeep
       return flag if [true, false].include?(flag)
 
       !nil_identity?(dependency)
+    end
+
+    def deployment_stable_request?(dependency)
+      return false unless dependency.identity?
+      return false unless dependency.source.to_s == "request"
+
+      RequestValue::DEPLOYMENT_STABLE_KEYS.include?(dependency.key.fetch(:key).to_s)
     end
 
     def identity_absent_for?(dependency, name)

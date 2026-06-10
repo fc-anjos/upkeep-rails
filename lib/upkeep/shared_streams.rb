@@ -8,8 +8,8 @@ module Upkeep
 
     module_function
 
-    def stream_name(target:, identity_signature:, sharing_signature:)
-      digest = Digest::SHA256.hexdigest([target.kind, target.id, identity_signature, sharing_signature].inspect)[0, 32]
+    def stream_name(target:, identity_signature:, sharing_signature:, deployment_signature:)
+      digest = Digest::SHA256.hexdigest([target.kind, target.id, identity_signature, sharing_signature, deployment_signature].inspect)[0, 32]
       "#{PREFIX}:#{digest}"
     end
 
@@ -47,7 +47,8 @@ module Upkeep
         stream_name(
           target: target,
           identity_signature: identity_signature,
-          sharing_signature: signature_for(recipe)
+          sharing_signature: signature_for(recipe),
+          deployment_signature: deployment_signature_for(graph, frame.id)
         )
       end.uniq.sort
     end
@@ -60,6 +61,19 @@ module Upkeep
       return "public" if identity_dependencies.empty?
 
       Digest::SHA256.hexdigest(identity_dependencies.map(&:identity_key).sort_by(&:inspect).inspect)[0, 16]
+    end
+
+    # Deployment-stable request reads (host, protocol, ...) do not partition viewers, but
+    # their fingerprinted values must still scope the stream: folding them into the name
+    # makes cross-host sharing impossible by construction.
+    def deployment_signature_for(graph, frame_id)
+      deployment_dependencies = graph.contained_node_ids(frame_id)
+        .flat_map { |owner_id| graph.dependencies_for(owner_id) }
+        .select { |dependency| Dependencies.deployment_stable_request?(dependency) }
+        .uniq(&:cache_key)
+      return "none" if deployment_dependencies.empty?
+
+      Digest::SHA256.hexdigest(deployment_dependencies.map(&:identity_key).sort_by(&:inspect).inspect)[0, 16]
     end
 
     def target_for_frame(frame)
