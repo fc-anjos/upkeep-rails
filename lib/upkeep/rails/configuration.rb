@@ -8,7 +8,6 @@ module Upkeep
       SUBSCRIPTION_STORES = [:active_record, :memory].freeze
       REFUSED_BOUNDARY_BEHAVIORS = [:raise, :warn].freeze
       IDENTITY_SOURCES = [:current, :session, :cookie, :warden].freeze
-      DELIVERY_ADAPTERS = [:async, :active_job, :inline].freeze
 
       class IdentityDefinition
         attr_reader :name, :source, :source_key, :subscribe_block
@@ -99,15 +98,15 @@ module Upkeep
       attr_accessor :enabled
       attr_accessor :activation_token_expires_in
       attr_accessor :delivery_batch_window
-      attr_accessor :delivery_queue
+      # Test/console hook: deliver changes synchronously in the caller instead
+      # of on the in-process background dispatcher.
+      attr_accessor :deliver_inline
       attr_reader :subscription_store
-      attr_reader :delivery_adapter
 
       def initialize
         @enabled = true
         @subscription_store = :active_record
-        @delivery_adapter = :async
-        @delivery_queue = :upkeep_realtime
+        @deliver_inline = false
         @delivery_batch_window = 0.01
         @refused_boundary_behavior = nil
         @activation_token_expires_in = 24 * 60 * 60
@@ -123,17 +122,6 @@ module Upkeep
         end
 
         @subscription_store = value
-      end
-
-      def delivery_adapter=(value)
-        value = value.to_sym if value.respond_to?(:to_sym)
-
-        unless DELIVERY_ADAPTERS.include?(value)
-          raise ConfigurationError,
-            "Unknown Upkeep delivery_adapter #{value.inspect}; expected one of #{DELIVERY_ADAPTERS.join(", ")}"
-        end
-
-        @delivery_adapter = value
       end
 
       def refused_boundary_behavior

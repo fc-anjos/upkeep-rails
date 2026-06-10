@@ -122,8 +122,7 @@ Upkeep::Rails.configure do |config|
 
   config.enabled = app_config.fetch(:enabled, true)
   config.subscription_store = app_config.fetch(:subscription_store, Rails.env.test? ? :memory : :active_record)
-  config.delivery_adapter = app_config.fetch(:delivery_adapter, Rails.env.production? ? :active_job : :async)
-  config.delivery_queue = app_config.fetch(:delivery_queue, :upkeep_realtime)
+  config.deliver_inline = app_config.fetch(:deliver_inline, false)
 end
 ```
 
@@ -133,23 +132,18 @@ and system tests, and keep at least one app or CI path on `:active_record` when
 you want to exercise durable rows, schema checks, reload, and cross-process
 lookup.
 
-Production apps should use Active Job for delivery so planning, rerendering,
-and broadcasting do not run in the writer's request:
+Delivery runs on an in-process background dispatcher in every environment:
+matching, rerendering, and broadcasting happen off the request thread in
+whichever process performed the write. No job backend is required.
 
-```ruby
-Upkeep::Rails.configure do |config|
-  config.delivery_adapter = Rails.env.production? ? :active_job : :async
-  config.delivery_queue = :upkeep_realtime
-end
-```
+Upkeep emits standard Action Cable broadcasts, so multi-process deployments
+(puma workers > 0) need a cross-process cable adapter; we recommend
+`solid_cable`. Upkeep checks this at boot: a clustered server combined with
+the in-process `async` cable adapter or the `:memory` subscription store
+raises in production and logs a warning in development.
 
-Configure the app's Active Job backend normally, such as Solid Queue, Sidekiq,
-or GoodJob. ActionCable still needs a shared adapter in multi-process
-deployments because a job worker may not be the process holding the browser's
-WebSocket. Redis, Solid Cable, and PostgreSQL are shared ActionCable adapters.
-
-For local debugging, set `config.delivery_adapter = :inline` to run delivery
-immediately.
+For tests and console sessions, set `config.deliver_inline = true` to run
+delivery synchronously in the caller.
 
 ## 4. Configure Identity
 
