@@ -43,9 +43,10 @@ class InstallGeneratorTest < Rails::Generators::TestCase
     assert_file "config/initializers/upkeep.rb", /app_config = Rails\.application\.config\.upkeep/
     assert_file "config/initializers/upkeep.rb", /config\.enabled = app_config\.fetch\(:enabled, true\)/
     assert_file "config/initializers/upkeep.rb", /config\.subscription_store = app_config\.fetch\(:subscription_store, Rails\.env\.test\? \? :memory : :active_record\)/
-    assert_file "config/initializers/upkeep.rb", /config\.delivery_adapter = app_config\.fetch\(:delivery_adapter, Rails\.env\.production\? \? :active_job : :async\)/
-    assert_file "config/initializers/upkeep.rb", /config\.delivery_queue = app_config\.fetch\(:delivery_queue, :upkeep_realtime\)/
+    assert_file "config/initializers/upkeep.rb", /config\.deliver_inline = app_config\.fetch\(:deliver_inline, false\)/
     assert_file "config/initializers/upkeep.rb", /Delivery setup:/
+    assert_file "config/initializers/upkeep.rb", /in-process background dispatcher/
+    refute_match(/delivery_adapter|active_job|upkeep_realtime/, File.read(File.join(destination_root, "config/initializers/upkeep.rb")))
     assert_file "config/initializers/upkeep.rb", /Test setup:/
     assert_file "config/initializers/upkeep.rb", /View setup:/
     assert_file "config/initializers/upkeep.rb", /No per-template annotations are required for ordinary Rails views/
@@ -90,6 +91,53 @@ class InstallGeneratorTest < Rails::Generators::TestCase
     assert_equal 1, File.read(File.join(destination_root, "config/importmap.rb")).scan("@hotwired/turbo-rails").size
     assert_equal 1, File.read(File.join(destination_root, "config/importmap.rb")).scan(%r{pin "upkeep/subscription"}).size
     assert_equal 1, File.read(File.join(destination_root, "config/routes.rb")).scan("ActionCable.server").size
+  end
+
+  def test_install_updates_cable_yml_development_when_solid_cable_is_bundled
+    File.write(File.join(destination_root, "Gemfile"), %(source "https://rubygems.org"\ngem "rails"\ngem "solid_cable"\n))
+    File.write(File.join(destination_root, "config/cable.yml"), <<~YAML)
+      development:
+        adapter: async
+
+      test:
+        adapter: test
+
+      production:
+        adapter: solid_cable
+        connects_to:
+          database:
+            writing: cable
+        polling_interval: 0.1.seconds
+        message_retention: 1.day
+    YAML
+
+    run_generator
+
+    cable = File.read(File.join(destination_root, "config/cable.yml"))
+    assert_match(/^development:\n  adapter: solid_cable/, cable)
+    refute_match(/adapter: async/, cable)
+    assert_match(/^test:\n  adapter: test/, cable)
+    assert_match(/^production:\n  adapter: solid_cable/, cable)
+
+    run_generator
+
+    rerun = File.read(File.join(destination_root, "config/cable.yml"))
+    assert_equal cable, rerun
+    assert_equal 1, rerun.scan(/^development:/).size
+  end
+
+  def test_install_prints_solid_cable_guidance_when_gem_is_absent
+    File.write(File.join(destination_root, "Gemfile"), %(source "https://rubygems.org"\ngem "rails"\n))
+    File.write(File.join(destination_root, "config/cable.yml"), <<~YAML)
+      development:
+        adapter: async
+    YAML
+
+    output = run_generator
+
+    assert_includes output, "bundle add solid_cable"
+    assert_includes output, "bin/rails solid_cable:install"
+    assert_match(/adapter: async/, File.read(File.join(destination_root, "config/cable.yml")))
   end
 
   def test_install_prints_identity_setup_guidance_when_identity_usage_is_detected

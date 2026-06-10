@@ -10,6 +10,16 @@ module Upkeep
 
     source_root File.expand_path("templates", __dir__)
 
+    SOLID_CABLE_DEVELOPMENT_BLOCK = <<~YAML
+      development:
+        adapter: solid_cable
+        connects_to:
+          database:
+            writing: cable
+        polling_interval: 0.1.seconds
+        message_retention: 1.day
+    YAML
+
     def self.next_migration_number(dirname)
       ActiveRecord::Generators::Base.next_migration_number(dirname)
     end
@@ -37,6 +47,27 @@ module Upkeep
       route %(mount ActionCable.server => "/cable")
     end
 
+    def configure_development_cable_adapter
+      unless solid_cable_in_gemfile?
+        show_solid_cable_guidance
+        return
+      end
+      return unless cable_config_path.exist?
+
+      content = cable_config_path.read
+      block = development_cable_block(content)
+      return if block&.include?("solid_cable")
+
+      updated = if block
+        content.sub(block, "#{SOLID_CABLE_DEVELOPMENT_BLOCK}\n")
+      else
+        "#{SOLID_CABLE_DEVELOPMENT_BLOCK}\n#{content}"
+      end
+      File.write(cable_config_path, updated)
+      say "Updated config/cable.yml development to the solid_cable adapter."
+      say "Ensure config/database.yml defines a cable database for development and loads db/cable_schema.rb."
+    end
+
     def show_identity_setup_guidance
       usages = detected_identity_usages
       return if usages.empty?
@@ -51,6 +82,26 @@ module Upkeep
     end
 
     private
+
+    def solid_cable_in_gemfile?
+      gemfile_path.exist? && gemfile_path.read.match?(/^\s*gem\s+["']solid_cable["']/)
+    end
+
+    def development_cable_block(content)
+      content[/^development:\n(?:(?:[ \t].*)?\n)*/]
+    end
+
+    def show_solid_cable_guidance
+      say "\nAction Cable adapter", :yellow
+      say "Upkeep delivers live updates through standard Action Cable broadcasts."
+      say "The async development cable adapter is in-process only; with a clustered server"
+      say "(puma workers > 0), broadcasts from one process never reach browsers connected to another."
+      say "Add solid_cable and point config/cable.yml development at it:"
+      say "  bundle add solid_cable"
+      say "  bin/rails solid_cable:install"
+      say "  bin/rails db:prepare"
+      say ""
+    end
 
     def migration_exists?(name)
       Dir.glob(destination_path("db/migrate/*.rb")).any? do |path|
@@ -118,6 +169,14 @@ module Upkeep
 
     def importmap_path
       Pathname(destination_path("config/importmap.rb"))
+    end
+
+    def gemfile_path
+      Pathname(destination_path("Gemfile"))
+    end
+
+    def cable_config_path
+      Pathname(destination_path("config/cable.yml"))
     end
 
     def destination_path(path)
