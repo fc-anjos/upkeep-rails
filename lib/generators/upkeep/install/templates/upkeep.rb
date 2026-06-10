@@ -5,15 +5,16 @@ Upkeep::Rails.configure do |config|
 
   config.enabled = app_config.fetch(:enabled, true)
   config.subscription_store = app_config.fetch(:subscription_store, Rails.env.test? ? :memory : :active_record)
-  config.delivery_adapter = app_config.fetch(:delivery_adapter, Rails.env.production? ? :active_job : :async)
-  config.delivery_queue = app_config.fetch(:delivery_queue, :upkeep_realtime)
+  config.deliver_inline = app_config.fetch(:deliver_inline, false)
 
   # Delivery setup:
-  # Upkeep uses Active Job for committed-change delivery in production and async
-  # in development/test. Configure your app's Active Job backend normally
-  # (Solid Queue, Sidekiq, GoodJob, etc.) and configure ActionCable with a shared
-  # adapter such as Solid Cable, Redis, or PostgreSQL so worker broadcasts can
-  # reach web socket connections.
+  # Upkeep delivers committed changes on an in-process background dispatcher in
+  # every environment; no job backend is required. Broadcasts are standard
+  # Action Cable broadcasts, so multi-process deployments need a cross-process
+  # cable adapter (we recommend solid_cable) so a write handled by one process
+  # reaches browsers connected to another. Set config.deliver_inline = true in
+  # tests or console sessions that need delivery to run synchronously in the
+  # caller.
   #
   # Test setup:
   # The generated test default is the in-process memory store. It follows the
