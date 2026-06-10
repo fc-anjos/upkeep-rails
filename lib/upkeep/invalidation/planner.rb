@@ -14,6 +14,7 @@ module Upkeep
         :frame_id,
         :identity_signature,
         :sharing_signature,
+        :deployment_signature,
         :recipe,
         :matched_dependency_keys,
         :action,
@@ -158,6 +159,7 @@ module Upkeep
         shared_stream_target = target
         identity_signature = subscription.identity_signature(frame_id)
         sharing_signature = SharedStreams.signature_for(recipe) if shared_delivery && identity_signature == "public" && frame.payload.fetch(:kind) == "render_site"
+        deployment_signature = SharedStreams.deployment_signature_for(subscription.graph, frame.id) if sharing_signature
         action, recipe, delivery_target, deoptimization_reason = cached_delivery_strategy(subscription.graph, frame, recipe, entries, changes, sharing_signature: sharing_signature)
         target = delivery_target || target
         subscriber_ids = represented_subscriber_ids(subscription, entries)
@@ -171,6 +173,7 @@ module Upkeep
           frame_id,
           identity_signature,
           sharing_signature,
+          deployment_signature,
           recipe,
           dependency_keys,
           action,
@@ -365,6 +368,7 @@ module Upkeep
           target.target.id,
           target.identity_signature,
           target.sharing_signature,
+          target.deployment_signature,
           target.action,
           target.deoptimization_reason
         ]
@@ -382,6 +386,7 @@ module Upkeep
           existing.frame_id,
           existing.identity_signature,
           existing.sharing_signature,
+          existing.deployment_signature,
           existing.recipe,
           (existing.matched_dependency_keys + target.matched_dependency_keys).uniq,
           existing.action,
