@@ -254,7 +254,7 @@ module Upkeep
             lookup_attribute: attribute.to_s,
             dependency_table: dependency_key.fetch(:table).to_s,
             dependency_predicate_digest: nil,
-            dependency_metadata_snapshot: nil
+            dependency_metadata_snapshot: dependency_key[:scope] ? dump(scope: dependency_key[:scope]) : nil
           }
         when :active_record_collection_column
           _type, table, attribute = lookup_key

@@ -783,11 +783,13 @@ module Upkeep
         value = super
         return value unless Observation.recording?
 
+        id = primary_key_value(attr_name, value)
         dependency = Dependencies::ActiveRecordAttribute.new(
           table: self.class.table_name,
           model: self.class.name,
-          id: primary_key_value(attr_name, value),
-          attribute: attr_name.to_s
+          id: id,
+          attribute: attr_name.to_s,
+          scope: id.nil? ? upkeep_fresh_record_scope : nil
         )
 
         Observation.record_dependency(dependency)
@@ -805,6 +807,41 @@ module Upkeep
         @attributes.fetch_value(primary_key)
       rescue StandardError
         nil
+      end
+
+      def upkeep_fresh_record_scope
+        return nil unless new_record?
+
+        self.class.reflect_on_all_associations(:belongs_to).each_with_object({}) do |reflection, scope|
+          foreign_key = reflection.foreign_key
+          next if foreign_key.is_a?(Array)
+
+          foreign_key = foreign_key.to_s
+          fk_value = upkeep_scope_attribute_value(foreign_key)
+          next if fk_value.nil?
+
+          if reflection.polymorphic?
+            foreign_type = reflection.foreign_type.to_s
+            type_value = upkeep_scope_attribute_value(foreign_type)
+            next if type_value.nil?
+
+            scope[foreign_type] = type_value
+          end
+
+          scope[foreign_key] = fk_value
+        end
+      rescue StandardError
+        nil
+      end
+
+      def upkeep_scope_attribute_value(name)
+        return nil unless @attributes.key?(name)
+
+        value = @attributes.fetch_value(name)
+        case value
+        when true, false, Numeric, String, Symbol
+          value
+        end
       end
     end
 
