@@ -20,6 +20,12 @@ class SubscriptionCardsController < ActionController::Base
     @titles = SubscriptionCard.where(status: params.fetch(:status, "open")).pluck(:title)
     render template: "subscription_cards/titles"
   end
+
+  def overview
+    @cards = SubscriptionCard.where(status: params.fetch(:status, "open")).order(:id)
+    @titles = SubscriptionCard.where(status: params.fetch(:status, "open")).pluck(:title)
+    render template: "subscription_cards/overview"
+  end
 end
 
 class InvalidationPlannerTest < Minitest::Test
@@ -118,6 +124,65 @@ class InvalidationPlannerTest < Minitest::Test
     assert_equal ["refresh"], plan.targets.map(&:action).uniq
     assert_equal [:active_record_query], plan.matched_entries.map { |entry| entry.dependency.source }.uniq
     assert_includes plan.targets.first.render, "Plan v2"
+  end
+
+  def test_page_frame_refresh_without_render_sites_records_no_render_site_deoptimization
+    card = create_subscription_card!("Plan")
+
+    store = Upkeep::Subscriptions::Store.new
+    _html, recorder = capture_controller_request("/cards/titles?status=open", action: :titles)
+    subscription = store.register(subscriber_id: "subscriber-a", recorder: recorder)
+    store.activate(subscription.id)
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.update!(title: "Plan v2")
+
+    plan = planner(store).plan(Upkeep::Runtime::ChangeLog.events)
+
+    assert_equal ["page"], plan.targets.map { |target| target.target.kind }.uniq
+    assert_equal ["refresh"], plan.targets.map(&:action).uniq
+    assert_equal ["no_render_site"], plan.targets.map(&:deoptimization_reason).uniq
+    assert_equal({ "no_render_site" => 1 }, plan.summary.fetch(:deoptimizations))
+  end
+
+  def test_page_frame_refresh_blames_page_level_dependency_when_render_sites_exist
+    card = create_subscription_card!("Plan")
+
+    store = Upkeep::Subscriptions::Store.new
+    _html, recorder = capture_controller_request("/cards/overview?status=open", action: :overview)
+    subscription = store.register(subscriber_id: "subscriber-a", recorder: recorder)
+    store.activate(subscription.id)
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.update!(title: "Plan v2")
+
+    plan = planner(store).plan(Upkeep::Runtime::ChangeLog.events)
+
+    refresh_targets = plan.targets.select { |target| target.action == "refresh" }
+    refute_empty refresh_targets
+    assert_equal ["page"], refresh_targets.map { |target| target.target.kind }.uniq
+    assert_equal ["page_frame_dependency:active_record_query"], refresh_targets.map(&:deoptimization_reason).uniq
+    refresh_targets.each do |target|
+      refute_includes target.deoptimization_reason, "Plan"
+    end
+  end
+
+  def test_page_frame_deoptimization_reason_carries_labels_not_values
+    reset_domain_database
+    store = Upkeep::Subscriptions::Store.new
+    render_auth_subscription(store, subscriber_id: "Alice", user_name: "Alice")
+
+    Upkeep::Runtime::ChangeLog.reset
+    Upkeep::Domain::User.find_by!(name: "Alice").update!(name: "Alice Prime")
+
+    plan = planner(store).plan(Upkeep::Runtime::ChangeLog.events)
+
+    reasons = plan.targets.select { |target| target.target.kind == "page" }.map(&:deoptimization_reason)
+    refute_empty reasons
+    assert_equal ["page_frame_dependency:active_record_attribute"], reasons.uniq
+    reasons.each do |reason|
+      refute_match(/alice|tenant|account/i, reason)
+    end
   end
 
   def test_planning_emits_cost_notification
@@ -330,6 +395,14 @@ class InvalidationPlannerTest < Minitest::Test
       "subscription_cards/titles.html.erb" => <<~ERB,
         <main>
           <%= @titles.join(", ") %>
+        </main>
+      ERB
+      "subscription_cards/overview.html.erb" => <<~ERB,
+        <main>
+          <p><%= @titles.join(", ") %></p>
+          <ul>
+            <%= render partial: "subscription_cards/card", collection: @cards, as: :card %>
+          </ul>
         </main>
       ERB
       "subscription_cards/_card.html.erb" => <<~ERB
