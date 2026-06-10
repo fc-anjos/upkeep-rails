@@ -5,7 +5,6 @@ require "active_support/notifications"
 require "securerandom"
 require_relative "active_record_subscription_persistence"
 require_relative "active_registry"
-require_relative "async_durable_writer"
 require_relative "json_snapshot"
 require_relative "layered_reverse_index"
 require_relative "persistent_reverse_index"
@@ -115,7 +114,6 @@ module Upkeep
           store: "active_record",
           pending_index: pending_registry
         )
-        @durable_writer = AsyncDurableWriter.new { |jobs| persistence.persist_jobs(jobs) }
       end
 
       def self.available?(connect: false)
@@ -180,11 +178,8 @@ module Upkeep
         end
       end
 
-      def drain = durable_writer.drain
-
       def shutdown
         clear_deferred_index_writes
-        durable_writer.shutdown
       end
 
       def activate(id)
@@ -204,7 +199,6 @@ module Upkeep
         pending_registry.touch(id, metadata: metadata)
         active_registry.touch(id, metadata: metadata)
         activate(id)
-        durable_writer.drain
         persistence.touch(id, metadata: metadata, now: now)
       end
 
@@ -213,13 +207,11 @@ module Upkeep
         pending_registry.unregister(ids)
         active_registry.unregister(ids)
         delete_deferred_index_writes(ids)
-        persisted_ids = durable_writer.cancel(ids)
-        persistence.delete(persisted_ids)
+        persistence.delete(ids)
         ids.size
       end
 
       def prune_stale!(older_than:)
-        durable_writer.drain
         stale_ids = persistence.prune_stale!(older_than: older_than)
         active_registry.unregister(stale_ids)
         stale_ids.size
@@ -252,7 +244,6 @@ module Upkeep
 
       def reset
         clear_deferred_index_writes
-        durable_writer.drain
         pending_registry.reset
         active_registry.reset
         persistence.reset
@@ -274,7 +265,7 @@ module Upkeep
 
       private
 
-      attr_reader :subscription_record, :index_record, :shape_index_record, :index_builder, :pending_registry, :active_registry, :persistence, :durable_writer
+      attr_reader :subscription_record, :index_record, :shape_index_record, :index_builder, :pending_registry, :active_registry, :persistence
 
       def register_subscription(subscriber_id, recorder, metadata, entries: nil, payload: nil)
         recorder.flush_pending_dependencies if recorder.respond_to?(:flush_pending_dependencies)
@@ -330,7 +321,7 @@ module Upkeep
       # entries (activation) immediately. Persistence failures degrade to
       # in-process liveness instead of failing the request or the activation.
       def persist_now(subscription, entries, operation:)
-        persistence.persist_jobs([AsyncDurableWriter::Job.new(subscription, entries, operation)])
+        persistence.persist_jobs([ActiveRecordSubscriptionPersistence::Job.new(subscription, entries, operation)])
       rescue StandardError => error
         warn_persist_failure(subscription, operation, error)
       end

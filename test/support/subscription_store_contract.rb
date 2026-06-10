@@ -12,7 +12,6 @@ module SubscriptionStoreContract
     subscription = store.register(subscriber_id: "contract-subscriber", recorder: recorder_with_dependency)
 
     assert_equal true, store.activate(subscription.id)
-    store.drain
 
     assert_equal [subscription.id], store.reverse_index.entries_for([change]).map(&:subscription_id).uniq
   end
@@ -30,7 +29,6 @@ module SubscriptionStoreContract
     seen_at = Time.utc(2026, 1, 1, 12, 0, 0)
 
     store.touch(subscription.id, now: seen_at)
-    store.drain
 
     assert_equal seen_at.iso8601, store.fetch(subscription.id).metadata.fetch("last_seen_at")
   end
@@ -44,10 +42,8 @@ module SubscriptionStoreContract
   def test_contract_unregister_removes_fetchable_subscription
     subscription = store.register(subscriber_id: "contract-subscriber", recorder: recorder_with_dependency)
     store.activate(subscription.id)
-    store.drain
 
     assert_equal 1, store.unregister(subscription.id)
-    store.drain
 
     assert_raises(Upkeep::Subscriptions::NotFound) { store.fetch(subscription.id) }
   end
@@ -59,7 +55,6 @@ module SubscriptionStoreContract
     store.activate(fresh.id)
     store.touch(stale.id, now: Time.utc(2026, 1, 1))
     store.touch(fresh.id, now: Time.utc(2026, 1, 3))
-    store.drain
 
     assert_equal 1, store.prune_stale!(older_than: Time.utc(2026, 1, 2))
 

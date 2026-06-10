@@ -12,20 +12,11 @@ function cableConsumer() {
 }
 
 function parsePayload(element) {
-  if (element.hasAttribute("subscription-id")) {
-    return {
-      channel: element.getAttribute("channel"),
-      subscription_id: element.getAttribute("subscription-id"),
-      activation_token: element.getAttribute("activation-token"),
-      stream_name: element.getAttribute("stream-name")
-    }
-  }
-
-  // Pages rendered by an older upkeep-rails carry the payload as JSON text.
-  try {
-    return JSON.parse(element.textContent || "{}")
-  } catch {
-    return {}
+  return {
+    channel: element.getAttribute("channel"),
+    subscription_id: element.getAttribute("subscription-id"),
+    activation_token: element.getAttribute("activation-token"),
+    stream_name: element.getAttribute("stream-name")
   }
 }
 
