@@ -434,7 +434,80 @@ class TurboStreamsDeliveryTest < Minitest::Test
     assert_equal "morph", turbo_stream["method"]
     assert_equal "preserve", turbo_stream["scroll"]
     refute turbo_stream["targets"]
+    refute turbo_stream["request-id"]
     assert_empty stream.html
+  end
+
+  def test_refresh_stream_carries_originating_turbo_request_id
+    card = create_delivery_card!("Plan")
+
+    store = Upkeep::Subscriptions::Store.new
+    register_controller_subscription(store, subscriber_id: "subscriber-a", path: "/cards/titles?status=open", action: :titles)
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.update!(title: "Plan v2")
+
+    plan = plan_for(store, request_id: "turbo-request-1")
+    assert_equal "turbo-request-1", plan.request_id
+
+    stream = delivery.build(plan).streams.first
+    turbo_stream = Nokogiri::HTML5.fragment(stream.to_html).at_css("turbo-stream")
+
+    assert_equal "refresh", turbo_stream["action"]
+    assert_equal "turbo-request-1", turbo_stream["request-id"]
+  end
+
+  def test_refresh_streams_from_the_same_request_dedup_into_one_tag
+    card = create_delivery_card!("Plan")
+
+    store = Upkeep::Subscriptions::Store.new
+    register_controller_subscription(store, subscriber_id: "subscriber-a", path: "/cards/titles?status=open", action: :titles)
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.update!(title: "Plan v2")
+
+    plans = [plan_for(store, request_id: "turbo-request-1"), plan_for(store, request_id: "turbo-request-1")]
+    batch = delivery.build_many(plans)
+
+    assert_equal 1, batch.streams.size
+    assert_equal "turbo-request-1", batch.streams.first.request_id
+  end
+
+  def test_refresh_streams_from_distinct_requests_stay_separate_so_each_originator_still_updates
+    card = create_delivery_card!("Plan")
+
+    store = Upkeep::Subscriptions::Store.new
+    register_controller_subscription(store, subscriber_id: "subscriber-a", path: "/cards/titles?status=open", action: :titles)
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.update!(title: "Plan v2")
+
+    plans = [plan_for(store, request_id: "turbo-request-1"), plan_for(store, request_id: "turbo-request-2")]
+    batch = delivery.build_many(plans)
+
+    assert_equal 2, batch.streams.size
+    body = batch.envelope_for("subscriber-a").body
+    assert_includes body, %(request-id="turbo-request-1")
+    assert_includes body, %(request-id="turbo-request-2")
+  end
+
+  def test_rendered_streams_from_distinct_requests_still_dedup_on_payload
+    card = create_delivery_card!("Plan")
+
+    store = Upkeep::Subscriptions::Store.new
+    register_controller_subscription(store, subscriber_id: "subscriber-a")
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.update!(title: "Plan v2")
+
+    plans = [plan_for(store, request_id: "turbo-request-1"), plan_for(store, request_id: "turbo-request-2")]
+    batch = delivery.build_many(plans)
+
+    assert_equal 1, batch.streams.size
+    stream = batch.streams.first
+    assert_equal "replace", stream.action
+    assert_nil stream.request_id
+    refute_includes stream.to_html, "request-id"
   end
 
   def test_collection_create_skips_delivery_when_created_record_does_not_match_relation
@@ -469,7 +542,8 @@ class TurboStreamsDeliveryTest < Minitest::Test
     augmented_plan = Upkeep::Invalidation::Planner::Plan.new(
       plan.targets + [failing_target],
       plan.candidate_entries,
-      plan.matched_entries
+      plan.matched_entries,
+      plan.request_id
     )
 
     events = []
@@ -544,8 +618,10 @@ class TurboStreamsDeliveryTest < Minitest::Test
     Upkeep::Delivery::TurboStreams.new
   end
 
-  def plan_for(store)
-    Upkeep::Invalidation::Planner.new(store: store).plan(Upkeep::Runtime::ChangeLog.events)
+  def plan_for(store, request_id: nil)
+    events = Upkeep::Runtime::ChangeLog.events
+    events = events.map { |event| event.merge(request_id: request_id) } if request_id
+    Upkeep::Invalidation::Planner.new(store: store).plan(events)
   end
 
   def raising_planned_target

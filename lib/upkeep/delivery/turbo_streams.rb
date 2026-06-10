@@ -19,10 +19,15 @@ module Upkeep
         :subscriber_ids,
         :matched_dependency_keys,
         :deoptimization_reason,
-        :render_duration_ms
+        :render_duration_ms,
+        :request_id
       ) do
         def to_html
-          return %(<turbo-stream action="refresh" method="morph" scroll="preserve"></turbo-stream>) if action == "refresh"
+          if action == "refresh"
+            attributes = %(action="refresh" method="morph" scroll="preserve")
+            attributes = %(#{attributes} request-id="#{CGI.escapeHTML(request_id)}") if request_id
+            return %(<turbo-stream #{attributes}></turbo-stream>)
+          end
 
           attributes = %(action="#{CGI.escapeHTML(action)}" targets="#{CGI.escapeHTML(target_selector)}")
           attributes = %(#{attributes} method="morph") if morph_action?
@@ -54,7 +59,8 @@ module Upkeep
             subscriber_ids: subscriber_ids,
             matched_dependency_keys: matched_dependency_keys,
             deoptimization_reason: deoptimization_reason,
-            render_duration_ms: render_duration_ms
+            render_duration_ms: render_duration_ms,
+            request_id: request_id
           }
         end
       end
@@ -138,7 +144,7 @@ module Upkeep
         }
 
         ActiveSupport::Notifications.instrument("build_turbo_streams.upkeep", payload) do
-          streams = plans.flat_map { |plan| stream_targets(plan.targets) }.compact
+          streams = plans.flat_map { |plan| stream_targets(plan.targets, request_id: plan.request_id) }.compact
           batch = Batch.new(merge_streams(streams))
           payload.merge!(payload_for(batch, rendered_streams: streams))
           batch
@@ -161,15 +167,16 @@ module Upkeep
         }
       end
 
-      def stream_targets(planned_targets)
+      def stream_targets(planned_targets, request_id:)
         return [] if planned_targets.empty?
-        return [stream_for(planned_targets.first)] if planned_targets.one?
+        return [stream_for(planned_targets.first, request_id: request_id)] if planned_targets.one?
 
         planned_targets.group_by { |planned_target| render_group_key(planned_target) }.map do |_key, targets|
           stream_for(
             targets.first,
             subscriber_ids: targets.flat_map(&:subscriber_ids),
-            matched_dependency_keys: targets.flat_map(&:matched_dependency_keys)
+            matched_dependency_keys: targets.flat_map(&:matched_dependency_keys),
+            request_id: request_id
           )
         end
       end
@@ -177,8 +184,8 @@ module Upkeep
       # The write that produced these changes has already committed; an isolated render/targeting
       # failure for one target must never propagate back into the writer's request. Rescue per
       # target, surface the failure via instrumentation, and keep delivering the other targets.
-      def stream_for(planned_target, subscriber_ids: planned_target.subscriber_ids, matched_dependency_keys: planned_target.matched_dependency_keys)
-        build_stream(planned_target, subscriber_ids: subscriber_ids, matched_dependency_keys: matched_dependency_keys)
+      def stream_for(planned_target, request_id:, subscriber_ids: planned_target.subscriber_ids, matched_dependency_keys: planned_target.matched_dependency_keys)
+        build_stream(planned_target, subscriber_ids: subscriber_ids, matched_dependency_keys: matched_dependency_keys, request_id: request_id)
       rescue StandardError => error
         ActiveSupport::Notifications.instrument(
           DELIVERY_ERROR,
@@ -192,7 +199,7 @@ module Upkeep
         nil
       end
 
-      def build_stream(planned_target, subscriber_ids:, matched_dependency_keys:)
+      def build_stream(planned_target, subscriber_ids:, matched_dependency_keys:, request_id:)
         html, render_duration_ms = render_target(planned_target)
 
         Stream.new(
@@ -206,7 +213,10 @@ module Upkeep
           subscriber_ids.uniq.sort_by(&:to_s),
           matched_dependency_keys.uniq,
           planned_target.deoptimization_reason,
-          render_duration_ms
+          render_duration_ms,
+          # Only Turbo's refresh stream action consults request-id; keeping it nil on
+          # rendered streams lets identical payloads from different requests dedup.
+          planned_target.action == "refresh" ? request_id : nil
         )
       end
 
@@ -231,6 +241,9 @@ module Upkeep
         ]
       end
 
+      # request_id splits the key only for refresh streams (nil everywhere else):
+      # refreshes from distinct requests must stay separate tags so each originating
+      # client skips only its own and still refreshes for the other request's change.
       def merge_streams(streams)
         streams.each_with_object({}) do |stream, indexed_streams|
           key = [
@@ -240,7 +253,8 @@ module Upkeep
             stream.identity_signature,
             stream.shared_stream_name,
             stream.html_digest,
-            stream.deoptimization_reason
+            stream.deoptimization_reason,
+            stream.request_id
           ]
           indexed_streams[key] = merge_stream(indexed_streams[key], stream)
         end.values
@@ -260,7 +274,8 @@ module Upkeep
           (existing.subscriber_ids + stream.subscriber_ids).uniq.sort_by(&:to_s),
           (existing.matched_dependency_keys + stream.matched_dependency_keys).uniq,
           existing.deoptimization_reason,
-          (existing.render_duration_ms + stream.render_duration_ms).round(3)
+          (existing.render_duration_ms + stream.render_duration_ms).round(3),
+          existing.request_id
         )
       end
 

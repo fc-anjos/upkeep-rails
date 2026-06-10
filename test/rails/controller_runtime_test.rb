@@ -419,6 +419,51 @@ class ControllerRuntimeTest < Minitest::Test
     assert_equal 1, Upkeep::Rails.subscriptions.subscriptions.size
   end
 
+  def test_request_changes_carry_turbo_request_id_from_header
+    card = RuntimeDeliveryCard.create!(title: "Plan")
+    Upkeep::Runtime::ChangeLog.reset
+
+    _result, facts = Upkeep::Rails::Testing.capture_change_facts do
+      env = env_for("/cards/#{card.id}", method: "PATCH", params: { id: card.id, title: "Plan v2" })
+      env["HTTP_X_TURBO_REQUEST_ID"] = "turbo-request-1"
+      _status, _headers, body = RuntimeDeliveryCardsController.action(:update).call(env)
+      collect_body(body)
+    end
+
+    refute_empty facts
+    assert_equal ["turbo-request-1"], facts.map { |fact| fact.fetch(:request_id) }.uniq
+  end
+
+  def test_request_changes_prefer_turbo_current_request_id_over_header
+    card = RuntimeDeliveryCard.create!(title: "Plan")
+    Upkeep::Runtime::ChangeLog.reset
+    stub_turbo_current_request_id("turbo-request-tracked") do
+      _result, facts = Upkeep::Rails::Testing.capture_change_facts do
+        env = env_for("/cards/#{card.id}", method: "PATCH", params: { id: card.id, title: "Plan v2" })
+        env["HTTP_X_TURBO_REQUEST_ID"] = "turbo-request-header"
+        _status, _headers, body = RuntimeDeliveryCardsController.action(:update).call(env)
+        collect_body(body)
+      end
+
+      assert_equal ["turbo-request-tracked"], facts.map { |fact| fact.fetch(:request_id) }.uniq
+    end
+  end
+
+  def test_request_changes_omit_request_id_without_turbo_header
+    card = RuntimeDeliveryCard.create!(title: "Plan")
+    Upkeep::Runtime::ChangeLog.reset
+
+    _result, facts = Upkeep::Rails::Testing.capture_change_facts do
+      _status, _headers, body = RuntimeDeliveryCardsController.action(:update).call(
+        env_for("/cards/#{card.id}", method: "PATCH", params: { id: card.id, title: "Plan v2" })
+      )
+      collect_body(body)
+    end
+
+    refute_empty facts
+    facts.each { |fact| refute fact.key?(:request_id) }
+  end
+
   def test_change_log_capture_keeps_request_events_out_of_the_global_journal
     event = { table: "runtime_delivery_cards", changed_attributes: ["title"] }
 
@@ -436,6 +481,18 @@ class ControllerRuntimeTest < Minitest::Test
 
   def env_for(path, method: "GET", params: {})
     Rack::MockRequest.env_for(path, method: method, params: params)
+  end
+
+  def stub_turbo_current_request_id(request_id)
+    raise "Turbo already defined" if defined?(::Turbo)
+
+    turbo = Module.new do
+      define_singleton_method(:current_request_id) { request_id }
+    end
+    Object.const_set(:Turbo, turbo)
+    yield
+  ensure
+    Object.send(:remove_const, :Turbo) if defined?(::Turbo)
   end
 
   def collect_body(body)
