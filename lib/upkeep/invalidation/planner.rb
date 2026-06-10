@@ -32,7 +32,7 @@ module Upkeep
         end
       end
 
-      Plan = Data.define(:targets, :candidate_entries, :matched_entries) do
+      Plan = Data.define(:targets, :candidate_entries, :matched_entries, :request_id) do
         def summary
           {
             targets: targets.size,
@@ -74,7 +74,7 @@ module Upkeep
             )
           end
 
-          plan = Plan.new(deduplicate_targets(targets), candidate_entries, matched_entries)
+          plan = Plan.new(deduplicate_targets(targets), candidate_entries, matched_entries, request_id_for(changes))
           payload.merge!(payload_for(plan))
           plan
         end
@@ -85,6 +85,12 @@ module Upkeep
       private
 
       attr_reader :store
+
+      # All changes in a set were captured during one request, so the first stamped
+      # request id speaks for the whole plan. Writes from jobs/console carry none.
+      def request_id_for(changes)
+        changes.filter_map { |change| change[:request_id] if change.respond_to?(:[]) }.first
+      end
 
       def payload_for(plan)
         {

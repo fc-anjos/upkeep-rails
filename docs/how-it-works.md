@@ -100,6 +100,14 @@ Page-level fallbacks use Turbo Stream `refresh method="morph"
 scroll="preserve"` instead of replacing `<html>` or writing a new document from
 JavaScript.
 
+When a change was committed while handling a browser request, the refresh tag
+also carries that request's Turbo id as `request-id` (from
+`Turbo.current_request_id` or the `X-Turbo-Request-Id` header). Turbo's client
+ignores refreshes for its own recent requests, so a write performed during a
+page view — view tracking, for example — cannot refresh the viewer who caused
+it into a self-refresh loop. Writes from jobs or the console carry no request
+id and refresh everyone.
+
 ## Deoptimization
 
 A deoptimization means Upkeep can still prove correctness, but not the cheapest
