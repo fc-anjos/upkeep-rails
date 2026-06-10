@@ -87,6 +87,7 @@ module Upkeep
             end
           end
         end
+        changes = upkeep_stamp_change_request_id(changes)
         record_capture_payload(payload, capture) if capture
 
         measure_phase(payload, :deliver_changes_ms) do
@@ -116,6 +117,22 @@ module Upkeep
         end
 
         result
+      end
+
+      # Changes committed while handling this request carry the originating Turbo
+      # request id, so the client that caused them ignores its own refresh delivery
+      # (Turbo's recentRequests debounce). Breaks self-refresh loops from writes
+      # during GETs, e.g. view tracking.
+      def upkeep_stamp_change_request_id(changes)
+        request_id = upkeep_turbo_request_id
+        return changes unless request_id
+
+        changes.map { |change| change.respond_to?(:merge) ? change.merge(request_id: request_id) : change }
+      end
+
+      def upkeep_turbo_request_id
+        turbo_request_id = ::Turbo.current_request_id if defined?(::Turbo) && ::Turbo.respond_to?(:current_request_id)
+        turbo_request_id || request.headers["X-Turbo-Request-Id"]
       end
 
       def record_capture_payload(payload, capture)
