@@ -564,6 +564,24 @@ class TurboStreamsDeliveryTest < Minitest::Test
     assert_equal [refresh.to_html, update.to_html].join("\n"), body
   end
 
+  def test_page_refresh_stream_reports_deoptimization_reason
+    card = create_delivery_card!("Plan")
+
+    store = Upkeep::Subscriptions::Store.new
+    register_controller_subscription(store, subscriber_id: "subscriber-a", path: "/cards/titles?status=open", action: :titles)
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.update!(title: "Plan v2")
+
+    batch = delivery.build(plan_for(store))
+    stream = batch.streams.first
+
+    assert_equal "refresh", stream.action
+    assert_equal "no_render_site", stream.deoptimization_reason
+    assert_equal "no_render_site", batch.report.fetch(:streams).first.fetch(:deoptimization_reason)
+    assert_equal "no_render_site", batch.report.fetch(:envelopes).first.fetch(:streams).first.fetch(:deoptimization_reason)
+  end
+
   def test_collection_create_skips_delivery_when_created_record_does_not_match_relation
     create_delivery_card!("Plan")
     create_delivery_card!("Build")

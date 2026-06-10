@@ -158,7 +158,7 @@ module Upkeep
         shared_stream_target = target
         identity_signature = subscription.identity_signature(frame_id)
         sharing_signature = SharedStreams.signature_for(recipe) if shared_delivery && identity_signature == "public" && frame.payload.fetch(:kind) == "render_site"
-        action, recipe, delivery_target, deoptimization_reason = cached_delivery_strategy(frame, recipe, entries, changes, sharing_signature: sharing_signature)
+        action, recipe, delivery_target, deoptimization_reason = cached_delivery_strategy(subscription.graph, frame, recipe, entries, changes, sharing_signature: sharing_signature)
         target = delivery_target || target
         subscriber_ids = represented_subscriber_ids(subscription, entries)
 
@@ -185,12 +185,12 @@ module Upkeep
         subscriber_ids
       end
 
-      def cached_delivery_strategy(frame, recipe, entries, changes, sharing_signature:)
+      def cached_delivery_strategy(graph, frame, recipe, entries, changes, sharing_signature:)
         key = delivery_strategy_cache_key(frame, recipe, entries, changes, sharing_signature)
-        return delivery_strategy(frame, recipe, entries, changes) unless key
+        return delivery_strategy(graph, frame, recipe, entries, changes) unless key
 
         @delivery_strategy_cache.fetch(key) do
-          @delivery_strategy_cache[key] = delivery_strategy(frame, recipe, entries, changes)
+          @delivery_strategy_cache[key] = delivery_strategy(graph, frame, recipe, entries, changes)
         end
       end
 
@@ -217,7 +217,7 @@ module Upkeep
         end
       end
 
-      def delivery_strategy(frame, recipe, entries, changes)
+      def delivery_strategy(graph, frame, recipe, entries, changes)
         remove_recipe = remove_recipe_for(frame, recipe, entries, changes)
         if remove_recipe
           return [
@@ -240,7 +240,7 @@ module Upkeep
           return ["replace", member_replace_recipe, delivery_target, nil]
         end
 
-        [fallback_action_for(frame), recipe, nil, deoptimization_reason(frame, entries, changes)]
+        [fallback_action_for(frame), recipe, nil, deoptimization_reason(graph, frame, entries, changes)]
       end
 
       def fallback_action_for(frame)
@@ -298,8 +298,16 @@ module Upkeep
         CollectionRemove.build(recipe: recipe, change: destroy_changes.first)
       end
 
-      def deoptimization_reason(frame, entries, changes)
-        return unless frame.payload.fetch(:kind) == "render_site"
+      def deoptimization_reason(graph, frame, entries, changes)
+        case frame.payload.fetch(:kind)
+        when "page"
+          page_frame_deoptimization_reason(graph, frame, entries)
+        when "render_site"
+          render_site_deoptimization_reason(entries, changes)
+        end
+      end
+
+      def render_site_deoptimization_reason(entries, changes)
         return unless entries.any? { |entry| entry.dependency.source == :active_record_collection }
 
         if changes.one? { |change| change[:id] && change.fetch(:type).to_s.include?("create") }
@@ -311,6 +319,25 @@ module Upkeep
         else
           "collection_multi_change_fallback"
         end
+      end
+
+      def page_frame_deoptimization_reason(graph, frame, entries)
+        return "no_render_site" unless contains_render_site?(graph, frame)
+
+        "page_frame_dependency:#{entries.map { |entry| dependency_source_label(entry.dependency) }.min}"
+      end
+
+      def contains_render_site?(graph, frame)
+        graph.contained_node_ids(frame.id).any? do |node_id|
+          node = graph.node(node_id)
+          node.kind == :frame && node.payload[:kind] == "render_site" && node.payload[:recipe]
+        end
+      end
+
+      def dependency_source_label(dependency)
+        return dependency.source.to_s unless dependency.identity?
+
+        "#{dependency.source}:#{dependency.key.fetch(:key)}"
       end
 
       def destroy_change?(change)
