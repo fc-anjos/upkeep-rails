@@ -54,10 +54,13 @@ module Upkeep
     end
 
     class ActiveRecordAttribute < Base
-      def initialize(table:, id:, attribute:, model: nil)
+      def initialize(table:, id:, attribute:, model: nil, scope: nil)
+        scope = normalize_scope(scope)
+        key = { table: table, id: id, attribute: attribute }
+        key[:scope] = scope if scope
         super(
           source: :active_record_attribute,
-          key: { table: table, id: id, attribute: attribute },
+          key: key,
           metadata: { model: model }.compact
         )
       end
@@ -65,7 +68,8 @@ module Upkeep
       def matches_change?(change)
         key.fetch(:table) == change.fetch(:table) &&
           (key.fetch(:id).nil? || !change[:id] || key.fetch(:id) == change[:id]) &&
-          change.fetch(:changed_attributes, []).include?(key.fetch(:attribute))
+          change.fetch(:changed_attributes, []).include?(key.fetch(:attribute)) &&
+          scope_matches_change?(change)
       end
 
       def precision
@@ -74,6 +78,37 @@ module Upkeep
 
       def narrow_frame_safe?
         true
+      end
+
+      private
+
+      def normalize_scope(scope)
+        return nil unless scope.is_a?(Hash)
+
+        normalized = scope.each_with_object({}) do |(column, value), result|
+          result[column.to_s] = value unless value.nil?
+        end
+        normalized.empty? ? nil : normalized
+      end
+
+      def scope_matches_change?(change)
+        scope = key[:scope]
+        return true unless scope
+
+        scope.all? do |column, value|
+          observed = observed_scope_values(change, column)
+          observed.empty? || observed.any? { |observed_value| scope_values_equal?(observed_value, value) }
+        end
+      end
+
+      def observed_scope_values(change, column)
+        [change[:new_values], change[:old_values]].compact.filter_map do |values|
+          values[column] || values[column.to_sym]
+        end
+      end
+
+      def scope_values_equal?(observed, expected)
+        observed == expected || observed.to_s == expected.to_s
       end
     end
 
@@ -428,7 +463,8 @@ module Upkeep
           table: key.fetch(:table),
           id: key.fetch(:id),
           attribute: key.fetch(:attribute),
-          model: metadata[:model]
+          model: metadata[:model],
+          scope: key[:scope]
         )
       when :active_record_collection, :active_record_query
         dependency_class = source.to_sym == :active_record_query ? ActiveRecordQuery : ActiveRecordCollection

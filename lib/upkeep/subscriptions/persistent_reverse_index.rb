@@ -188,10 +188,13 @@ module Upkeep
         source = attributes.fetch(:dependency_source).to_sym
         case source
         when :active_record_attribute
+          metadata_snapshot = attributes[:dependency_metadata_snapshot]
+          metadata = metadata_snapshot && JsonSnapshot.load(metadata_snapshot)
           Dependencies::ActiveRecordAttribute.new(
             table: attributes.fetch(:dependency_table),
             id: attributes[:lookup_record_id_snapshot] && JsonSnapshot.load(attributes.fetch(:lookup_record_id_snapshot)),
-            attribute: attributes.fetch(:lookup_attribute)
+            attribute: attributes.fetch(:lookup_attribute),
+            scope: metadata && metadata[:scope]
           )
         when :active_record_collection, :active_record_query
           metadata = JsonSnapshot.load(attributes.fetch(:dependency_metadata_snapshot))
