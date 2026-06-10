@@ -7,17 +7,22 @@ class SubscriberIdentityTest < Minitest::Test
   FakeConnection = Struct.new(:request, :current_user, keyword_init: true)
   FakeUser = Struct.new(:id)
 
-  class PrivateRequestConnection
-    attr_reader :current_user
+  # Strict double for the public surface of ActionCable::Connection::Base on
+  # Rails 7.1-8.x: `env` is public, `request` is private. The private method
+  # raises so any send-to-private regression in SubscribeContext fails loudly.
+  class PublicSurfaceConnection
+    attr_reader :env, :current_user
 
-    def initialize(request:, current_user: nil)
-      @request = request
+    def initialize(env:, current_user: nil)
+      @env = env
       @current_user = current_user
     end
 
     private
 
-    attr_reader :request
+    def request
+      raise NotImplementedError, "private ActionCable request must not be reached"
+    end
   end
 
   def setup
@@ -120,26 +125,44 @@ class SubscriberIdentityTest < Minitest::Test
     assert_equal request_identity.subscriber_id, identity.derive_for_subscription(connection, subscription).subscriber_id
   end
 
-  def test_subscribe_context_reads_private_action_cable_request
+  def test_subscribe_context_builds_request_from_public_connection_env
     Upkeep::Rails.configuration.identify :user, session: :user_id do
       subscribe { |connection| connection.session[:user_id] }
     end
     recorder = recorder_from_session_read(:user_id, 42)
     request_identity = identity.derive_from_request(nil, recorder: recorder)
-    connection = PrivateRequestConnection.new(request: FakeRequest.new(session: { user_id: 42 }, cookies: {}))
+    connection = PublicSurfaceConnection.new(env: { "rack.session" => { user_id: 42 } })
     subscription = subscription_for(request_identity, recorder, identity_names: ["user"])
 
     assert_equal request_identity.subscriber_id, identity.derive_for_subscription(connection, subscription).subscriber_id
   end
 
-  def test_subscribe_context_does_not_expose_raw_action_cable_request
+  def test_subscribe_context_reads_cookies_from_public_connection_env
+    Upkeep::Rails.configuration.identify :account, cookie: :account_id do
+      subscribe { |connection| connection.cookies["account_id"] }
+    end
+    recorder = recorder_with(Upkeep::Dependencies::CookieValue.new(key: :account_id, value: "acct-1"))
+    request_identity = identity.derive_from_request(nil, recorder: recorder)
+    connection = PublicSurfaceConnection.new(env: { "HTTP_COOKIE" => "account_id=acct-1" })
+    subscription = subscription_for(request_identity, recorder, identity_names: ["account"])
+
+    assert_equal request_identity.subscriber_id, identity.derive_for_subscription(connection, subscription).subscriber_id
+  end
+
+  def test_subscribe_context_does_not_call_private_action_cable_request
     context = Upkeep::Rails::Cable::SubscribeContext.new(
-      PrivateRequestConnection.new(request: FakeRequest.new(session: { user_id: 42 }, cookies: {}))
+      PublicSurfaceConnection.new(env: { "rack.session" => { user_id: 42 } })
     )
 
     refute context.respond_to?(:request)
     assert_raises(NoMethodError) { context.request }
     assert_equal 42, context.session[:user_id]
+  end
+
+  def test_subscribe_context_rejects_connection_without_public_request_or_env
+    context = Upkeep::Rails::Cable::SubscribeContext.new(Object.new)
+
+    assert_raises(Upkeep::Rails::Cable::UnidentifiedSubscriber) { context.session }
   end
 
   def test_undeclared_nil_current_identity_does_not_require_setup

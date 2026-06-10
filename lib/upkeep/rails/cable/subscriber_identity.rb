@@ -41,8 +41,28 @@ module Upkeep
 
         attr_reader :action_cable_connection
 
+        # ActionCable::Connection::Base keeps `request` private on Rails
+        # 7.1-8.x but exposes `env` as a public attr_reader; the adapterized
+        # connection on Rails main exposes both publicly. Prefer a public
+        # `request`, otherwise build one from the public Rack env the same
+        # way Action Cable does. Never reach into private connection API.
         def action_cable_request
-          action_cable_connection.__send__(:request)
+          @action_cable_request ||=
+            if action_cable_connection.respond_to?(:request)
+              action_cable_connection.request
+            elsif action_cable_connection.respond_to?(:env)
+              ::ActionDispatch::Request.new(rails_rack_env)
+            else
+              raise UnidentifiedSubscriber,
+                "ActionCable connection exposes neither a public request nor a public env"
+            end
+        end
+
+        def rails_rack_env
+          env = action_cable_connection.env
+          return env unless defined?(::Rails.application) && ::Rails.application
+
+          ::Rails.application.env_config.merge(env)
         end
       end
 
