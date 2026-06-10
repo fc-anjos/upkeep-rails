@@ -29,6 +29,11 @@ class DeliveryCardsController < ActionController::Base
     @titles = DeliveryCard.where(status: params.fetch(:status, "open")).pluck(:title)
     render template: "delivery_cards/titles"
   end
+
+  def hosted
+    @cards = DeliveryCard.where(status: params.fetch(:status, "open")).order(:id)
+    render template: "delivery_cards/hosted"
+  end
 end
 
 class TurboStreamsDeliveryTest < Minitest::Test
@@ -317,6 +322,56 @@ class TurboStreamsDeliveryTest < Minitest::Test
     assert_equal stream.shared_stream_name, batch.envelopes.first.stream_name
   end
 
+  def test_same_host_request_reads_keep_render_site_on_one_shared_stream
+    card = create_delivery_card!("Plan")
+    create_delivery_card!("Build")
+
+    store = Upkeep::Subscriptions::Store.new
+    register_controller_subscription(store, subscriber_id: "subscriber-a", path: "http://one.example.test/cards/hosted?status=open", action: :hosted)
+    register_controller_subscription(store, subscriber_id: "subscriber-b", path: "http://one.example.test/cards/hosted?status=open", action: :hosted)
+
+    subscription_shared_streams = store.subscriptions.flat_map do |subscription|
+      Upkeep::SharedStreams.names_for_subscription(subscription)
+    end.uniq
+    assert_equal 1, subscription_shared_streams.size
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.destroy!
+
+    batch = delivery.build(plan_for(store))
+    stream = batch.streams.first
+
+    assert_equal 1, batch.streams.size
+    assert_equal ["subscriber-a", "subscriber-b"], stream.subscriber_ids.sort
+    assert_equal subscription_shared_streams, [stream.shared_stream_name]
+    assert_equal subscription_shared_streams, batch.envelopes.map(&:stream_name)
+  end
+
+  def test_cross_host_request_reads_never_share_a_stream
+    card = create_delivery_card!("Plan")
+    create_delivery_card!("Build")
+
+    store = Upkeep::Subscriptions::Store.new
+    first = register_controller_subscription(store, subscriber_id: "subscriber-a", path: "http://one.example.test/cards/hosted?status=open", action: :hosted)
+    second = register_controller_subscription(store, subscriber_id: "subscriber-b", path: "http://two.example.test/cards/hosted?status=open", action: :hosted)
+
+    first_names = Upkeep::SharedStreams.names_for_subscription(first)
+    second_names = Upkeep::SharedStreams.names_for_subscription(second)
+
+    refute_empty first_names
+    refute_empty second_names
+    assert_empty first_names & second_names
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.destroy!
+
+    batch = delivery.build(plan_for(store))
+
+    assert batch.streams.none?(&:shared_stream_name)
+    assert_equal [nil], batch.envelopes.map(&:stream_name).uniq
+    assert_equal ["subscriber-a", "subscriber-b"], batch.envelopes.map(&:subscriber_id).sort
+  end
+
   def test_collection_update_replaces_existing_member_when_order_is_stable
     create_delivery_card!("Alpha")
     card = create_delivery_card!("Mango")
@@ -567,6 +622,7 @@ class TurboStreamsDeliveryTest < Minitest::Test
       "fragment:rails:delivery_cards/_card:boom",
       "public",
       nil,
+      nil,
       recipe,
       ["boom"],
       "replace",
@@ -638,6 +694,19 @@ class TurboStreamsDeliveryTest < Minitest::Test
         <main>
           <p><%= @titles.join(", ") %></p>
         </main>
+      ERB
+      "delivery_cards/hosted.html.erb" => <<~ERB,
+        <main>
+          <ul>
+            <%= render partial: "delivery_cards/hosted_card", collection: @cards, as: :card %>
+          </ul>
+        </main>
+      ERB
+      "delivery_cards/_hosted_card.html.erb" => <<~ERB,
+        <li id="delivery_card_<%= card.id %>">
+          <span class="title"><%= card.title %></span>
+          <span class="host"><%= request.host %></span>
+        </li>
       ERB
       "delivery_cards/_card.html.erb" => <<~ERB
         <li id="delivery_card_<%= card.id %>">
