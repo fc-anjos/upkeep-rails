@@ -224,7 +224,71 @@ class CableChannelTest < ActionCable::Channel::TestCase
     assert_equal 0, Upkeep::Rails.transport.summary.fetch(:adapter_overrides)
   end
 
+  def test_logs_missing_subscription_rejection_with_subscription_id
+    stub_connection(current_user: "user-1")
+
+    warnings = capture_rails_logger_warnings do
+      subscribe subscription_id: "missing",
+        activation_token: Upkeep::Rails::ActivationToken.generate("missing")
+    end
+
+    assert subscription.rejected?
+    assert_equal 1, warnings.size
+    assert_includes warnings.first, "subscription rejected (missing_subscription)"
+    assert_includes warnings.first, %(subscription_id="missing")
+  end
+
+  def test_logs_unauthorized_identity_rejection_with_subscription_id
+    configure_user_identity
+    alice = Upkeep::Rails::Cable::SubscriberIdentity.for_components([
+      { name: "user", kind: "identity", value: "alice" }
+    ])
+    subscription_record = registered_subscription(
+      subscriber_id: alice.subscriber_id,
+      stream_name: alice.stream_name,
+      metadata: {
+        identity_mode: Upkeep::Rails::Cable::SubscriberIdentity::IDENTIFIED_MODE,
+        identity_names: ["user"]
+      }
+    )
+    stub_connection(current_user: "bob")
+
+    warnings = capture_rails_logger_warnings { subscribe subscription_params(subscription_record) }
+
+    assert subscription.rejected?
+    assert_includes warnings.first, "subscription rejected (unauthorized_identity)"
+    assert_includes warnings.first, subscription_record.id
+  end
+
+  def test_logs_missing_activation_token_rejection_with_remediation_hint
+    subscription_record = registered_subscription(stream_name: "upkeep:test:user-1")
+    stub_connection(current_user: "user-1")
+
+    warnings = capture_rails_logger_warnings { subscribe subscription_id: subscription_record.id }
+
+    assert subscription.rejected?
+    assert_includes warnings.first, "subscription rejected (missing_activation_token)"
+    assert_includes warnings.first, subscription_record.id
+    assert_includes warnings.first, "refresh app/javascript/upkeep/subscription.js"
+  end
+
   private
+
+  def capture_rails_logger_warnings
+    warnings = []
+    logger = Object.new
+    logger.define_singleton_method(:warn) { |message| warnings << message }
+    rails_stub = Module.new
+    rails_stub.define_singleton_method(:logger) { logger }
+    previous_rails = Object.const_defined?(:Rails, false) ? Object.const_get(:Rails) : nil
+    Object.send(:remove_const, :Rails) if previous_rails
+    Object.const_set(:Rails, rails_stub)
+    yield
+    warnings
+  ensure
+    Object.send(:remove_const, :Rails) if Object.const_defined?(:Rails, false)
+    Object.const_set(:Rails, previous_rails) if previous_rails
+  end
 
   def configure_user_identity
     Upkeep::Rails.configuration.identify :user, current: ["Current", :user] do
