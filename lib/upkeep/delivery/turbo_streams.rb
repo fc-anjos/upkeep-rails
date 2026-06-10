@@ -75,7 +75,15 @@ module Upkeep
         end
 
         def body
-          streams.map(&:to_html).join("\n")
+          seen_refresh_tags = {}
+          streams.filter_map do |stream|
+            tag = stream.to_html
+            next tag unless stream.action == "refresh"
+            next if seen_refresh_tags.key?(tag)
+
+            seen_refresh_tags[tag] = true
+            tag
+          end.join("\n")
         end
 
         def report

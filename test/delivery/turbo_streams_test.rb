@@ -510,6 +510,60 @@ class TurboStreamsDeliveryTest < Minitest::Test
     refute_includes stream.to_html, "request-id"
   end
 
+  def test_envelope_body_collapses_byte_identical_refresh_tags_across_page_frames
+    streams = [
+      envelope_stream("refresh", target_id: "page:rails:stories/show"),
+      envelope_stream("refresh", target_id: "page:rails:layouts/application")
+    ]
+    body = Upkeep::Delivery::TurboStreams::Envelope.subscriber("subscriber-a", streams).body
+
+    assert_equal streams.first.to_html, body
+    assert_equal 1, body.scan("<turbo-stream").size
+  end
+
+  def test_envelope_body_collapses_refresh_tags_sharing_one_request_id
+    streams = [
+      envelope_stream("refresh", target_id: "page:rails:stories/show", request_id: "turbo-request-1"),
+      envelope_stream("refresh", target_id: "page:rails:layouts/application", request_id: "turbo-request-1")
+    ]
+    body = Upkeep::Delivery::TurboStreams::Envelope.subscriber("subscriber-a", streams).body
+
+    assert_equal 1, body.scan("<turbo-stream").size
+    assert_includes body, %(request-id="turbo-request-1")
+  end
+
+  def test_envelope_body_keeps_refresh_tags_from_distinct_requests
+    streams = [
+      envelope_stream("refresh", target_id: "page:rails:stories/show", request_id: "turbo-request-1"),
+      envelope_stream("refresh", target_id: "page:rails:stories/show", request_id: "turbo-request-2")
+    ]
+    body = Upkeep::Delivery::TurboStreams::Envelope.subscriber("subscriber-a", streams).body
+
+    assert_equal 2, body.scan("<turbo-stream").size
+    assert_includes body, %(request-id="turbo-request-1")
+    assert_includes body, %(request-id="turbo-request-2")
+  end
+
+  def test_envelope_body_keeps_byte_identical_non_refresh_tags
+    streams = [
+      envelope_stream("update", target_id: "page:rails:stories/show", html: "<p>Plan</p>"),
+      envelope_stream("update", target_id: "page:rails:stories/show", html: "<p>Plan</p>")
+    ]
+    body = Upkeep::Delivery::TurboStreams::Envelope.subscriber("subscriber-a", streams).body
+
+    assert_equal streams.first.to_html, streams.last.to_html
+    assert_equal 2, body.scan("<turbo-stream").size
+  end
+
+  def test_envelope_body_keeps_survivor_order_when_duplicate_refreshes_surround_other_actions
+    refresh = envelope_stream("refresh", target_id: "page:rails:stories/show")
+    update = envelope_stream("update", target_id: "page:rails:stories/show", html: "<p>Plan</p>")
+    streams = [refresh, update, envelope_stream("refresh", target_id: "page:rails:layouts/application")]
+    body = Upkeep::Delivery::TurboStreams::Envelope.subscriber("subscriber-a", streams).body
+
+    assert_equal [refresh.to_html, update.to_html].join("\n"), body
+  end
+
   def test_collection_create_skips_delivery_when_created_record_does_not_match_relation
     create_delivery_card!("Plan")
     create_delivery_card!("Build")
@@ -622,6 +676,23 @@ class TurboStreamsDeliveryTest < Minitest::Test
     events = Upkeep::Runtime::ChangeLog.events
     events = events.map { |event| event.merge(request_id: request_id) } if request_id
     Upkeep::Invalidation::Planner.new(store: store).plan(events)
+  end
+
+  def envelope_stream(action, target_id:, request_id: nil, html: "")
+    Upkeep::Delivery::TurboStreams::Stream.new(
+      action,
+      Upkeep::Targeting::Target.new("page", target_id, nil),
+      %([data-upkeep-page-frame="#{target_id}"]),
+      html,
+      Upkeep::Targeting::Extraction.digest_html(html),
+      "public",
+      nil,
+      ["subscriber-a"],
+      [],
+      nil,
+      0.0,
+      request_id
+    )
   end
 
   def raising_planned_target
