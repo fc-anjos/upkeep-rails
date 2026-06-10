@@ -226,6 +226,7 @@ module Upkeep
           planned_target.target.id,
           planned_target.identity_signature,
           planned_target.sharing_signature,
+          planned_target.deployment_signature,
           SharedStreams.signature_for(planned_target.recipe),
           planned_target.deoptimization_reason
         ]
@@ -275,7 +276,8 @@ module Upkeep
         SharedStreams.stream_name(
           target: planned_target.shared_stream_target,
           identity_signature: planned_target.identity_signature,
-          sharing_signature: planned_target.sharing_signature
+          sharing_signature: planned_target.sharing_signature,
+          deployment_signature: planned_target.deployment_signature
         )
       end
 
