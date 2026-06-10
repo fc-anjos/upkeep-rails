@@ -639,6 +639,33 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     assert_instance_of Upkeep::Subscriptions::ActiveRecordStore, Upkeep::Rails.subscriptions
   end
 
+  def test_persistent_index_round_trip_preserves_fresh_record_scope
+    store = active_record_store
+    subscription = store.register(
+      subscriber_id: "subscriber-a",
+      recorder: recorder_with_scoped_wildcard_dependency,
+      metadata: {}
+    )
+    store.activate(subscription.id)
+    store.drain
+
+    row = Upkeep::Subscriptions::ActiveRecordStore::IndexEntryRecord.find_by(
+      dependency_source: "active_record_attribute",
+      lookup_record_id_snapshot: nil
+    )
+    refute_nil row
+    refute_nil row.dependency_metadata_snapshot
+
+    reloaded_store = active_record_store
+    entries = reloaded_store.reverse_index.entries_for([fresh_record_change(story_id: 500)])
+    dependency = entries.find { |entry| entry.dependency.key[:id].nil? }&.dependency
+
+    refute_nil dependency
+    assert_equal({ "story_id" => 500 }, dependency.key.fetch(:scope))
+    assert dependency.matches_change?(fresh_record_change(story_id: 500))
+    refute dependency.matches_change?(fresh_record_change(story_id: 501))
+  end
+
   def test_runtime_uses_explicit_memory_subscription_store
     Upkeep::Rails.configure do |config|
       config.subscription_store = :memory
@@ -741,6 +768,31 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
       )
     )
     recorder
+  end
+
+  def recorder_with_scoped_wildcard_dependency
+    recorder = Upkeep::Runtime::Recorder.new
+    recorder.record_dependency(
+      Upkeep::Dependencies::ActiveRecordAttribute.new(
+        table: "persistent_subscription_cards",
+        model: "PersistentSubscriptionCard",
+        id: nil,
+        attribute: "title",
+        scope: { "story_id" => 500 }
+      )
+    )
+    recorder
+  end
+
+  def fresh_record_change(story_id:)
+    {
+      type: "create",
+      table: "persistent_subscription_cards",
+      id: 9,
+      changed_attributes: ["story_id", "title"],
+      old_values: {},
+      new_values: { "story_id" => story_id, "title" => "new" }
+    }
   end
 
   def recorder_with_dependency_and_session(card, session_id:)
