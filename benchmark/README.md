@@ -1,5 +1,9 @@
 # Benchmark
 
+These are development-only benchmark harnesses used to verify the package. They
+are not shipped with the gem—consumers who `gem install upkeep-rails` never
+receive anything under `benchmark/`.
+
 The maintained benchmark apps for this package live here:
 
 - `benchmark/upkeep-app`

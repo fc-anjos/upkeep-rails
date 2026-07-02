@@ -5,6 +5,7 @@ require "active_support/notifications"
 require "securerandom"
 require_relative "active_record_subscription_persistence"
 require_relative "active_registry"
+require_relative "base_store"
 require_relative "json_snapshot"
 require_relative "layered_reverse_index"
 require_relative "persistent_reverse_index"
@@ -13,7 +14,7 @@ require_relative "store"
 
 module Upkeep
   module Subscriptions
-    class ActiveRecordStore
+    class ActiveRecordStore < BaseStore
       LOOKUP_NOTIFICATION = LayeredReverseIndex::LOOKUP_NOTIFICATION
       REGISTER_NOTIFICATION = "register_subscription_store.upkeep"
       ACTIVATE_NOTIFICATION = "activate_subscription_store.upkeep"
@@ -168,13 +169,8 @@ module Upkeep
       private_class_method :expected_column_description
 
       def register(subscriber_id:, recorder:, metadata: {}, entries: nil)
-        if ActiveSupport::Notifications.notifier.listening?(REGISTER_NOTIFICATION)
-          payload = { store: "active_record" }
-          ActiveSupport::Notifications.instrument(REGISTER_NOTIFICATION, payload) do
-            register_subscription(subscriber_id, recorder, metadata, entries: entries, payload: payload)
-          end
-        else
-          register_subscription(subscriber_id, recorder, metadata, entries: entries)
+        with_optional_notification(REGISTER_NOTIFICATION, { store: "active_record" }) do |payload|
+          register_subscription(subscriber_id, recorder, metadata, entries: entries, payload: payload)
         end
       end
 
@@ -183,48 +179,15 @@ module Upkeep
       end
 
       def activate(id)
-        if ActiveSupport::Notifications.notifier.listening?(ACTIVATE_NOTIFICATION)
-          payload = { store: "active_record", subscription_id: id }
-          ActiveSupport::Notifications.instrument(ACTIVATE_NOTIFICATION, payload) do
-            activate_subscription(id, payload: payload)
-          end
-        else
-          activate_subscription(id)
+        with_optional_notification(ACTIVATE_NOTIFICATION, { store: "active_record", subscription_id: id }) do |payload|
+          activate_subscription(id, payload: payload)
         end
-      end
-
-      def touch(id, now: Time.now)
-        fetch(id)
-        metadata = { "last_seen_at" => now.utc.iso8601 }
-        pending_registry.touch(id, metadata: metadata)
-        active_registry.touch(id, metadata: metadata)
-        activate(id)
-        persistence.touch(id, metadata: metadata, now: now)
-      end
-
-      def unregister(ids)
-        ids = Array(ids)
-        pending_registry.unregister(ids)
-        active_registry.unregister(ids)
-        delete_deferred_index_writes(ids)
-        persistence.delete(ids)
-        ids.size
       end
 
       def prune_stale!(older_than:)
         stale_ids = persistence.prune_stale!(older_than: older_than)
         active_registry.unregister(stale_ids)
         stale_ids.size
-      end
-
-      def fetch(id)
-        active_registry.fetch(id) || pending_registry.fetch(id) || persistence.fetch(id)
-      rescue ActiveRecord::RecordNotFound
-        raise NotFound, id
-      end
-
-      def explain(id)
-        fetch(id).explain
       end
 
       def subscriptions
@@ -266,6 +229,22 @@ module Upkeep
       private
 
       attr_reader :subscription_record, :index_record, :shape_index_record, :index_builder, :pending_registry, :active_registry, :persistence
+
+      def after_touch(id, metadata:, now:)
+        activate(id)
+        persistence.touch(id, metadata: metadata, now: now)
+      end
+
+      def after_unregister(ids)
+        delete_deferred_index_writes(ids)
+        persistence.delete(ids)
+      end
+
+      def fetch_missing(id)
+        persistence.fetch(id)
+      rescue ActiveRecord::RecordNotFound
+        raise NotFound, id
+      end
 
       def register_subscription(subscriber_id, recorder, metadata, entries: nil, payload: nil)
         recorder.flush_pending_dependencies if recorder.respond_to?(:flush_pending_dependencies)
@@ -387,10 +366,6 @@ module Upkeep
         else
           index_builder.entries_for_subscription(subscription)
         end
-      end
-
-      def next_subscription_id
-        "subscription-#{SecureRandom.uuid}"
       end
     end
   end

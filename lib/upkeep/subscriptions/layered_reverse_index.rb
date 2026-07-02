@@ -1,11 +1,14 @@
 # frozen_string_literal: true
 
 require "active_support/notifications"
+require_relative "lookup_instrumentation"
 
 module Upkeep
   module Subscriptions
     class LayeredReverseIndex
-      LOOKUP_NOTIFICATION = "lookup_subscription_index.upkeep"
+      include LookupInstrumentation
+
+      LOOKUP_NOTIFICATION = LookupInstrumentation::LOOKUP_NOTIFICATION
 
       def initialize(active_index:, persistent_index:, persistent_count:, store:, pending_index: nil)
         @active_index = active_index
@@ -13,17 +16,6 @@ module Upkeep
         @persistent_count = persistent_count
         @store = store
         @pending_index = pending_index
-      end
-
-      def entries_for(changes)
-        if ActiveSupport::Notifications.notifier.listening?(LOOKUP_NOTIFICATION)
-          payload = { changes: Array(changes).size, store: store }
-          ActiveSupport::Notifications.instrument(LOOKUP_NOTIFICATION, payload) do
-            entries_for_with_payload(changes, payload)
-          end
-        else
-          entries_for_without_payload(changes)
-        end
       end
 
       def entries_for_without_payload(changes)
@@ -101,6 +93,10 @@ module Upkeep
 
       attr_reader :active_index, :persistent_index, :persistent_count, :store, :pending_index
 
+      def lookup_store
+        store
+      end
+
       def persistent_subscription_count
         persistent_count.call
       end
@@ -122,7 +118,7 @@ module Upkeep
       def apply_miss_reason(payload, active_entries:, persistent_entries:, pending_entries:)
         return if active_entries.any? || persistent_entries.any?
 
-        payload[:miss_reason] = pending_entries.any? ? "not_activated_yet" : "no_matching_subscriber"
+        payload[:miss_reason] = miss_reason(pending_entries)
       end
     end
   end

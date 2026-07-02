@@ -1,3 +1,8 @@
+# Local-only tooling and working files
+/.claude/
+/scratch/
+/docs/handoffs/
+
 /.bundle/
 /coverage/
 /checksums/
@@ -7,6 +12,7 @@
 /*.gem
 /test/tmp/
 /tmp/
+/results/
 /benchmark/results/
 /benchmark/**/.bundle/
 /benchmark/**/Gemfile.lock

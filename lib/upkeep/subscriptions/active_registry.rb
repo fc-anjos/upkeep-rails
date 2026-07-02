@@ -75,13 +75,6 @@ module Upkeep
           @reverse_index.summary.merge(subscriptions: @subscriptions.size)
         end
       end
-
-      private
-
-      def rebuild_reverse_index!
-        @reverse_index = ReverseIndex.new
-        @subscriptions.each_value { |subscription| @reverse_index.index(subscription) }
-      end
     end
   end
 end

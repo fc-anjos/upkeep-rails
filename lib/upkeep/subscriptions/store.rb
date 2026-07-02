@@ -4,6 +4,8 @@ require "securerandom"
 require "time"
 require "active_support/notifications"
 require_relative "active_registry"
+require_relative "base_store"
+require_relative "lookup_instrumentation"
 
 module Upkeep
   module Subscriptions
@@ -123,22 +125,13 @@ module Upkeep
     end
 
     class MemoryReverseIndex
-      LOOKUP_NOTIFICATION = "lookup_subscription_index.upkeep"
+      include LookupInstrumentation
+
+      LOOKUP_NOTIFICATION = LookupInstrumentation::LOOKUP_NOTIFICATION
 
       def initialize(active_registry:, pending_registry:)
         @active_registry = active_registry
         @pending_registry = pending_registry
-      end
-
-      def entries_for(changes)
-        if ActiveSupport::Notifications.notifier.listening?(LOOKUP_NOTIFICATION)
-          payload = { changes: Array(changes).size, store: "memory" }
-          ActiveSupport::Notifications.instrument(LOOKUP_NOTIFICATION, payload) do
-            entries_for_with_payload(changes, payload)
-          end
-        else
-          active_registry.entries_for(changes)
-        end
       end
 
       def summary
@@ -148,6 +141,14 @@ module Upkeep
       private
 
       attr_reader :active_registry, :pending_registry
+
+      def lookup_store
+        "memory"
+      end
+
+      def entries_for_without_payload(changes)
+        active_registry.entries_for(changes)
+      end
 
       def entries_for_with_payload(changes, payload)
         active_entries = active_registry.entries_for(changes)
@@ -173,13 +174,9 @@ module Upkeep
 
         active_entries
       end
-
-      def miss_reason(pending_entries)
-        pending_entries.any? ? "not_activated_yet" : "no_matching_subscriber"
-      end
     end
 
-    class Store
+    class Store < BaseStore
       PERSIST_NOTIFICATION = "persist_subscription_store.upkeep"
 
       attr_reader :reverse_index
@@ -193,22 +190,9 @@ module Upkeep
       end
 
       def register(subscriber_id:, recorder:, metadata: {}, entries: nil)
-        if ActiveSupport::Notifications.notifier.listening?(PERSIST_NOTIFICATION)
-          payload = memory_persist_payload(operation: :persist_subscription)
-          ActiveSupport::Notifications.instrument(PERSIST_NOTIFICATION, payload) do
-            register_subscription(subscriber_id: subscriber_id, recorder: recorder, metadata: metadata, entries: entries, payload: payload)
-          end
-        else
-          register_subscription(subscriber_id: subscriber_id, recorder: recorder, metadata: metadata, entries: entries)
+        with_optional_notification(PERSIST_NOTIFICATION, memory_persist_payload(operation: :persist_subscription)) do |payload|
+          register_subscription(subscriber_id: subscriber_id, recorder: recorder, metadata: metadata, entries: entries, payload: payload)
         end
-      end
-
-      def touch(id, now: Time.now)
-        fetch(id)
-        metadata = { "last_seen_at" => now.utc.iso8601 }
-        pending_registry.touch(id, metadata: metadata)
-        active_registry.touch(id, metadata: metadata)
-        true
       end
 
       def prune_stale!(older_than:)
@@ -221,35 +205,14 @@ module Upkeep
         stale_ids.size
       end
 
-      def unregister(ids)
-        ids = Array(ids)
-        ids.each { |id| @pending_index_entries.delete(id) }
-        pending_registry.unregister(ids)
-        active_registry.unregister(ids)
-        ids.size
-      end
-
       def activate(id)
-        if ActiveSupport::Notifications.notifier.listening?(PERSIST_NOTIFICATION)
-          payload = memory_persist_payload(operation: :persist_index)
-          ActiveSupport::Notifications.instrument(PERSIST_NOTIFICATION, payload) do
-            activate_subscription(id, payload: payload)
-          end
-        else
-          activate_subscription(id)
+        with_optional_notification(PERSIST_NOTIFICATION, memory_persist_payload(operation: :persist_index)) do |payload|
+          activate_subscription(id, payload: payload)
         end
       end
 
       def shutdown
         true
-      end
-
-      def fetch(id)
-        active_registry.fetch(id) || pending_registry.fetch(id) || raise(NotFound, id)
-      end
-
-      def explain(id)
-        fetch(id).explain
       end
 
       def subscriptions
@@ -284,6 +247,18 @@ module Upkeep
       private
 
       attr_reader :pending_registry, :active_registry
+
+      def after_touch(id, metadata:, now:)
+        true
+      end
+
+      def before_unregister(ids)
+        ids.each { |id| @pending_index_entries.delete(id) }
+      end
+
+      def fetch_missing(id)
+        raise NotFound, id
+      end
 
       def register_subscription(subscriber_id:, recorder:, metadata: {}, entries: nil, payload: nil)
         recorder.flush_pending_dependencies if recorder.respond_to?(:flush_pending_dependencies)
@@ -361,10 +336,6 @@ module Upkeep
       def last_seen_at(subscription)
         value = subscription.metadata["last_seen_at"] || subscription.metadata[:last_seen_at]
         Time.parse(value.to_s) if value
-      end
-
-      def next_subscription_id
-        "subscription-#{SecureRandom.uuid}"
       end
     end
   end
