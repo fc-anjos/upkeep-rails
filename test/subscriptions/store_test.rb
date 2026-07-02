@@ -33,6 +33,59 @@ class SubscriptionStoreTest < Minitest::Test
     assert_equal 1, store.reverse_index.entries_for([change]).size
   end
 
+  def test_prune_stale_defaults_older_than_to_the_configured_subscription_ttl
+    stale = store.register(subscriber_id: "stale", recorder: recorder_with_dependency)
+    fresh = store.register(subscriber_id: "fresh", recorder: recorder_with_dependency)
+    store.activate(stale.id)
+    store.activate(fresh.id)
+
+    ttl = Upkeep::Rails.configuration.subscription_ttl
+    store.touch(stale.id, now: Time.now - ttl - 60)
+    store.touch(fresh.id, now: Time.now)
+
+    assert_equal 1, store.prune_stale!
+    assert_raises(Upkeep::Subscriptions::NotFound) { store.fetch(stale.id) }
+    assert_equal fresh.id, store.fetch(fresh.id).id
+  end
+
+  def test_prune_stale_respects_batch_limit
+    subscriptions = 3.times.map do |index|
+      subscription = store.register(subscriber_id: "stale-#{index}", recorder: recorder_with_dependency)
+      store.activate(subscription.id)
+      store.touch(subscription.id, now: Time.utc(2026, 1, 1))
+      subscription
+    end
+
+    assert_equal 2, store.prune_stale!(older_than: Time.utc(2026, 1, 2), limit: 2)
+    assert_equal 1, (subscriptions.map(&:id) & store.subscriptions.map(&:id)).size
+  end
+
+  def test_register_opportunistically_trims_stale_subscriptions_on_the_trim_interval
+    stale = store.register(subscriber_id: "stale", recorder: recorder_with_dependency)
+    store.activate(stale.id)
+    store.touch(stale.id, now: Time.now - Upkeep::Rails.configuration.subscription_ttl - 60)
+
+    quiet_events = capture_notifications("prune.upkeep") do
+      (Upkeep::Subscriptions::BaseStore::TRIM_EVERY - 2).times do |index|
+        store.register(subscriber_id: "filler-#{index}", recorder: Upkeep::Runtime::Recorder.new)
+      end
+    end
+
+    assert_empty quiet_events
+    assert_equal stale.id, store.fetch(stale.id).id
+
+    trim_events = capture_notifications("prune.upkeep") do
+      store.register(subscriber_id: "trigger", recorder: Upkeep::Runtime::Recorder.new)
+    end
+
+    assert_equal 1, trim_events.size
+    payload = trim_events.first.payload
+    assert_equal "memory", payload.fetch(:store)
+    assert_equal 1, payload.fetch(:pruned)
+    assert_equal Upkeep::Subscriptions::BaseStore::TRIM_BATCH_LIMIT, payload.fetch(:limit)
+    assert_raises(Upkeep::Subscriptions::NotFound) { store.fetch(stale.id) }
+  end
+
   def test_unregister_removes_only_selected_subscription_from_index
     removed = store.register(subscriber_id: "removed", recorder: recorder_with_dependency)
     retained = store.register(subscriber_id: "retained", recorder: recorder_with_dependency)

@@ -9,6 +9,17 @@ module Upkeep
       class Channel < ::ActionCable::Channel::Base
         SUBSCRIBE_NOTIFICATION = "subscribe_channel.upkeep"
 
+        # Liveness heartbeat: a connected page touches its subscription row on
+        # this interval, keeping updated_at fresh so opportunistic pruning only
+        # ever removes abandoned subscriptions. Invariant: connected =>
+        # touched at least every HEARTBEAT_INTERVAL => retained, so this must
+        # stay far below config.subscription_ttl (20 minutes vs a 24 hour
+        # default). It is a constant because ActionCable fixes periodic timer
+        # intervals at class load, before app configuration is readable.
+        HEARTBEAT_INTERVAL = 20 * 60
+
+        periodically :touch_upkeep_subscription, every: HEARTBEAT_INTERVAL
+
         def subscribed
           if ActiveSupport::Notifications.notifier.listening?(SUBSCRIBE_NOTIFICATION)
             instrumented_subscribe
@@ -24,6 +35,16 @@ module Upkeep
         end
 
         private
+
+        # Cheap liveness touch (update_columns on the subscription row). Must
+        # never raise into the cable process; a missed heartbeat just leaves
+        # the subscription for a later beat or the opportunistic trim.
+        def touch_upkeep_subscription
+          Upkeep::Rails.subscriptions.touch(subscription_id)
+          nil
+        rescue StandardError
+          nil
+        end
 
         def instrumented_subscribe
           payload = { subscription_id: safe_subscription_id }

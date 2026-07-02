@@ -190,16 +190,19 @@ module Upkeep
       end
 
       def register(subscriber_id:, recorder:, metadata: {}, entries: nil)
-        with_optional_notification(PERSIST_NOTIFICATION, memory_persist_payload(operation: :persist_subscription)) do |payload|
+        subscription = with_optional_notification(PERSIST_NOTIFICATION, memory_persist_payload(operation: :persist_subscription)) do |payload|
           register_subscription(subscriber_id: subscriber_id, recorder: recorder, metadata: metadata, entries: entries, payload: payload)
         end
+        trim_opportunistically
+        subscription
       end
 
-      def prune_stale!(older_than:)
+      def prune_stale!(older_than: stale_threshold, limit: nil)
         stale_ids = subscriptions.filter_map do |subscription|
           id = subscription.id
           id if last_seen_at(subscription) && last_seen_at(subscription) < older_than
         end
+        stale_ids = stale_ids.first(limit) if limit
 
         unregister(stale_ids)
         stale_ids.size
@@ -250,6 +253,10 @@ module Upkeep
 
       def after_touch(id, metadata:, now:)
         true
+      end
+
+      def store_label
+        "memory"
       end
 
       def before_unregister(ids)

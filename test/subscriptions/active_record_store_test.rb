@@ -573,6 +573,39 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     assert_equal 1, store.summary.fetch(:active_subscriptions)
   end
 
+  def test_prune_stale_defaults_older_than_to_the_configured_subscription_ttl
+    create_subscription_card!("Plan")
+
+    _html, recorder = capture_controller_request("/cards?status=open")
+    store = active_record_store
+    stale = store.register(subscriber_id: "stale", recorder: recorder, metadata: { stream_name: "stream-stale" })
+    fresh = store.register(subscriber_id: "fresh", recorder: recorder, metadata: { stream_name: "stream-fresh" })
+
+    store.touch(stale.id, now: Time.now - Upkeep::Rails.configuration.subscription_ttl - 60)
+    store.touch(fresh.id, now: Time.now)
+
+    assert_equal 1, store.prune_stale!
+    assert_raises(Upkeep::Subscriptions::NotFound) { store.fetch(stale.id) }
+    assert_equal [fresh.id], Upkeep::Subscriptions::ActiveRecordStore::SubscriptionRecord.pluck(:id)
+  end
+
+  def test_opportunistic_trim_never_raises_into_registration_when_persistence_fails
+    create_subscription_card!("Plan")
+
+    _html, recorder = capture_controller_request("/cards?status=open")
+    store = active_record_store
+    store.send(:persistence).define_singleton_method(:prune_stale!) do |**|
+      raise ActiveRecord::StatementInvalid, "prune exploded"
+    end
+
+    subscription = nil
+    Upkeep::Subscriptions::BaseStore::TRIM_EVERY.times do |index|
+      subscription = store.register(subscriber_id: "subscriber-#{index}", recorder: recorder, metadata: { stream_name: "stream-#{index}" })
+    end
+
+    assert_equal subscription.id, store.fetch(subscription.id).id
+  end
+
   def test_unregister_cancels_pending_durable_write
     create_subscription_card!("Plan")
 

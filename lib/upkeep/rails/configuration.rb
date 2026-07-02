@@ -98,6 +98,10 @@ module Upkeep
       attr_accessor :enabled
       attr_accessor :activation_token_expires_in
       attr_accessor :delivery_batch_window
+      # Seconds a subscription may go untouched before it counts as abandoned
+      # and becomes eligible for pruning. Connected pages are kept alive by the
+      # cable channel heartbeat, which fires far more often than this TTL.
+      attr_accessor :subscription_ttl
       # Test/console hook: deliver changes synchronously in the caller instead
       # of on the in-process background dispatcher.
       attr_accessor :deliver_inline
@@ -110,6 +114,7 @@ module Upkeep
         @delivery_batch_window = 0.01
         @refused_boundary_behavior = nil
         @activation_token_expires_in = 24 * 60 * 60
+        @subscription_ttl = 24 * 60 * 60
         @identity_definitions = {}
       end
 

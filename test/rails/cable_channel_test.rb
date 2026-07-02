@@ -272,6 +272,38 @@ class CableChannelTest < ActionCable::Channel::TestCase
     assert_includes warnings.first, "refresh app/javascript/upkeep/subscription.js"
   end
 
+  def test_declares_liveness_heartbeat_periodic_timer
+    interval = Upkeep::Rails::Cable::Channel::HEARTBEAT_INTERVAL
+    heartbeat = Upkeep::Rails::Cable::Channel.periodic_timers.find do |_callback, options|
+      options.fetch(:every) == interval
+    end
+
+    refute_nil heartbeat
+    # Invariant: connected => touched every HEARTBEAT_INTERVAL => never pruned,
+    # so the heartbeat must fire well inside the default subscription TTL.
+    assert_operator interval, :<, Upkeep::Rails::Configuration.new.subscription_ttl / 10
+  end
+
+  def test_heartbeat_touches_subscription_liveness
+    subscription_record = registered_subscription(stream_name: "upkeep:test:user-1")
+    stub_connection(current_user: "user-1")
+    subscribe subscription_params(subscription_record)
+    assert subscription.confirmed?
+
+    subscription.send(:touch_upkeep_subscription)
+
+    refute_nil Upkeep::Rails.subscriptions.fetch(subscription_record.id).metadata["last_seen_at"]
+  end
+
+  def test_heartbeat_does_not_raise_when_subscription_is_missing
+    subscription_record = registered_subscription(stream_name: "upkeep:test:user-1")
+    stub_connection(current_user: "user-1")
+    subscribe subscription_params(subscription_record)
+    Upkeep::Rails.subscriptions.unregister(subscription_record.id)
+
+    assert_nil subscription.send(:touch_upkeep_subscription)
+  end
+
   private
 
   def capture_rails_logger_warnings

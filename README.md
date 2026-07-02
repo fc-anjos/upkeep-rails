@@ -65,6 +65,8 @@ end
 
 **Delivery mode:** Upkeep broadcasts from a background dispatcher in the same process that performed the write. For tests and console sessions where you want synchronous behavior, set `deliver_inline = true`.
 
+**Subscription lifecycle:** Subscriptions clean themselves up. A clean disconnect deletes the subscription immediately; abandoned subscriptions (crashed browsers, dropped connections) are trimmed opportunistically in small batches once they go untouched for `config.subscription_ttl` (default 24 hours); and connected pages send a liveness heartbeat every 20 minutes, so a long-lived open tab is never pruned. Adjust `subscription_ttl` to control how long abandoned subscriptions may linger.
+
 **Multi-process deployments:** If you run multiple Puma workers, you need a cross-process cable adapter so broadcasts reach all processes. We recommend `solid_cable`.
 
 ## Configure identity
@@ -217,12 +219,3 @@ The tradeoff: Turbo Streams let you control exactly what gets broadcast and how 
 | Full control | Yes | No, but less coupling |
 
 See [How Upkeep Works](docs/how-it-works.md) for details on the runtime model.
-
-## What's in this repo vs. the gem
-
-The published gem contains only the library code under `lib/`. Two top-level directories exist purely for development and verification and are never part of the package:
-
-- `benchmark/` — vendored Rails apps and a k6 load-test harness used to exercise Upkeep against real applications.
-- `results/` — generated proof output from those verification runs.
-
-Neither ships in the gem. Consumers who `gem install upkeep-rails` never receive them.

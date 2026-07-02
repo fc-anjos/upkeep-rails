@@ -55,8 +55,10 @@ module Upkeep
         end
       end
 
-      def prune_stale!(older_than:)
-        stale_ids = subscription_record.where(subscription_record.arel_table[:updated_at].lt(older_than)).pluck(:id)
+      def prune_stale!(older_than:, limit: nil)
+        stale = subscription_record.where(subscription_record.arel_table[:updated_at].lt(older_than))
+        stale = stale.order(:updated_at).limit(limit) if limit
+        stale_ids = stale.pluck(:id)
         return [] if stale_ids.empty?
 
         delete(stale_ids)

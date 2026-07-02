@@ -169,9 +169,11 @@ module Upkeep
       private_class_method :expected_column_description
 
       def register(subscriber_id:, recorder:, metadata: {}, entries: nil)
-        with_optional_notification(REGISTER_NOTIFICATION, { store: "active_record" }) do |payload|
+        subscription = with_optional_notification(REGISTER_NOTIFICATION, { store: "active_record" }) do |payload|
           register_subscription(subscriber_id, recorder, metadata, entries: entries, payload: payload)
         end
+        trim_opportunistically
+        subscription
       end
 
       def shutdown
@@ -184,8 +186,8 @@ module Upkeep
         end
       end
 
-      def prune_stale!(older_than:)
-        stale_ids = persistence.prune_stale!(older_than: older_than)
+      def prune_stale!(older_than: stale_threshold, limit: nil)
+        stale_ids = persistence.prune_stale!(older_than: older_than, limit: limit)
         active_registry.unregister(stale_ids)
         stale_ids.size
       end
@@ -229,6 +231,10 @@ module Upkeep
       private
 
       attr_reader :subscription_record, :index_record, :shape_index_record, :index_builder, :pending_registry, :active_registry, :persistence
+
+      def store_label
+        "active_record"
+      end
 
       def after_touch(id, metadata:, now:)
         activate(id)
