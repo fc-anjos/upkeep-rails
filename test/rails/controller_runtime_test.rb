@@ -326,7 +326,7 @@ class ControllerRuntimeTest < Minitest::Test
     assert_includes subscription.recorder.graph.summary.fetch(:dependency_sources), "request"
   end
 
-  def test_warn_policy_refuses_subscription_registration_for_opaque_collection
+  def test_warn_policy_registers_subscription_for_sqlglot_analyzable_collection
     previous_behavior = Upkeep::Rails.configuration.refused_boundary_behavior
     Upkeep::Rails.configuration.refused_boundary_behavior = :warn
     user = RuntimeDeliveryUser.create!(name: "Alice")
@@ -338,8 +338,8 @@ class ControllerRuntimeTest < Minitest::Test
     html = collect_body(body)
 
     assert_includes html, "Plan"
-    assert_empty Upkeep::Rails.subscriptions.subscriptions
-    refute_includes html, "data-upkeep-subscription"
+    refute_empty Upkeep::Rails.subscriptions.subscriptions
+    assert_includes html, "data-upkeep-subscription"
   ensure
     Upkeep::Rails.configuration.refused_boundary_behavior = previous_behavior if previous_behavior
   end

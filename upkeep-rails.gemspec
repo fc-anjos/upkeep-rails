@@ -49,5 +49,6 @@ Gem::Specification.new do |spec|
   spec.add_dependency "herb", ">= 0.10.1", "< 0.11"
   spec.add_dependency "nokogiri", ">= 1.15", "< 2.0"
   spec.add_dependency "railties", ">= 7.1", "< 9.0"
+  spec.add_dependency "sqlglot", "= 0.1.1"
   spec.add_dependency "turbo-rails", ">= 2.0", "< 3.0"
 end

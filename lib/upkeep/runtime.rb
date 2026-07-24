@@ -971,7 +971,7 @@ module Upkeep
       end
 
       def update_all(updates)
-        analysis = ActiveRecordQuery.analyze(self, opaque_table_policy: :allow_table)
+        analysis = ActiveRecordQuery.analyze_for_write(self)
         event = ChangeEvents.bulk_update(
           table: klass.table_name,
           model: klass.name,
@@ -987,7 +987,7 @@ module Upkeep
       end
 
       def delete_all
-        analysis = ActiveRecordQuery.analyze(self, opaque_table_policy: :allow_table)
+        analysis = ActiveRecordQuery.analyze_for_write(self)
         event = ChangeEvents.bulk_delete(
           table: klass.table_name,
           model: klass.name,

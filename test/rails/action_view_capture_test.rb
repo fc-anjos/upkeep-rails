@@ -689,13 +689,15 @@ class ActionViewCaptureTest < Minitest::Test
     end
 
     assert_includes error.message, "cannot make this Active Record relation reactive"
-    assert_includes error.message, "raw SQL join"
+    assert_includes error.message, "hidden_cards"
+    assert_includes error.message, "not present in the schema"
     assert_empty select_sql
   ensure
     ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
   end
 
-  def test_opaque_predicate_collection_relation_raises_before_materialization
+  def test_raw_predicate_collection_is_analyzed_before_materialization
+    create_card!("Plan")
     select_sql = []
     subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |_name, _started, _finished, _id, payload|
       sql = payload[:sql].to_s
@@ -704,18 +706,17 @@ class ActionViewCaptureTest < Minitest::Test
 
     relation = RailsCaptureCard.where("status = ?", "open")
 
-    error = assert_raises(Upkeep::ActiveRecordQuery::OpaqueRelationError) do
-      capture_render("boards/collection", cards: relation)
-    end
+    html, recorder = capture_render("boards/collection", cards: relation)
 
-    assert_includes error.message, "cannot make this Active Record relation reactive"
-    assert_includes error.message, "raw SQL predicate"
-    assert_empty select_sql
+    assert_includes html, "Plan"
+    assert recorder.reactive?
+    assert_empty recorder.refused_boundaries
+    refute_empty select_sql
   ensure
     ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
   end
 
-  def test_warn_policy_refuses_opaque_collection_without_broad_dependency
+  def test_warn_policy_accepts_sqlglot_analyzable_collection
     previous_behavior = Upkeep::Rails.configuration.refused_boundary_behavior
     Upkeep::Rails.configuration.refused_boundary_behavior = :warn
     create_card!("Plan")
@@ -727,11 +728,10 @@ class ActionViewCaptureTest < Minitest::Test
     html, recorder = capture_render("boards/collection", cards: RailsCaptureCard.where("status = ?", "open"))
 
     assert_includes html, "Plan"
-    refute recorder.reactive?
-    assert_equal 1, recorder.refused_boundaries.size
-    assert_equal "opaque_active_record_relation", recorder.refused_boundaries.first.reason
-    assert_includes events.map { |event| event.fetch(:reason) }, "opaque_active_record_relation"
-    refute_includes recorder.graph.summary.fetch(:dependency_sources), "active_record_collection"
+    assert recorder.reactive?
+    assert_empty recorder.refused_boundaries
+    assert_empty events
+    assert_includes recorder.graph.summary.fetch(:dependency_sources), "active_record_collection"
   ensure
     ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
     Upkeep::Rails.configuration.refused_boundary_behavior = previous_behavior if previous_behavior
