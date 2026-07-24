@@ -2,6 +2,7 @@
 
 require "active_record"
 require "sqlglot"
+require "sqlglot/semantics"
 require_relative "sql_dependency_analysis"
 
 module Upkeep
@@ -69,9 +70,17 @@ module Upkeep
       sql = relation.to_sql
       dialect = dialect_for(relation.klass.connection)
       statement = Sqlglot.parse(sql, dialect: dialect)
-      dependency = SQLDependencyAnalysis.analyze(
+      schema = Schema.for(relation.klass.connection, statement)
+      mapping_schema = Sqlglot::MappingSchema.new(schema, dialect: dialect)
+      qualified_statement = Sqlglot.qualify_columns(statement, mapping_schema)
+      dependency_statement = SQLDependencyAnalysis.preserve_wildcard_projections(
         statement,
-        schema: Schema.for(relation.klass.connection, statement)
+        qualified_statement
+      )
+      dependency = SQLDependencyAnalysis.analyze(
+        dependency_statement,
+        schema: schema,
+        scope: Sqlglot.build_scope(dependency_statement)
       )
 
       Result.new(

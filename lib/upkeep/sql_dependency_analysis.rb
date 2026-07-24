@@ -27,13 +27,25 @@ module Upkeep
     # @param statement [Hash] AST returned by Sqlglot.parse
     # @param schema [Hash<String, Hash<String, String>>] SQLGlot-compatible
     #   table/column/type mapping.
-    def analyze(statement, schema:)
-      Analyzer.new(statement, schema: schema).analyze
+    # @param scope [Sqlglot::Scope, nil] optional scope returned by
+    #   Sqlglot.build_scope for semantic completeness validation.
+    def analyze(statement, schema:, scope: nil)
+      Analyzer.new(statement, schema: schema, scope: scope).analyze
+    end
+
+    # SQLGlot's established qualify_columns pass expands SELECT wildcards.
+    # Upkeep uses qualification for source resolution, but collection
+    # invalidation must not turn SELECT table.* into every table column: record
+    # rendering tracks those attributes separately. Restore wildcard
+    # projections while retaining qualification everywhere else.
+    def preserve_wildcard_projections(original, qualified)
+      ProjectionPreserver.new(original, qualified).call
     end
 
     class Analyzer
-      def initialize(statement, schema:)
+      def initialize(statement, schema:, scope:)
         @statement = statement
+        @scope = scope
         @columns_by_table = normalize_schema(schema)
         @table_columns = Hash.new { |hash, table| hash[table] = Set.new }
         @predicates = []
@@ -57,6 +69,8 @@ module Upkeep
           raise UnsupportedError, "expected a SELECT or set-operation statement"
         end
 
+        validate_scope!
+
         Result.new(
           table_columns: normalized_table_columns,
           predicates: normalized_predicates,
@@ -68,6 +82,16 @@ module Upkeep
       end
 
       private
+
+      def validate_scope!
+        return unless @scope
+
+        ScopeValidator.new(
+          @scope,
+          columns_by_table: @columns_by_table,
+          table_columns: @table_columns
+        ).validate!
+      end
 
       def process_select(select, outer_sources:, visible_ctes:)
         ctes = visible_ctes.dup
@@ -425,5 +449,116 @@ module Upkeep
         !value.nil? && !value.empty?
       end
     end
+
+    class ProjectionPreserver
+      def initialize(original, qualified)
+        @original = original
+        @qualified = qualified
+      end
+
+      def call
+        restore(@original, @qualified)
+        @qualified
+      end
+
+      private
+
+      def restore(original, qualified)
+        case original
+        when Array
+          return unless qualified.is_a?(Array) && original.length == qualified.length
+
+          original.zip(qualified).each { |left, right| restore(left, right) }
+        when Hash
+          return unless qualified.is_a?(Hash)
+
+          if original.key?("Select") && qualified.key?("Select")
+            restore_select(original.fetch("Select"), qualified.fetch("Select"))
+          else
+            original.each do |key, value|
+              restore(value, qualified[key]) if qualified.key?(key)
+            end
+          end
+        end
+      end
+
+      def restore_select(original, qualified)
+        original_columns = Array(original["columns"])
+        if original_columns.any? { |column| wildcard?(column) }
+          qualified["columns"] = original_columns
+        else
+          restore(original_columns, qualified["columns"])
+        end
+
+        original.each do |key, value|
+          next if key == "columns"
+
+          restore(value, qualified[key]) if qualified.key?(key)
+        end
+      end
+
+      def wildcard?(node)
+        node.is_a?(Hash) &&
+          (node.key?("Wildcard") || node.key?("QualifiedWildcard"))
+      end
+    end
+    private_constant :ProjectionPreserver
+
+    class ScopeValidator
+      def initialize(scope, columns_by_table:, table_columns:)
+        @scope = scope
+        @columns_by_table = columns_by_table
+        @table_columns = table_columns
+      end
+
+      def validate!
+        @scope.walk.each do |scope|
+          validate_sources(scope)
+          validate_columns(scope)
+        end
+      end
+
+      private
+
+      def validate_sources(scope)
+        scope.sources.each_value do |source|
+          physical_tables(source).each do |table|
+            next if @table_columns.key?(table)
+
+            raise UnsupportedError,
+              "SQLGlot scope discovered physical table #{table} without a dependency"
+          end
+        end
+      end
+
+      def validate_columns(scope)
+        scope.columns.each do |column|
+          next if column.name == "*" || column.table.nil?
+
+          source = scope.sources[column.table]
+          next unless source
+
+          physical_tables(source).each do |table|
+            next unless @columns_by_table.fetch(table, Set.new).include?(column.name)
+            next if @table_columns.fetch(table, Set.new).include?(column.name)
+
+            raise UnsupportedError,
+              "SQLGlot scope discovered #{table}.#{column.name} without a dependency"
+          end
+        end
+      end
+
+      def physical_tables(source)
+        if source.kind == :table
+          table = source.table.qualified_name
+          @columns_by_table.key?(table) ? [table] : []
+        else
+          source.scope.walk.flat_map do |scope|
+            scope.sources.values.flat_map { |child| physical_tables(child) }
+          end.uniq
+        end
+      end
+    end
+    private_constant :ScopeValidator
   end
 end

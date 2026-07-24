@@ -50,5 +50,6 @@ Gem::Specification.new do |spec|
   spec.add_dependency "nokogiri", ">= 1.15", "< 2.0"
   spec.add_dependency "railties", ">= 7.1", "< 9.0"
   spec.add_dependency "sqlglot", "= 0.1.1"
+  spec.add_dependency "sqlglot-semantics", "= 0.1.0"
   spec.add_dependency "turbo-rails", ">= 2.0", "< 3.0"
 end

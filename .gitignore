@@ -13,6 +13,10 @@
 /test/tmp/
 /tmp/
 /results/
+/sqlglot-semantics/ext/sqlglot_semantics/target/
+/sqlglot-semantics/ext/sqlglot_semantics/Makefile
+/sqlglot-semantics/lib/sqlglot/semantics/libsqlglot_semantics.*
+/sqlglot-semantics/pkg/
 /benchmark/results/
 /benchmark/**/.bundle/
 /benchmark/**/Gemfile.lock

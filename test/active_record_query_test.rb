@@ -443,7 +443,7 @@ class ActiveRecordQueryTest < Minitest::Test
     refute analyze(QueryAnalysisCard.group(:status)).appendable?
   end
 
-  def test_sqlglot_covers_every_dependency_proven_by_the_arel_oracle
+  def test_sqlglot_matches_the_frozen_arel_oracle_corpus
     cards = QueryAnalysisCard.arel_table
     people = QueryAnalysisPerson.arel_table
     lower_title = Arel::Nodes::NamedFunction.new("LOWER", [cards[:title]])
@@ -465,14 +465,90 @@ class ActiveRecordQueryTest < Minitest::Test
       arel_column_comparison: QueryAnalysisPerson.where(people[:manager_id].eq(people[:id]))
     }
 
-    relations.each do |name, relation|
-      sqlglot = analyze(relation)
-      arel = Upkeep::ArelQueryAnalysisOracle.analyze(relation)
+    expected = {
+      simple_filter_and_order: {
+        table_columns: {"query_analysis_cards" => %w[id position status]},
+        predicates: [{table: "query_analysis_cards", column: "status", operator: "eq", values: ["open"]}],
+        limit_value: nil,
+        appendable: true
+      },
+      in_filter: {
+        table_columns: {"query_analysis_cards" => %w[id status]},
+        predicates: [{table: "query_analysis_cards", column: "status", operator: "in", values: %w[open done]}],
+        limit_value: nil,
+        appendable: true
+      },
+      null_filter: {
+        table_columns: {"query_analysis_cards" => %w[id status]},
+        predicates: [{table: "query_analysis_cards", column: "status", operator: "eq", values: [nil]}],
+        limit_value: nil,
+        appendable: true
+      },
+      negated_filter: {
+        table_columns: {"query_analysis_cards" => %w[id status]},
+        predicates: [{table: "query_analysis_cards", column: "status", operator: "not_eq", values: ["closed"]}],
+        limit_value: nil,
+        appendable: true
+      },
+      function_filter: {
+        table_columns: {"query_analysis_cards" => %w[id title]},
+        predicates: [],
+        limit_value: nil,
+        appendable: true
+      },
+      association_join: {
+        table_columns: {
+          "query_analysis_authors" => %w[id name],
+          "query_analysis_cards" => %w[author_id id position]
+        },
+        predicates: [{table: "query_analysis_authors", column: "name", operator: "eq", values: ["Ada"]}],
+        limit_value: nil,
+        appendable: true
+      },
+      self_join: {
+        table_columns: {"query_analysis_people" => %w[id manager_id name]},
+        predicates: [{table: "query_analysis_people", column: "name", operator: "eq", values: ["Ada"]}],
+        limit_value: nil,
+        appendable: true
+      },
+      limited: {
+        table_columns: {"query_analysis_cards" => %w[id status]},
+        predicates: [{table: "query_analysis_cards", column: "status", operator: "eq", values: ["open"]}],
+        limit_value: 10,
+        appendable: false
+      },
+      distinct: {
+        table_columns: {"query_analysis_cards" => %w[id status]},
+        predicates: [{table: "query_analysis_cards", column: "status", operator: "eq", values: ["open"]}],
+        limit_value: nil,
+        appendable: false
+      },
+      grouped: {
+        table_columns: {"query_analysis_cards" => %w[id status]},
+        predicates: [],
+        limit_value: nil,
+        appendable: false
+      },
+      arel_column_comparison: {
+        table_columns: {"query_analysis_people" => %w[id manager_id]},
+        predicates: [],
+        limit_value: nil,
+        appendable: true
+      }
+    }
 
-      assert_equal arel.table_columns, sqlglot.table_columns, "#{name}: columns"
-      assert_equal arel.predicates, sqlglot.predicates, "#{name}: predicates"
-      assert arel.limit_value == sqlglot.limit_value, "#{name}: limit"
-      assert_equal arel.appendable?, sqlglot.appendable?, "#{name}: appendability"
+    relations.each do |name, relation|
+      result = analyze(relation)
+      oracle = expected.fetch(name)
+
+      assert_equal oracle.fetch(:table_columns), result.table_columns, "#{name}: columns"
+      assert_equal oracle.fetch(:predicates), result.predicates, "#{name}: predicates"
+      if oracle.fetch(:limit_value)
+        assert_equal oracle.fetch(:limit_value), result.limit_value, "#{name}: limit"
+      else
+        assert_nil result.limit_value, "#{name}: limit"
+      end
+      assert_equal oracle.fetch(:appendable), result.appendable?, "#{name}: appendability"
     end
   end
 

@@ -1,0 +1,54 @@
+name: SQLGlot semantic packages
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/sqlglot-semantics.yml"
+      - "sqlglot-semantics/**"
+  push:
+    tags:
+      - "sqlglot-semantics-v*"
+  workflow_dispatch:
+
+jobs:
+  native-gem:
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            platform: x86_64-linux-gnu
+          - runner: ubuntu-24.04-arm
+            platform: aarch64-linux-gnu
+          - runner: macos-15-intel
+            platform: x86_64-darwin
+          - runner: macos-15
+            platform: arm64-darwin
+
+    defaults:
+      run:
+        working-directory: sqlglot-semantics
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+
+      - name: Install Rust
+        run: rustup toolchain install stable --profile minimal
+
+      - name: Install Ruby dependencies
+        run: ruby -S bundle install
+
+      - name: Test and package
+        run: ruby -S rake test native:package PLATFORM=${{ matrix.platform }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sqlglot-semantics-${{ matrix.platform }}
+          path: sqlglot-semantics/pkg/*.gem
+          if-no-files-found: error

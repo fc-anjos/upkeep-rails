@@ -8,6 +8,7 @@ require "rbconfig"
 Rake::TestTask.new(:test) do |task|
   task.libs << "test"
   task.libs << "lib"
+  task.libs << "sqlglot-semantics/lib"
   task.test_files = FileList["test/**/*_test.rb"]
 end
 

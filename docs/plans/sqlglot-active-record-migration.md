@@ -3,9 +3,9 @@
 ## Goal
 
 Make SQLGlot the only production decoder for Active Record relation
-dependencies in the next Upkeep release. Keep the existing Arel decoder only as
-a test/development parity oracle until the SQLGlot corpus proves it can be
-deleted.
+dependencies in the next Upkeep release. Use the former Arel oracle to freeze a
+parity corpus, then delete the oracle once the SQLGlot, raw-SQL, and adapter
+corpora prove the same dependencies.
 
 “Drop Arel” means Upkeep production code does not call `Relation#arel`, inspect
 Arel nodes, or select a structured/unstructured policy. Active Record may still
@@ -31,10 +31,15 @@ existing implementation:
 
 There is deliberately no public `Upkeep::Sqlglot.analyze` API.
 
-Upkeep-specific lowering remains separate:
+Upkeep-specific lowering remains separate from the sibling API:
 
 ```text
 Sqlglot.parse + SQL schema
+            │
+            ▼
+Sqlglot::MappingSchema
+Sqlglot.qualify_columns
+Sqlglot.build_scope
             │
             ▼
 Upkeep::SQLDependencyAnalysis
@@ -52,6 +57,33 @@ This release is intentionally breaking. There are no existing users to migrate,
 so no compatibility decoder, cache migration, or mixed installation is
 supported. Installing the release requires a full bundle/gem reinstall so the
 SQLGlot platform dependency is installed cleanly.
+
+## Native sibling
+
+`sqlglot-semantics` is an independently buildable sibling gem in this
+repository. It depends on `sqlglot` 0.1.1 and pins `sql-glot-rust` v0.10.12.
+Its public API reopens the `Sqlglot` namespace with the established Rust
+primitives; the private C ABI contains one function per primitive and no
+combined Upkeep analyzer.
+
+Source gems compile with Cargo. Platform gems include the native library and
+skip compilation. The release matrix builds native artifacts on:
+
+- `x86_64-linux-gnu`;
+- `aarch64-linux-gnu`;
+- `x86_64-darwin`; and
+- `arm64-darwin`.
+
+The v0.10.12 scope builder exposes a CTE child correctly but overwrites the
+outer CTE source with a table-shaped source. The sibling preserves that
+upstream result shape. Upkeep does not treat a scope table as physical unless
+it exists in `MappingSchema`; the AST lowerer resolves the logical CTE to its
+physical child and scope validation checks every schema-backed source.
+
+`qualify_columns` expands wildcards by design. Upkeep restores wildcard
+projection nodes before dependency lowering so `SELECT table.*` does not add
+every model attribute to collection invalidation. Qualification in predicates,
+joins, grouping, ordering, and explicit projections is retained.
 
 ## Implementation stages
 
@@ -105,9 +137,9 @@ SQLGlot platform dependency is installed cleanly.
 - Run the full Upkeep suite.
 - Benchmark parsing separately from invalidation fan-out. This milestone does
   not add an Upkeep-owned analysis or schema cache.
-- Before release, add native semantic sibling bindings with the matching API
-  described above and submit the same APIs/fixes upstream. The sibling keeps
-  Upkeep unblocked; upstream adoption later removes it without changing callers.
+- Add native semantic sibling bindings with the matching API described above.
+  The sibling keeps Upkeep unblocked; upstream adoption later removes it
+  without changing callers.
 
 ## Oracle exit criteria
 
@@ -123,13 +155,14 @@ Arel can be deleted after:
 
 ## Current milestone
 
-This implementation stops with SQLGlot as the production path and Arel as a
-test-only oracle. Removing the oracle and completing native platform packaging
-are follow-up milestones gated by the exit criteria above.
+This milestone is complete: SQLGlot plus the semantic sibling is the only
+production path, the former oracle outputs are frozen as ordinary expected
+values, and the Arel collector has been deleted. Remaining Arel usage in tests
+constructs Active Record input queries only; no Upkeep analyzer inspects Arel.
 
 ## Execution status
 
-Completed for this milestone:
+Completed:
 
 - [x] Added `sqlglot` as the production runtime parser.
 - [x] Added generic SQL AST dependency lowering in
@@ -140,17 +173,26 @@ Completed for this milestone:
   no analysis or schema cache.
 - [x] Added a separate conservative write-analysis path without introducing a
   collection-query fallback.
-- [x] Moved the Arel collector into test support as
-  `ArelQueryAnalysisOracle`.
-- [x] Added oracle parity and direct raw-SQL coverage, including correlated
-  subqueries, CTEs, and set operations.
+- [x] Used `ArelQueryAnalysisOracle` to freeze the parity corpus, then deleted
+  the collector and its test-support require.
+- [x] Added direct raw-SQL coverage, including correlated subqueries, CTEs,
+  set operations, PostgreSQL operators, and MySQL/SQLite functions.
+- [x] Added the independently packaged `sqlglot-semantics` sibling with
+  `MappingSchema`, `qualify_columns`, `build_scope`, and `lineage`.
+- [x] Preserved Rust scope and lineage fields and locked the v0.10.12 CTE
+  behavior in a binding test.
+- [x] Added native gem packaging for macOS/Linux on arm64/x86-64 and verified
+  an isolated precompiled-gem reinstall on `arm64-darwin`.
+- [x] Added an adapter corpus for PostgreSQL, MySQL, and SQLite.
+- [x] Added a warm semantic-analysis performance gate with a 2 ms CI budget;
+  the local 10,000-iteration mean is approximately 146 µs.
 - [x] Verified the full suite and the focused performance gate.
 - [x] Removed compatibility and mixed-installation handling; this release
   requires a full reinstall.
 
-Release follow-up:
+Upstream follow-up:
 
-- [ ] Package native semantic sibling bindings for APIs missing from the Ruby
-  implementation, matching the established Rust/Python names and result shapes.
-- [ ] Expand the adapter corpus and satisfy the oracle exit criteria before
-  deleting the test-only Arel oracle.
+- [ ] Submit the semantic Ruby bindings to `sql-glot-ruby`.
+- [ ] Submit the CTE source-overwrite fix to `sql-glot-rust`.
+- [ ] Replace the sibling dependency with upstream releases once both are
+  available, without changing Upkeep callers.
