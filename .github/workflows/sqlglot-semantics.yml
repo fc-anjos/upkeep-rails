@@ -1,17 +1,21 @@
-name: SQLGlot semantic packages
+name: Upkeep native packages
 
 on:
   pull_request:
     paths:
       - ".github/workflows/sqlglot-semantics.yml"
-      - "sqlglot-semantics/**"
+      - "ext/upkeep_sqlglot_semantics/**"
+      - "lib/upkeep/sqlglot_semantics.rb"
+      - "lib/upkeep/sqlglot_semantics/**"
+      - "Rakefile"
+      - "upkeep-rails.gemspec"
   push:
     tags:
-      - "sqlglot-semantics-v*"
+      - "v*"
   workflow_dispatch:
 
 jobs:
-  native-gem:
+  platform-gem:
     name: ${{ matrix.platform }}
     runs-on: ${{ matrix.runner }}
     strategy:
@@ -27,10 +31,6 @@ jobs:
           - runner: macos-15
             platform: arm64-darwin
 
-    defaults:
-      run:
-        working-directory: sqlglot-semantics
-
     steps:
       - uses: actions/checkout@v6
 
@@ -42,13 +42,16 @@ jobs:
         run: rustup toolchain install stable --profile minimal
 
       - name: Install Ruby dependencies
-        run: ruby -S bundle install
+        run: ruby -S gem install sqlglot:0.1.1 minitest rake bundler --no-document
 
       - name: Test and package
-        run: ruby -S rake test native:package PLATFORM=${{ matrix.platform }}
+        run: |
+          ruby -S rake native:build
+          ruby -Ilib test/sqlglot_semantics_api_test.rb
+          ruby -S rake native:package PLATFORM=${{ matrix.platform }}
 
       - uses: actions/upload-artifact@v4
         with:
-          name: sqlglot-semantics-${{ matrix.platform }}
-          path: sqlglot-semantics/pkg/*.gem
+          name: upkeep-rails-${{ matrix.platform }}
+          path: pkg/upkeep-rails-*.gem
           if-no-files-found: error

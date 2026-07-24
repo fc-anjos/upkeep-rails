@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "minitest/autorun"
-require "sqlglot/semantics"
+require "upkeep/sqlglot_semantics"
 
 class SqlglotSemanticsTest < Minitest::Test
   SCHEMA = {
@@ -110,7 +110,7 @@ class SqlglotSemanticsTest < Minitest::Test
   def test_native_errors_cross_the_boundary_with_diagnostics
     invalid = {"Select" => {"not" => "a statement"}}
 
-    error = assert_raises(Sqlglot::Semantics::Error) do
+    error = assert_raises(Sqlglot::Error) do
       Sqlglot.build_scope(invalid)
     end
 

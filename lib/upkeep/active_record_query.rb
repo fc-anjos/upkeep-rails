@@ -2,7 +2,7 @@
 
 require "active_record"
 require "sqlglot"
-require "sqlglot/semantics"
+require_relative "sqlglot_semantics"
 require_relative "sql_dependency_analysis"
 
 module Upkeep

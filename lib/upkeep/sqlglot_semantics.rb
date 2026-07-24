@@ -1,8 +1,7 @@
 # frozen_string_literal: true
 
 require "sqlglot"
-require_relative "semantics/version"
-require_relative "semantics/native"
+require_relative "sqlglot_semantics/native"
 
 module Sqlglot
   ColumnRef = Data.define(:table, :name) do
@@ -244,22 +243,18 @@ module Sqlglot
 
   class << self
     def qualify_columns(statement, schema)
-      Semantics::Native.qualify_columns(statement, schema)
+      Upkeep::SqlglotSemantics::Native.qualify_columns(statement, schema)
     end
 
     def build_scope(statement)
-      Scope.from_native(Semantics::Native.build_scope(statement))
+      Scope.from_native(Upkeep::SqlglotSemantics::Native.build_scope(statement))
     end
 
     def lineage(column, statement, schema, config = nil)
       config ||= LineageConfig.new(dialect: schema.dialect)
       LineageGraph.from_native(
-        Semantics::Native.lineage(column, statement, schema, config)
+        Upkeep::SqlglotSemantics::Native.lineage(column, statement, schema, config)
       )
-    end
-
-    def semantics_version
-      Semantics::Native.version
     end
   end
 end

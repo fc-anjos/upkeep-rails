@@ -58,24 +58,34 @@ so no compatibility decoder, cache migration, or mixed installation is
 supported. Installing the release requires a full bundle/gem reinstall so the
 SQLGlot platform dependency is installed cleanly.
 
-## Native sibling
+## Embedded semantic extension
 
-`sqlglot-semantics` is an independently buildable sibling gem in this
-repository. It depends on `sqlglot` 0.1.1 and pins `sql-glot-rust` v0.10.12.
-Its public API reopens the `Sqlglot` namespace with the established Rust
-primitives; the private C ABI contains one function per primitive and no
-combined Upkeep analyzer.
+`upkeep-rails` depends on `sqlglot` 0.1.1 and temporarily embeds the missing
+semantic bindings, pinned to `sql-glot-rust` v0.10.12. The extension's public
+API reopens the `Sqlglot` namespace with the established Rust primitives; its
+private C ABI contains one function per primitive and no combined Upkeep
+analyzer.
 
-Source gems compile with Cargo. Platform gems include the native library and
-skip compilation. The release matrix builds native artifacts on:
+There is one logical gem and no separately published semantics gem. Each
+release consists of four platform-specific `upkeep-rails` artifacts:
 
 - `x86_64-linux-gnu`;
 - `aarch64-linux-gnu`;
 - `x86_64-darwin`; and
 - `arm64-darwin`.
 
+The native library is built in release CI and included in each artifact.
+Cargo sources remain private repository/build inputs and are not shipped in
+the gem, so installation never requires Rust. There is deliberately no generic
+source artifact. This release requires a full reinstall on a supported
+platform.
+
+When the semantic APIs are accepted upstream, the embedded extension can be
+deleted and `upkeep-rails` can use `sqlglot` directly without changing its
+callers.
+
 The v0.10.12 scope builder exposes a CTE child correctly but overwrites the
-outer CTE source with a table-shaped source. The sibling preserves that
+outer CTE source with a table-shaped source. The extension preserves that
 upstream result shape. Upkeep does not treat a scope table as physical unless
 it exists in `MappingSchema`; the AST lowerer resolves the logical CTE to its
 physical child and scope validation checks every schema-backed source.
@@ -137,8 +147,8 @@ joins, grouping, ordering, and explicit projections is retained.
 - Run the full Upkeep suite.
 - Benchmark parsing separately from invalidation fan-out. This milestone does
   not add an Upkeep-owned analysis or schema cache.
-- Add native semantic sibling bindings with the matching API described above.
-  The sibling keeps Upkeep unblocked; upstream adoption later removes it
+- Add embedded native semantic bindings with the matching API described above.
+  The extension keeps Upkeep unblocked; upstream adoption later removes it
   without changing callers.
 
 ## Oracle exit criteria
@@ -155,7 +165,7 @@ Arel can be deleted after:
 
 ## Current milestone
 
-This milestone is complete: SQLGlot plus the semantic sibling is the only
+This milestone is complete: SQLGlot plus the embedded semantic extension is the only
 production path, the former oracle outputs are frozen as ordinary expected
 values, and the Arel collector has been deleted. Remaining Arel usage in tests
 constructs Active Record input queries only; no Upkeep analyzer inspects Arel.
@@ -177,12 +187,12 @@ Completed:
   the collector and its test-support require.
 - [x] Added direct raw-SQL coverage, including correlated subqueries, CTEs,
   set operations, PostgreSQL operators, and MySQL/SQLite functions.
-- [x] Added the independently packaged `sqlglot-semantics` sibling with
-  `MappingSchema`, `qualify_columns`, `build_scope`, and `lineage`.
+- [x] Embedded `MappingSchema`, `qualify_columns`, `build_scope`, and `lineage`
+  in `upkeep-rails`, matching the established SQLGlot APIs.
 - [x] Preserved Rust scope and lineage fields and locked the v0.10.12 CTE
   behavior in a binding test.
-- [x] Added native gem packaging for macOS/Linux on arm64/x86-64 and verified
-  an isolated precompiled-gem reinstall on `arm64-darwin`.
+- [x] Added four platform-specific `upkeep-rails` artifacts for macOS/Linux on
+  arm64/x86-64, with no source gem or install-time Cargo build.
 - [x] Added an adapter corpus for PostgreSQL, MySQL, and SQLite.
 - [x] Added a warm semantic-analysis performance gate with a 2 ms CI budget;
   the local 10,000-iteration mean is approximately 146 µs.
@@ -194,5 +204,5 @@ Upstream follow-up:
 
 - [ ] Submit the semantic Ruby bindings to `sql-glot-ruby`.
 - [ ] Submit the CTE source-overwrite fix to `sql-glot-rust`.
-- [ ] Replace the sibling dependency with upstream releases once both are
+- [ ] Delete the embedded extension in favor of upstream releases once both are
   available, without changing Upkeep callers.

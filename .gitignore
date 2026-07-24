@@ -13,10 +13,9 @@
 /test/tmp/
 /tmp/
 /results/
-/sqlglot-semantics/ext/sqlglot_semantics/target/
-/sqlglot-semantics/ext/sqlglot_semantics/Makefile
-/sqlglot-semantics/lib/sqlglot/semantics/libsqlglot_semantics.*
-/sqlglot-semantics/pkg/
+/ext/upkeep_sqlglot_semantics/target/
+/ext/upkeep_sqlglot_semantics/Makefile
+/lib/upkeep/sqlglot_semantics/libupkeep_sqlglot_semantics.*
 /benchmark/results/
 /benchmark/**/.bundle/
 /benchmark/**/Gemfile.lock

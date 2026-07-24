@@ -31,6 +31,7 @@ Gem::Specification.new do |spec|
     lib/upkeep/templates.rb
   ]
 
+  native_platform = ENV["UPKEEP_NATIVE_PLATFORM"]
   spec.files = (Dir[
     "README.md",
     "docs/**/*.md",
@@ -39,6 +40,17 @@ Gem::Specification.new do |spec|
     "lib/**/*.rb",
     "lib/generators/**/templates/**/*"
   ] - internal_files).sort
+
+  if native_platform
+    native_libraries = Dir[
+      "lib/upkeep/sqlglot_semantics/libupkeep_sqlglot_semantics.{so,dylib,dll}"
+    ]
+    raise "native library is required for platform gem #{native_platform}" if native_libraries.empty?
+
+    spec.platform = native_platform
+    spec.files.concat(native_libraries)
+  end
+
   spec.require_paths = [ "lib" ]
 
   spec.add_dependency "actionview", ">= 7.1", "< 9.0"
@@ -50,6 +62,5 @@ Gem::Specification.new do |spec|
   spec.add_dependency "nokogiri", ">= 1.15", "< 2.0"
   spec.add_dependency "railties", ">= 7.1", "< 9.0"
   spec.add_dependency "sqlglot", "= 0.1.1"
-  spec.add_dependency "sqlglot-semantics", "= 0.1.0"
   spec.add_dependency "turbo-rails", ">= 2.0", "< 3.0"
 end

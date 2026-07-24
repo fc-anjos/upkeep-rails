@@ -1,10 +1,11 @@
 [package]
-name = "sqlglot-semantics"
+name = "upkeep-sqlglot-semantics"
 version = "0.1.0"
 edition = "2024"
 publish = false
 
 [lib]
+name = "upkeep_sqlglot_semantics"
 crate-type = ["cdylib"]
 
 [dependencies]

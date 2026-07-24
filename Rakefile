@@ -2,13 +2,44 @@
 
 require "bundler"
 require "bundler/gem_tasks"
+require "fileutils"
 require "rake/testtask"
 require "rbconfig"
+require_relative "lib/upkeep/version"
 
-Rake::TestTask.new(:test) do |task|
+namespace :native do
+  desc "Build Upkeep's SQLGlot semantic extension for the current platform"
+  task :build do
+    ruby File.expand_path("ext/upkeep_sqlglot_semantics/extconf.rb", __dir__)
+  end
+
+  desc "Build a platform-specific upkeep-rails gem"
+  task package: :build do
+    platform = ENV.fetch("PLATFORM") do
+      Gem::Platform.local.to_s.sub(/-\d+\z/, "")
+    end
+    output = File.expand_path(
+      "pkg/upkeep-rails-#{Upkeep::VERSION}-#{platform}.gem",
+      __dir__
+    )
+    FileUtils.mkdir_p(File.dirname(output))
+
+    sh(
+      {"UPKEEP_NATIVE_PLATFORM" => platform},
+      RbConfig.ruby,
+      "-S",
+      "gem",
+      "build",
+      "upkeep-rails.gemspec",
+      "--output",
+      output
+    )
+  end
+end
+
+Rake::TestTask.new(test: "native:build") do |task|
   task.libs << "test"
   task.libs << "lib"
-  task.libs << "sqlglot-semantics/lib"
   task.test_files = FileList["test/**/*_test.rb"]
 end
 

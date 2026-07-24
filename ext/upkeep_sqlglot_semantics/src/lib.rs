@@ -235,9 +235,9 @@ fn response(result: Result<Value, String>) -> *mut c_char {
 ///
 /// Every pointer must be null or point to a valid NUL-terminated UTF-8 string
 /// for the duration of the call. The returned pointer must be released exactly
-/// once with [`sqlglot_semantics_free`].
+/// once with [`upkeep_sqlglot_semantics_free`].
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn sqlglot_semantics_qualify_columns(
+pub unsafe extern "C" fn upkeep_sqlglot_semantics_qualify_columns(
     statement_json: *const c_char,
     schema_json: *const c_char,
     dialect: *const c_char,
@@ -257,9 +257,9 @@ pub unsafe extern "C" fn sqlglot_semantics_qualify_columns(
 ///
 /// `statement_json` must be null or point to a valid NUL-terminated UTF-8
 /// string for the duration of the call. The returned pointer must be released
-/// exactly once with [`sqlglot_semantics_free`].
+/// exactly once with [`upkeep_sqlglot_semantics_free`].
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn sqlglot_semantics_build_scope(
+pub unsafe extern "C" fn upkeep_sqlglot_semantics_build_scope(
     statement_json: *const c_char,
 ) -> *mut c_char {
     response((|| {
@@ -273,9 +273,9 @@ pub unsafe extern "C" fn sqlglot_semantics_build_scope(
 ///
 /// Every pointer must be null or point to a valid NUL-terminated UTF-8 string
 /// for the duration of the call. The returned pointer must be released exactly
-/// once with [`sqlglot_semantics_free`].
+/// once with [`upkeep_sqlglot_semantics_free`].
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn sqlglot_semantics_lineage(
+pub unsafe extern "C" fn upkeep_sqlglot_semantics_lineage(
     column: *const c_char,
     statement_json: *const c_char,
     schema_json: *const c_char,
@@ -291,11 +291,6 @@ pub unsafe extern "C" fn sqlglot_semantics_lineage(
     })())
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn sqlglot_semantics_version() -> *const c_char {
-    concat!("0.1.0", "\0").as_ptr().cast()
-}
-
 /// Release a response allocated by this library.
 ///
 /// # Safety
@@ -303,7 +298,7 @@ pub extern "C" fn sqlglot_semantics_version() -> *const c_char {
 /// `pointer` must be null or a pointer returned by this library that has not
 /// already been freed.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn sqlglot_semantics_free(pointer: *mut c_char) {
+pub unsafe extern "C" fn upkeep_sqlglot_semantics_free(pointer: *mut c_char) {
     if !pointer.is_null() {
         drop(unsafe { CString::from_raw(pointer) });
     }
