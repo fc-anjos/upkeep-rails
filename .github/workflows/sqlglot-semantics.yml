@@ -14,6 +14,9 @@ on:
       - "v*"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   platform-gem:
     name: ${{ matrix.platform }}
@@ -44,6 +47,12 @@ jobs:
       - name: Install Ruby dependencies
         run: ruby -S gem install sqlglot:0.1.1 minitest rake bundler --no-document
 
+      - name: Validate release tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version=$(ruby -Ilib -rupkeep/version -e "print Upkeep::VERSION")
+          test "${GITHUB_REF_NAME}" = "v${version}"
+
       - name: Test and package
         run: |
           ruby -S rake native:build
@@ -55,3 +64,40 @@ jobs:
           name: upkeep-rails-${{ matrix.platform }}
           path: pkg/upkeep-rails-*.gem
           if-no-files-found: error
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: platform-gem
+    runs-on: ubuntu-24.04
+    environment: release
+
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: upkeep-rails-*
+          path: pkg
+          merge-multiple: true
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+
+      - name: Verify release artifacts
+        run: |
+          gem_count=$(find pkg -maxdepth 1 -name "upkeep-rails-*.gem" | wc -l)
+          test "${gem_count}" -eq 4
+          for package in pkg/*.gem
+          do
+            gem specification "${package}" name
+            gem specification "${package}" version
+            gem specification "${package}" platform
+          done
+
+      - name: Publish platform gems
+        env:
+          GEM_HOST_API_KEY: ${{ secrets.RUBYGEMS_API_KEY }}
+        run: |
+          for package in pkg/*.gem
+          do
+            gem push "${package}"
+          done
