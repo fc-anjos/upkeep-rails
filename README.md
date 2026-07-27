@@ -51,8 +51,8 @@ Requirements: Ruby 3.2+, Rails 7.1+, Turbo 2.0+.
 
 Releases are precompiled for `x86_64-linux-gnu`, `aarch64-linux-gnu`,
 `x86_64-darwin`, and `arm64-darwin`. Installing Upkeep does not require Rust.
-The SQLGlot release is a breaking change and requires a full bundle reinstall;
-mixed installs from an earlier version are not supported.
+Upkeep 0.2 requires a full bundle reinstall so Bundler selects the matching
+SQLGlot and Upkeep platform gems; mixed installs with 0.1 are not supported.
 
 ## Configure runtime
 
