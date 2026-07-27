@@ -4,7 +4,6 @@ require "minitest/autorun"
 require "sqlglot"
 require_relative "sqlglot_dependency_extractor"
 
-# Exercises query shapes that Active Record exposes as opaque SQL literals.
 class SqlglotQueryAnalysisTest < Minitest::Test
   Case = Data.define(:name, :dialect, :sql, :tables)
 

@@ -4,9 +4,6 @@ require "minitest/autorun"
 require "sqlglot"
 require_relative "sqlglot_dependency_extractor"
 
-# PostgreSQL emitted-SQL equivalents of the query shapes rewritten in
-# fetchly/Pulse#1802. These deliberately test the SQLGlot fallback rather than
-# the replacement Arel, so values that Active Record would bind are inlined.
 class Pulse1802EdgeCasesTest < Minitest::Test
   Case = Data.define(:name, :pr_source, :sql, :tables)
 

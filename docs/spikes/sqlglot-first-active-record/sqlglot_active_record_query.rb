@@ -3,8 +3,6 @@
 require "set"
 require "sqlglot"
 
-# A deliberately isolated SQL-first decoder. It consumes Relation#to_sql and model
-# schema metadata, but never Relation#arel or an Arel node.
 module SqlglotActiveRecordQuery
   Analysis = Data.define(
     :primary_table,
@@ -77,7 +75,7 @@ module SqlglotActiveRecordQuery
         before = @table_columns.keys.to_set
         process_query(cte["query"], outer_sources: outer_sources, visible_ctes: ctes)
         discovered = @table_columns.keys.to_set - before
-        # Existing tables may be reused by a CTE, so also inspect its tree directly.
+        # A CTE can reuse a table discovered elsewhere.
         discovered.merge(physical_tables_in(cte["query"], ctes))
         ctes[cte["name"]] = Source.new(discovered.to_a)
       end
@@ -86,10 +84,6 @@ module SqlglotActiveRecordQuery
       visible_sources = outer_sources.merge(local_sources)
 
       walk_select_body(select, sources: visible_sources, visible_ctes: ctes)
-      Array(select["ctes"]).each do |cte|
-        # CTE bodies were already processed with their own source scope.
-        next
-      end
     end
 
     def process_query(query, outer_sources:, visible_ctes:)

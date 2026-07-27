@@ -229,13 +229,9 @@ fn response(result: Result<Value, String>) -> *mut c_char {
         .unwrap_or(ptr::null_mut())
 }
 
-/// Qualify a serialized SQLGlot statement with a serialized MappingSchema.
-///
 /// # Safety
-///
-/// Every pointer must be null or point to a valid NUL-terminated UTF-8 string
-/// for the duration of the call. The returned pointer must be released exactly
-/// once with [`upkeep_sqlglot_semantics_free`].
+/// Inputs must be valid NUL-terminated UTF-8 strings. Free the result with
+/// [`upkeep_sqlglot_semantics_free`].
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn upkeep_sqlglot_semantics_qualify_columns(
     statement_json: *const c_char,
@@ -251,13 +247,9 @@ pub unsafe extern "C" fn upkeep_sqlglot_semantics_qualify_columns(
     })())
 }
 
-/// Build a scope tree from a serialized SQLGlot statement.
-///
 /// # Safety
-///
-/// `statement_json` must be null or point to a valid NUL-terminated UTF-8
-/// string for the duration of the call. The returned pointer must be released
-/// exactly once with [`upkeep_sqlglot_semantics_free`].
+/// `statement_json` must be a valid NUL-terminated UTF-8 string. Free the
+/// result with [`upkeep_sqlglot_semantics_free`].
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn upkeep_sqlglot_semantics_build_scope(
     statement_json: *const c_char,
@@ -267,13 +259,9 @@ pub unsafe extern "C" fn upkeep_sqlglot_semantics_build_scope(
     })())
 }
 
-/// Build output-column lineage from serialized SQLGlot inputs.
-///
 /// # Safety
-///
-/// Every pointer must be null or point to a valid NUL-terminated UTF-8 string
-/// for the duration of the call. The returned pointer must be released exactly
-/// once with [`upkeep_sqlglot_semantics_free`].
+/// Inputs must be valid NUL-terminated UTF-8 strings. Free the result with
+/// [`upkeep_sqlglot_semantics_free`].
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn upkeep_sqlglot_semantics_lineage(
     column: *const c_char,
@@ -291,12 +279,8 @@ pub unsafe extern "C" fn upkeep_sqlglot_semantics_lineage(
     })())
 }
 
-/// Release a response allocated by this library.
-///
 /// # Safety
-///
-/// `pointer` must be null or a pointer returned by this library that has not
-/// already been freed.
+/// `pointer` must be null or an unfreed pointer returned by this library.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn upkeep_sqlglot_semantics_free(pointer: *mut c_char) {
     if !pointer.is_null() {

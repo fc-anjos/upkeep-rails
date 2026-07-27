@@ -3,8 +3,6 @@
 require "set"
 
 module Upkeep
-  # Lowers a SQLGlot statement into the small, generic dependency contract
-  # needed by Upkeep. This layer knows SQL, not Active Record or Arel.
   module SQLDependencyAnalysis
     class UnsupportedError < StandardError; end
 
@@ -24,20 +22,11 @@ module Upkeep
 
     module_function
 
-    # @param statement [Hash] AST returned by Sqlglot.parse
-    # @param schema [Hash<String, Hash<String, String>>] SQLGlot-compatible
-    #   table/column/type mapping.
-    # @param scope [Sqlglot::Scope, nil] optional scope returned by
-    #   Sqlglot.build_scope for semantic completeness validation.
     def analyze(statement, schema:, scope: nil)
       Analyzer.new(statement, schema: schema, scope: scope).analyze
     end
 
-    # SQLGlot's established qualify_columns pass expands SELECT wildcards.
-    # Upkeep uses qualification for source resolution, but collection
-    # invalidation must not turn SELECT table.* into every table column: record
-    # rendering tracks those attributes separately. Restore wildcard
-    # projections while retaining qualification everywhere else.
+    # Record rendering tracks wildcard attributes separately from collections.
     def preserve_wildcard_projections(original, qualified)
       ProjectionPreserver.new(original, qualified).call
     end

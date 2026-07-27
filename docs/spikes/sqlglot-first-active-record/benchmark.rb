@@ -28,8 +28,6 @@ relation = BenchmarkCard
 
 iterations = Integer(ENV.fetch("N", "1000"))
 
-# The Arel decoder cannot accept this raw query, so use an equivalent structured
-# single-table relation for its parse/walk timing and measure SQLGlot on both.
 structured = BenchmarkCard.where(status: %w[open blocked]).order(:position)
 
 def elapsed(iterations)
@@ -39,7 +37,6 @@ ensure
   GC.enable
 end
 
-# Warm native loading and Active Record schema caches.
 Upkeep::ActiveRecordQuery.analyze(structured)
 SqlglotActiveRecordQuery.analyze(structured)
 SqlglotActiveRecordQuery.analyze(relation)

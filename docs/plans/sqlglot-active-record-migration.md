@@ -203,6 +203,11 @@ Completed:
 Upstream follow-up:
 
 - [ ] Submit the semantic Ruby bindings to `sql-glot-ruby`.
-- [ ] Submit the CTE source-overwrite fix to `sql-glot-rust`.
+- [x] Merge the CTE source-overwrite fix in `sql-glot-rust`; it shipped in
+      v0.10.24 through
+      [`protegrity/sql-glot-rust#26`](https://github.com/protegrity/sql-glot-rust/pull/26).
+- [ ] Merge and release the Rust semantic C ABI. A fork-only draft is open for
+      review at
+      [`fc-anjos/sql-glot-rust#1`](https://github.com/fc-anjos/sql-glot-rust/pull/1).
 - [ ] Delete the embedded extension in favor of upstream releases once both are
   available, without changing Upkeep callers.

@@ -3,7 +3,6 @@
 require "sqlglot"
 require "set"
 
-# Minimal table-only extraction suitable for conservative invalidation.
 module SqlglotDependencyExtractor
   module_function
 

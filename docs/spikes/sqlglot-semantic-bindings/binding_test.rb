@@ -50,9 +50,7 @@ class SqlglotSemanticBindingTest < Minitest::Test
     SQL
 
     root = result.fetch("scope")
-    # v0.10.12 currently leaves this as a table source rather than linking it
-    # to the CTE child scope. Keep the assertion so an upstream upgrade makes
-    # the behavior change visible instead of silently changing our decoder.
+    # v0.10.12 reports the CTE reference as a table source.
     assert_equal "table", root.fetch("sources").fetch("active_cards").fetch("kind")
     cte = all_scopes(root).find { |scope| scope.fetch("scope_type") == "Cte" }
     assert_equal "cards", cte.fetch("sources").fetch("cards").fetch("physical_name")

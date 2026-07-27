@@ -100,7 +100,6 @@ class SqlglotActiveRecordQueryTest < Minitest::Test
     SQL
     relation = SpikeCard.from("(#{sql}) AS cards")
 
-    # Active Record wraps this SQL, exercising a derived source containing a CTE.
     analysis = analyze(relation)
     assert_equal %w[cards efforts], analysis.tables
     refute_includes analysis.tables, "active_efforts"
