@@ -10,6 +10,10 @@ class TouchEventCard < ActiveRecord::Base
   self.table_name = "touch_event_cards"
 end
 
+class ChangeEventDetail < ActiveRecord::Base
+  self.table_name = "change_event_details"
+end
+
 class ChangeEventsTest < Minitest::Test
   def setup
     Upkeep::Rails::Install.call
@@ -28,6 +32,11 @@ class ChangeEventsTest < Minitest::Test
       create_table :touch_event_cards, force: true do |table|
         table.string :title, null: false
         table.timestamps
+      end
+
+      create_table :change_event_details, force: true do |table|
+        table.integer :card_id, null: false
+        table.string :note, null: false
       end
     end
 
@@ -312,23 +321,43 @@ class ChangeEventsTest < Minitest::Test
     refute_includes recorder.graph.summary.fetch(:dependency_sources), "active_record_query"
   end
 
-  def test_opaque_pluck_column_raises_before_querying
+  def test_sql_projection_pluck_records_its_dependencies
     ChangeEventCard.create!(title: "Plan", status: "open", position: 1)
-    select_sql = []
-    subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |_name, _started, _finished, _id, payload|
-      sql = payload[:sql].to_s
-      select_sql << sql if sql.start_with?("SELECT") && sql.include?('"change_event_cards"')
-    end
 
-    error = assert_raises(Upkeep::ActiveRecordQuery::OpaqueRelationError) do
-      Upkeep::Runtime::Observation.capture_request do
+    result, recorder = Upkeep::Runtime::Observation.capture_request do
+      Upkeep::Runtime::Observation.capture_frame("page:test", kind: "page") do
         ChangeEventCard.where(status: "open").pluck("LOWER(title)")
       end
     end
 
-    assert_includes error.message, "opaque pluck column"
-    assert_empty select_sql
-  ensure
-    ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
+    dependency = recorder.graph.dependency_nodes.map(&:payload).find do |candidate|
+      candidate.source == :active_record_query
+    end
+
+    assert_equal ["plan"], result
+    assert dependency
+    assert_includes dependency.metadata.fetch(:table_columns).fetch("change_event_cards"), "status"
+    assert_includes dependency.metadata.fetch(:table_columns).fetch("change_event_cards"), "title"
+  end
+
+  def test_joined_projection_pluck_records_columns_on_each_table
+    card = ChangeEventCard.create!(title: "Plan", status: "open", position: 1)
+    ChangeEventDetail.create!(card_id: card.id, note: "Ready")
+
+    result, recorder = Upkeep::Runtime::Observation.capture_request do
+      Upkeep::Runtime::Observation.capture_frame("page:test", kind: "page") do
+        ChangeEventCard
+          .joins("LEFT OUTER JOIN change_event_details ON change_event_details.card_id = change_event_cards.id")
+          .pluck("change_event_cards.title", "change_event_details.note")
+      end
+    end
+
+    dependency = recorder.graph.dependency_nodes.map(&:payload).find do |candidate|
+      candidate.source == :active_record_query
+    end
+
+    assert_equal [["Plan", "Ready"]], result
+    assert_includes dependency.metadata.fetch(:table_columns).fetch("change_event_cards"), "title"
+    assert_includes dependency.metadata.fetch(:table_columns).fetch("change_event_details"), "note"
   end
 end
