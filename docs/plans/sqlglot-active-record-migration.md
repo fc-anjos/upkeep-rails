@@ -60,19 +60,20 @@ SQLGlot platform dependency is installed cleanly.
 
 ## Embedded semantic extension
 
-`upkeep-rails` depends on `sqlglot` 0.1.1 and temporarily embeds the missing
+`upkeep-rails` depends on `sqlglot` 0.1.x and temporarily embeds the missing
 semantic bindings, pinned to `sql-glot-rust` v0.10.12. The extension's public
 API reopens the `Sqlglot` namespace with the established Rust primitives; its
 private C ABI contains one function per primitive and no combined Upkeep
 analyzer.
 
 There is one logical gem and no separately published semantics gem. Each
-release consists of four platform-specific `upkeep-rails` artifacts:
+release consists of five platform-specific `upkeep-rails` artifacts:
 
 - `x86_64-linux-gnu`;
 - `aarch64-linux-gnu`;
-- `x86_64-darwin`; and
-- `arm64-darwin`.
+- `x86_64-darwin`;
+- `arm64-darwin`; and
+- `x64-mingw-ucrt`.
 
 The native library is built in release CI and included in each artifact.
 Cargo sources remain private repository/build inputs and are not shipped in
@@ -191,8 +192,8 @@ Completed:
   in `upkeep-rails`, matching the established SQLGlot APIs.
 - [x] Preserved Rust scope and lineage fields and locked the v0.10.12 CTE
   behavior in a binding test.
-- [x] Added four platform-specific `upkeep-rails` artifacts for macOS/Linux on
-  arm64/x86-64, with no source gem or install-time Cargo build.
+- [x] Added five platform-specific `upkeep-rails` artifacts for macOS, Linux,
+  and Windows, with no source gem or install-time Cargo build.
 - [x] Added an adapter corpus for PostgreSQL, MySQL, and SQLite.
 - [x] Added a warm semantic-analysis performance gate with a 2 ms CI budget;
   the local 10,000-iteration mean is approximately 146 µs.

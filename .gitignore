@@ -16,6 +16,7 @@
 /ext/upkeep_sqlglot_semantics/target/
 /ext/upkeep_sqlglot_semantics/Makefile
 /lib/upkeep/sqlglot_semantics/libupkeep_sqlglot_semantics.*
+/lib/upkeep/sqlglot_semantics/upkeep_sqlglot_semantics.*
 /benchmark/results/
 /benchmark/**/.bundle/
 /benchmark/**/Gemfile.lock

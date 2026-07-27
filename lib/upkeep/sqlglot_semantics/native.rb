@@ -3,6 +3,7 @@
 require "ffi"
 require "json"
 require "sqlglot"
+require_relative "native_library"
 
 module Upkeep
   module SqlglotSemantics
@@ -21,18 +22,20 @@ module Upkeep
         return override if override && File.file?(override)
 
         gem_root = File.expand_path("../../..", __dir__)
-        candidates = [
-          File.join(__dir__, "lib#{LIB_NAME}.#{SOEXT}"),
+        installed = NativeLibrary.find(__dir__, extensions: [SOEXT])
+        return installed if installed
+
+        development = NativeLibrary.find(
           File.join(
             gem_root,
             "ext",
             "upkeep_sqlglot_semantics",
             "target",
-            "release",
-            "lib#{LIB_NAME}.#{SOEXT}"
-          )
-        ]
-        candidates.find { |candidate| File.file?(candidate) } || LIB_NAME
+            "release"
+          ),
+          extensions: [SOEXT]
+        )
+        development || LIB_NAME
       end
 
       begin
