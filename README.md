@@ -50,7 +50,8 @@ This creates the subscription tables, writes an initializer, mounts ActionCable 
 Requirements: Ruby 3.2+, Rails 7.1+, Turbo 2.0+.
 
 Releases are precompiled for `x86_64-linux-gnu`, `aarch64-linux-gnu`,
-`x86_64-darwin`, and `arm64-darwin`. Installing Upkeep does not require Rust.
+`x86_64-darwin`, `arm64-darwin`, and `x64-mingw-ucrt`. Installing Upkeep does
+not require Rust.
 Upkeep 0.2 requires a full bundle reinstall so Bundler selects the matching
 SQLGlot and Upkeep platform gems; mixed installs with 0.1 are not supported.
 
