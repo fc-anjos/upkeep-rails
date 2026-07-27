@@ -77,6 +77,12 @@ The server stores a replayable subscription graph for the rendered page. The
 graph contains frames, dependencies, target metadata, replay recipes, request
 inputs, and identity information needed to plan later updates.
 
+Turbo Frames are graph scopes inside that page subscription. A frame response
+replaces the matching scope while the shell and sibling scopes remain intact.
+The browser connects the composed subscription before disconnecting the
+previous one, so a frame visit never leaves the visible page without its full
+dependency graph.
+
 ## Proven Delivery
 
 Proven delivery means Upkeep only emits the narrowest Turbo operation it can

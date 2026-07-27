@@ -100,6 +100,19 @@ module Upkeep
         new(graph: DAG::Graph.from_h(snapshot.fetch(:graph)))
       end
 
+      def replace_scope(scope_id, replacement)
+        composed = if graph.node?(scope_id)
+          graph.replace_subgraph(scope_id, replacement.graph)
+        else
+          graph.attach_subgraph(
+            scope_id,
+            replacement.graph,
+            parent_id: REQUEST_NODE_ID
+          )
+        end
+        self.class.new(graph: composed)
+      end
+
       def to_h(dependencies: :all)
         flush_pending_dependencies
         { graph: graph.to_h(dependencies: dependencies) }

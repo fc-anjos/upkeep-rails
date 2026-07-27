@@ -365,6 +365,26 @@ class ActiveRecordSubscriptionStoreTest < Minitest::Test
     assert_includes plan.targets.first.render, "Plan v2"
   end
 
+  def test_fetch_for_composition_rehydrates_dependency_owners_from_persistence
+    create_subscription_card!("Plan")
+    _html, recorder = capture_controller_request("/cards?status=open")
+    store = active_record_store
+    subscription = store.register(
+      subscriber_id: "subscriber-a",
+      recorder: recorder,
+      metadata: { stream_name: "stream-a" }
+    )
+
+    reloaded = active_record_store.fetch_for_composition(subscription.id)
+
+    assert_equal recorder.graph.dependency_nodes.map(&:id).sort_by(&:inspect),
+      reloaded.graph.dependency_nodes.map(&:id).sort_by(&:inspect)
+    recorder.graph.nodes.each_key do |owner_id|
+      assert_equal recorder.graph.dependencies_for(owner_id).map(&:cache_key).sort_by(&:inspect),
+        reloaded.graph.dependencies_for(owner_id).map(&:cache_key).sort_by(&:inspect)
+    end
+  end
+
   def test_register_reports_store_timing_metadata
     create_subscription_card!("Plan")
 

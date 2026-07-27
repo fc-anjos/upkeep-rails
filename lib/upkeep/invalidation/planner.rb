@@ -217,6 +217,8 @@ module Upkeep
           Targeting::Target.new("render_site", frame.payload.fetch(:site_id), "render-site dependency matched committed change")
         when "fragment"
           Targeting::Target.new("fragment", frame.id, "record attribute read matched committed attributes")
+        when "turbo_frame"
+          Targeting::Target.new("turbo_frame", frame.payload.fetch(:target_id), "Turbo Frame dependency matched committed change")
         end
       end
 

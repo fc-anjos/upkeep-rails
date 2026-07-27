@@ -39,13 +39,16 @@ module Upkeep
       RefusedCollection = Data.define(:reason, :message, :suggestions, :error)
 
       def install
-        return if @installed
+        unless @installed
+          ::ActionView::Template.prepend(TemplateHook)
+          ::ActionView::CollectionRenderer.prepend(CollectionRendererHook)
+          ::ActionView::Base.include(ViewHelpers)
+          @installed = true
+        end
 
-        ::ActionView::Template.prepend(TemplateHook)
-        ::ActionView::CollectionRenderer.prepend(CollectionRendererHook)
-        ::ActionView::Base.include(ViewHelpers)
-
-        @installed = true
+        if defined?(::Turbo::FramesHelper) && !::Turbo::FramesHelper.ancestors.include?(TurboFrameHelperHook)
+          ::Turbo::FramesHelper.prepend(TurboFrameHelperHook)
+        end
       end
 
       def installed?
@@ -54,6 +57,14 @@ module Upkeep
 
       def capture_template(template, view, locals, implicit_locals:, add_to_stack:, block:)
         instrument_template_source!(template)
+        unless Runtime::Observation.recording?
+          return yield unless template.identifier.to_s.end_with?(".erb")
+
+          metadata = template_static_metadata(template)
+          frame_id = frame_id_for_template(metadata, locals)
+          return with_frame_id(frame_id) { yield }
+        end
+
         captured_locals = locals.dup
         metadata = template_metadata(template, captured_locals)
         controller = controller_for_view(view)
@@ -114,6 +125,47 @@ module Upkeep
           record_collection_dependency(collection, collection_analysis: collection_analysis)
           yield
         end
+      end
+
+      def capture_turbo_frame(view, target_id)
+        return yield unless Runtime::Observation.recording?
+
+        frame_id = "turbo_frame:#{target_id}"
+        controller = controller_for_view(view)
+        metadata = {
+          kind: "turbo_frame",
+          target_id: target_id.to_s
+        }
+        metadata[:controller] = controller_metadata(controller) if controller
+        recipe = turbo_frame_recipe(frame_id: frame_id, target_id: target_id, controller: controller)
+
+        Runtime::Observation.capture_frame(frame_id, metadata.merge(recipe: recipe).compact) { yield }
+      end
+
+      def turbo_frame_recipe(frame_id:, target_id:, controller:)
+        return unless controller
+
+        ambient_inputs = request_ambient_replay_inputs
+        replay = ::Upkeep::Replay::ControllerTurboFrame.new(
+          controller_class: controller.class.name,
+          action: controller.action_name,
+          env: serializable_replay_env(
+            controller.request.env,
+            path_parameters: controller.request.path_parameters,
+            ambient_inputs: ambient_inputs
+          ),
+          target_id: target_id.to_s
+        )
+
+        ::Upkeep::Replay::Recipe.new(
+          kind: :turbo_frame,
+          frame_id: frame_id,
+          target_kind: "turbo_frame",
+          target_id: target_id.to_s,
+          metadata: { kind: "turbo_frame", target_id: target_id.to_s },
+          runtime: "rails",
+          replay: replay
+        )
       end
 
       def collection_analysis(collection)
@@ -522,6 +574,22 @@ module Upkeep
           "fragment:rails:#{metadata.fetch(:template)}:#{locals_identity(locals)}"
         else
           "page:rails:#{metadata.fetch(:template)}"
+        end
+      end
+
+      module TurboFrameHelperHook
+        def turbo_frame_tag(*ids, src: nil, target: nil, **attributes, &block)
+          return super unless block
+
+          target_id = if ids.first.respond_to?(:to_key) || ids.first.is_a?(Class)
+            ActionView::RecordIdentifier.dom_id(*ids)
+          else
+            ids.join("_")
+          end
+
+          super(*ids, src: src, target: target, **attributes) do
+            ActionViewCapture.capture_turbo_frame(self, target_id) { block.call }
+          end
         end
       end
 

@@ -6,6 +6,11 @@ module Upkeep
   module Rails
     module ClientSubscription
       CHANNEL = "Upkeep::Rails::Cable::Channel"
+      ID_HEADER = "X-Upkeep-Subscription-Id"
+      TOKEN_HEADER = "X-Upkeep-Subscription-Token"
+      CHANNEL_HEADER = "X-Upkeep-Subscription-Channel"
+      STREAM_HEADER = "X-Upkeep-Subscription-Stream"
+      ACTION_HEADER = "X-Upkeep-Subscription-Action"
 
       module_function
 
@@ -18,20 +23,35 @@ module Upkeep
       # The payload travels as attributes (like turbo-cable-stream-source), never
       # as text content, so it can't show up as page text when JS is absent.
       def marker_for(identity:, subscription:)
-        attributes = {
-          "id" => "upkeep-subscription-source-#{subscription.id}",
+        attributes = payload_for(identity: identity, subscription: subscription).merge(
+          "id" => "upkeep-subscription-source"
+        )
+
+        [
+          %(<upkeep-subscription-source ),
+          attributes.map { |name, value| %(#{name}="#{CGI.escapeHTML(value.to_s)}") }.join(" "),
+          %( hidden style="display:none" data-upkeep-subscription>),
+          %(</upkeep-subscription-source>)
+        ].join
+      end
+
+      def headers_for(identity:, subscription:)
+        payload = payload_for(identity: identity, subscription: subscription)
+        {
+          ID_HEADER => payload.fetch("subscription-id"),
+          TOKEN_HEADER => payload.fetch("activation-token"),
+          CHANNEL_HEADER => payload.fetch("channel"),
+          STREAM_HEADER => payload.fetch("stream-name")
+        }
+      end
+
+      def payload_for(identity:, subscription:)
+        {
           "channel" => CHANNEL,
           "subscription-id" => subscription.id,
           "activation-token" => ActivationToken.generate(subscription),
           "stream-name" => identity.stream_name
         }
-
-        [
-          %(<upkeep-subscription-source ),
-          attributes.map { |name, value| %(#{name}="#{CGI.escapeHTML(value.to_s)}") }.join(" "),
-          %( hidden style="display:none" data-upkeep-subscription data-turbo-temporary>),
-          %(</upkeep-subscription-source>)
-        ].join
       end
 
       def insert_before_closing(tag, html, marker)

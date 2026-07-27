@@ -57,33 +57,49 @@ module Upkeep
       end
 
       def register_controller_subscription(controller, capture)
-        recorder = capture.recorder
         return unless subscription_response?(controller, capture)
 
-        decision = Cable::SubscriberIdentity.decision_for(controller.request, recorder: recorder)
-        unless recorder.reactive?
+        unless capture.recorder.reactive?
+          decision = Cable::SubscriberIdentity.decision_for(controller.request, recorder: capture.recorder)
+          request_subscription_reload(controller, "refused_boundary") if controller.request.headers["Turbo-Frame"].present?
           instrument_subscription_identity(
             decision,
             registered: false,
             deopt_reason: "refused_boundary",
-            refused_boundaries: recorder.refused_boundaries.map(&:reason)
+            refused_boundaries: capture.recorder.refused_boundaries.map(&:reason)
           )
           return
         end
+
+        recorder, base_subscription = controller_subscription_recorder(controller, capture)
+        return unless recorder
+
+        decision = Cable::SubscriberIdentity.decision_for(controller.request, recorder: recorder)
 
         identity = Cable::SubscriberIdentity.derive_from_request(
           controller.request,
           recorder: recorder,
           decision: decision
         )
+        unless replacement_identity_valid?(base_subscription, identity)
+          request_subscription_reload(controller, "subscriber_identity_changed")
+          instrument_subscription_identity(decision, registered: false, deopt_reason: "subscriber_identity_changed")
+          return
+        end
+
+        request_signature = base_subscription ?
+          metadata_value(base_subscription, :request_signature) :
+          capture.signature
         registration = subscription_registrar.register(
           identity: identity,
           decision: decision,
           recorder: recorder,
-          signature: capture.signature,
+          signature: request_signature,
           metadata: identity_metadata(decision).merge(
-            path: controller.request.fullpath,
-            stream_name: identity.stream_name
+            path: base_subscription ? metadata_value(base_subscription, :path) : controller.request.fullpath,
+            stream_name: identity.stream_name,
+            request_signature: request_signature.respond_to?(:to_h) ? request_signature.to_h : request_signature,
+            replaces_subscription_id: base_subscription&.id
           )
         )
         instrument_subscription_identity(decision, registered: true, subscription: registration.subscription)
@@ -301,6 +317,44 @@ module Upkeep
           capture.html_response? &&
           capture.html.include?("</") &&
           capture.recorder.graph.frame_nodes.any?
+      end
+
+      def controller_subscription_recorder(controller, capture)
+        target_id = controller.request.headers["Turbo-Frame"].to_s
+        return [capture.recorder, nil] if target_id.empty?
+
+        subscription_id = controller.request.headers[ClientSubscription::ID_HEADER].to_s
+        token = controller.request.headers[ClientSubscription::TOKEN_HEADER].to_s
+        return [capture.recorder, nil] if subscription_id.empty? && token.empty?
+
+        unless !subscription_id.empty? && ActivationToken.valid_for_subscription?(token, subscription_id)
+          request_subscription_reload(controller, "invalid_base_subscription")
+          return
+        end
+
+        base_subscription = subscriptions.fetch_for_composition(subscription_id)
+        scope_id = "turbo_frame:#{target_id}"
+        recorder = base_subscription.recorder.replace_scope(scope_id, capture.recorder)
+        [recorder, base_subscription]
+      rescue KeyError
+        request_subscription_reload(controller, "missing_frame_scope")
+        nil
+      end
+
+      def replacement_identity_valid?(base_subscription, identity)
+        return true unless base_subscription
+        return true if metadata_value(base_subscription, :identity_mode) == Cable::SubscriberIdentity::ANONYMOUS_PUBLIC_MODE
+
+        base_subscription.subscriber_id == identity.subscriber_id
+      end
+
+      def request_subscription_reload(controller, reason)
+        controller.response.headers[ClientSubscription::ACTION_HEADER] = "reload"
+        controller.response.headers["X-Upkeep-Subscription-Reason"] = reason
+      end
+
+      def metadata_value(subscription, key)
+        subscription.metadata[key] || subscription.metadata[key.to_s]
       end
 
       def build_subscription_store

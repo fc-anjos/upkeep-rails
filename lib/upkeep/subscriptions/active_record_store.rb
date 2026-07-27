@@ -186,6 +186,26 @@ module Upkeep
         end
       end
 
+      def fetch_for_composition(id)
+        local = active_registry.fetch(id) || pending_registry.fetch(id)
+        return local if local
+
+        subscription, entries = persistence.fetch_with_index_entries(id)
+        entries.each do |entry|
+          subscription.graph.add_dependency(entry.owner_id, entry.dependency)
+        end
+        recorder = Runtime::Recorder.new(graph: subscription.graph)
+        Subscription.new(
+          subscription.id,
+          subscription.subscriber_id,
+          recorder,
+          recorder.graph,
+          subscription.metadata
+        )
+      rescue ActiveRecord::RecordNotFound
+        raise NotFound, id
+      end
+
       def prune_stale!(older_than: stale_threshold, limit: nil)
         stale_ids = persistence.prune_stale!(older_than: older_than, limit: limit)
         active_registry.unregister(stale_ids)

@@ -40,4 +40,21 @@ class TargetingTest < Minitest::Test
     refute_includes patched, "Before"
     assert_includes patched, 'data-upkeep-page-frame="page:rails:layouts/application"'
   end
+
+  def test_extracts_turbo_frame_target
+    target = Upkeep::Targeting::Target.new("turbo_frame", "cards", "test")
+    html = <<~HTML
+      <main>
+        <turbo-frame id="cards"><p>Current cards</p></turbo-frame>
+        <turbo-frame id="summary"><p>Summary</p></turbo-frame>
+      </main>
+    HTML
+
+    target_html = Upkeep::Targeting::Extraction.extract_target_html(html, target)
+
+    assert_includes target_html, '<turbo-frame id="cards">'
+    assert_includes target_html, "Current cards"
+    refute_includes target_html, "Summary"
+    assert_equal "turbo_frame:cards", Upkeep::Targeting::Extraction.frame_id_for(target)
+  end
 end

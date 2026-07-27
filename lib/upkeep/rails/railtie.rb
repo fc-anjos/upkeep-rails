@@ -19,7 +19,7 @@ module Upkeep
         end
       end
 
-      initializer "upkeep_rails.install" do
+      initializer "upkeep_rails.install", after: "turbo.helpers" do
         ActiveSupport.on_load(:active_record) { Upkeep::Rails::Install.call }
         ActiveSupport.on_load(:action_controller_base) { Upkeep::Rails::Install.call }
         ActiveSupport.on_load(:action_view) { Upkeep::Rails::Install.call }

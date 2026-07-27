@@ -2,6 +2,8 @@
 
 require "json"
 require "test_helper"
+require "turbo-rails"
+require File.join(Gem.loaded_specs.fetch("turbo-rails").full_gem_path, "app/helpers/turbo/frames_helper")
 
 class RailsCaptureCard < ActiveRecord::Base
   self.table_name = "rails_capture_cards"
@@ -67,6 +69,11 @@ class RailsCaptureCardsController < ActionController::Base
     @viewer = request.user_agent
     @cards = RailsCaptureCard.order(:id)
     render template: "controller_cards/session_index"
+  end
+
+  def frame
+    @cards = RailsCaptureCard.where(status: params.fetch(:status)).order(:id)
+    render template: "controller_cards/frame"
   end
 
   def session_members
@@ -153,6 +160,7 @@ class ActionViewCaptureTest < Minitest::Test
   end
 
   def setup
+    ActionView::Base.include(Turbo::FramesHelper)
     Upkeep::Rails::Install.call
     RailsCaptureCardsController.view_paths = [resolver]
 
@@ -242,6 +250,30 @@ class ActionViewCaptureTest < Minitest::Test
       query_string_digest: Digest::SHA256.hexdigest("status=open")[0, 16],
       path_parameters: []
     }, page_frame.payload.fetch(:controller))
+  end
+
+  def test_turbo_frame_is_a_replayable_dependency_scope
+    create_card!("Plan", status: "open")
+    create_card!("Archived", status: "closed")
+
+    html, recorder = capture_controller_request(:frame, "/cards/frame?status=open")
+    frame = recorder.graph.node("turbo_frame:cards")
+
+    assert_equal "turbo_frame", frame.payload.fetch(:kind)
+    assert_equal "cards", frame.payload.fetch(:target_id)
+    assert_includes html, '<turbo-frame id="cards">'
+    frame_dependencies = recorder.graph.contained_node_ids(frame.id).flat_map do |node_id|
+      recorder.graph.dependencies_for(node_id)
+    end
+    assert_includes frame_dependencies.map(&:source), :active_record_collection
+
+    create_card!("Review", status: "open")
+    replayed_html = Upkeep::Replay::Recipe.from_h(frame.payload.fetch(:recipe).to_h).render
+
+    assert_includes replayed_html, '<turbo-frame id="cards">'
+    assert_includes replayed_html, "Plan"
+    assert_includes replayed_html, "Review"
+    refute_includes replayed_html, "Archived"
   end
 
   def test_controller_page_recipe_reruns_action_with_path_parameters
@@ -673,6 +705,16 @@ class ActionViewCaptureTest < Minitest::Test
     assert_empty recorder.refused_boundaries
   end
 
+  def test_non_reactive_template_skips_relation_like_local_metadata
+    relation_like = Object.new
+    relation_like.define_singleton_method(:klass) { nil }
+    relation_like.define_singleton_method(:to_sql) { "SELECT 1" }
+
+    html = view.render(template: "boards/non_reactive", locals: { builder: relation_like })
+
+    assert_includes html, "Rendered"
+  end
+
   def test_opaque_collection_relation_raises_before_materialization
     select_sql = []
     subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |_name, _started, _finished, _id, payload|
@@ -906,6 +948,9 @@ class ActionViewCaptureTest < Minitest::Test
           </ul>
         </main>
       ERB
+      "boards/non_reactive.html.erb" => <<~ERB,
+        <main>Rendered</main>
+      ERB
       "boards/relation_shorthand.html.erb" => <<~ERB,
         <main>
           <ul>
@@ -1000,6 +1045,15 @@ class ActionViewCaptureTest < Minitest::Test
           <ul>
             <%= render partial: "cards/card", collection: @cards, as: :card %>
           </ul>
+        </main>
+      ERB
+      "controller_cards/frame.html.erb" => <<~ERB,
+        <main>
+          <%= turbo_frame_tag "cards" do %>
+            <ul>
+              <%= render partial: "cards/card", collection: @cards, as: :card %>
+            </ul>
+          <% end %>
         </main>
       ERB
       "controller_cards/show.html.erb" => <<~ERB,
