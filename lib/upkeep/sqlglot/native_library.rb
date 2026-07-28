@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 module Upkeep
-  module SqlglotSemantics
+  module SQLGlot
     module NativeLibrary
-      BASENAME = "upkeep_sqlglot_semantics"
+      BASENAME = "sqlglot_rust"
       EXTENSIONS = %w[so dylib dll].freeze
 
       module_function

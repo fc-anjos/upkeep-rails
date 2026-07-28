@@ -1,8 +1,7 @@
 # frozen_string_literal: true
 
 require "active_record"
-require "sqlglot"
-require_relative "sqlglot_semantics"
+require_relative "sqlglot"
 require_relative "sql_dependency_analysis"
 
 module Upkeep
@@ -69,10 +68,10 @@ module Upkeep
     def analyze(relation)
       sql = relation.to_sql
       dialect = dialect_for(relation.klass.connection)
-      statement = Sqlglot.parse(sql, dialect: dialect)
+      statement = SQLGlot.parse(sql, dialect: dialect)
       schema = Schema.for(relation.klass.connection, statement)
-      mapping_schema = Sqlglot::MappingSchema.new(schema, dialect: dialect)
-      qualified_statement = Sqlglot.qualify_columns(statement, mapping_schema)
+      mapping_schema = SQLGlot::MappingSchema.new(schema, dialect: dialect)
+      qualified_statement = SQLGlot.qualify_columns(statement, mapping_schema)
       dependency_statement = SQLDependencyAnalysis.preserve_wildcard_projections(
         statement,
         qualified_statement
@@ -80,7 +79,7 @@ module Upkeep
       dependency = SQLDependencyAnalysis.analyze(
         dependency_statement,
         schema: schema,
-        scope: Sqlglot.build_scope(dependency_statement)
+        scope: SQLGlot.build_scope(dependency_statement)
       )
 
       Result.new(
@@ -98,7 +97,7 @@ module Upkeep
         predicates: dependency.predicates
       )
     rescue ActiveRecord::StatementInvalid,
-      Sqlglot::Error,
+      SQLGlot::Error,
       SQLDependencyAnalysis::UnsupportedError,
       KeyError => error
       raise OpaqueRelationError.new(
@@ -106,7 +105,7 @@ module Upkeep
         reasons: [
           "#{error.class}: #{error.message}",
           "dialect: #{safe_dialect(relation)}",
-          "SQLGlot: #{Sqlglot.version}"
+          "SQLGlot: #{SQLGlot.version}"
         ]
       )
     end

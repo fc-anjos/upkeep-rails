@@ -13,15 +13,14 @@ use Arel internally to generate `Relation#to_sql`.
 
 ## API boundary
 
-Upkeep must not invent SQLGlot APIs. Where semantic APIs need to be added as a
-sibling extension, their names, arguments, and result shapes must match an
-existing implementation:
+Upkeep owns a small Ruby wrapper over the released `sql-glot-rust` C ABI. Its
+names, arguments, and result shapes follow the native API:
 
-1. Preserve the existing Ruby API:
-   - `Sqlglot.parse(sql, dialect:)`
-   - `Sqlglot.generate(statement, dialect:)`
-   - `Sqlglot.transpile(sql, from:, to:)`
-2. Mirror `sql-glot-rust` for APIs absent from Ruby:
+1. Wrap the existing parse and generation API:
+   - `Upkeep::SQLGlot.parse(sql, dialect:)`
+   - `Upkeep::SQLGlot.generate(statement, dialect:)`
+   - `Upkeep::SQLGlot.transpile(sql, from:, to:)`
+2. Project the released semantic API:
    - `MappingSchema`
    - `qualify_columns(statement, schema)`
    - `build_scope(statement)`
@@ -29,17 +28,17 @@ existing implementation:
 3. Preserve Rust/Python scope and lineage fields. Do not flatten child scope
    collections or introduce an Upkeep-shaped SQLGlot response.
 
-There is deliberately no public `Upkeep::Sqlglot.analyze` API.
+There is deliberately no combined `Upkeep::SQLGlot.analyze` API.
 
 Upkeep-specific lowering remains separate from the sibling API:
 
 ```text
-Sqlglot.parse + SQL schema
+Upkeep::SQLGlot.parse + SQL schema
             │
             ▼
-Sqlglot::MappingSchema
-Sqlglot.qualify_columns
-Sqlglot.build_scope
+Upkeep::SQLGlot::MappingSchema
+Upkeep::SQLGlot.qualify_columns
+Upkeep::SQLGlot.build_scope
             │
             ▼
 Upkeep::SQLDependencyAnalysis
@@ -54,19 +53,17 @@ simple predicate DNF, equality edges, query shape, and conservative warnings.
 extraction, and the internal result contract.
 
 This release is intentionally breaking. There are no existing users to migrate,
-so no compatibility decoder, cache migration, or mixed installation is
-supported. Installing the release requires a full bundle/gem reinstall so the
-SQLGlot platform dependency is installed cleanly.
+so no compatibility decoder, cache migration, top-level `Sqlglot` namespace,
+or mixed installation is supported. Installing the release requires a full
+bundle/gem reinstall so Bundler selects the matching Upkeep platform gem.
 
-## Embedded semantic extension
+## Native SQLGlot packaging
 
-`upkeep-rails` depends on `sqlglot` 0.1.x and temporarily embeds the missing
-semantic bindings, pinned to `sql-glot-rust` v0.10.12. The extension's public
-API reopens the `Sqlglot` namespace with the established Rust primitives; its
-private C ABI contains one function per primitive and no combined Upkeep
-analyzer.
+`upkeep-rails` depends on `ffi` and binds `sql-glot-rust` v0.10.25 directly.
+The Ruby boundary lives under `Upkeep::SQLGlot`; there is no external
+`sqlglot` Ruby gem dependency and no Upkeep-specific Rust crate or C ABI.
 
-There is one logical gem and no separately published semantics gem. Each
+There is one logical gem. Each
 release consists of five platform-specific `upkeep-rails` artifacts:
 
 - `x86_64-linux-gnu`;
@@ -75,21 +72,15 @@ release consists of five platform-specific `upkeep-rails` artifacts:
 - `arm64-darwin`; and
 - `x64-mingw-ucrt`.
 
-The native library is built in release CI and included in each artifact.
-Cargo sources remain private repository/build inputs and are not shipped in
-the gem, so installation never requires Rust. There is deliberately no generic
-source artifact. This release requires a full reinstall on a supported
-platform.
+The exact v0.10.25 source commit is built in release CI and its unmodified
+shared library is included in each artifact. Rust sources are build inputs and
+are not shipped in the gem, so installation never requires Rust. There is
+deliberately no generic source artifact.
 
-When the semantic APIs are accepted upstream, the embedded extension can be
-deleted and `upkeep-rails` can use `sqlglot` directly without changing its
-callers.
-
-The v0.10.12 scope builder exposes a CTE child correctly but overwrites the
-outer CTE source with a table-shaped source. The extension preserves that
-upstream result shape. Upkeep does not treat a scope table as physical unless
-it exists in `MappingSchema`; the AST lowerer resolves the logical CTE to its
-physical child and scope validation checks every schema-backed source.
+The v0.10.25 scope builder preserves CTE references as scope sources. Upkeep
+does not treat a scope source as a physical table; the AST lowerer resolves the
+logical CTE to its physical child and scope validation checks every
+schema-backed source.
 
 `qualify_columns` expands wildcards by design. Upkeep restores wildcard
 projection nodes before dependency lowering so `SELECT table.*` does not add
@@ -98,9 +89,9 @@ joins, grouping, ordering, and explicit projections is retained.
 
 ## Implementation stages
 
-### 1. Establish SQLGlot as a runtime dependency
+### 1. Establish SQLGlot as an internal runtime boundary
 
-- Add the Ruby `sqlglot` gem at the tested version.
+- Bind the released Rust library through `ffi`.
 - Add adapter-to-dialect mapping.
 - Convert Active Record schema metadata into SQLGlot-compatible table/column
   metadata, retaining SQL types where available.
@@ -148,9 +139,7 @@ joins, grouping, ordering, and explicit projections is retained.
 - Run the full Upkeep suite.
 - Benchmark parsing separately from invalidation fan-out. This milestone does
   not add an Upkeep-owned analysis or schema cache.
-- Add embedded native semantic bindings with the matching API described above.
-  The extension keeps Upkeep unblocked; upstream adoption later removes it
-  without changing callers.
+- Package the released native library for every supported platform.
 
 ## Oracle exit criteria
 
@@ -166,20 +155,21 @@ Arel can be deleted after:
 
 ## Current milestone
 
-This milestone is complete: SQLGlot plus the embedded semantic extension is the only
-production path, the former oracle outputs are frozen as ordinary expected
-values, and the Arel collector has been deleted. Remaining Arel usage in tests
-constructs Active Record input queries only; no Upkeep analyzer inspects Arel.
+This milestone is complete in the 0.2.0 release branch: `Upkeep::SQLGlot` is
+the only production SQL decoder, the former oracle outputs are frozen as
+ordinary expected values, and the Arel collector has been deleted. Remaining
+Arel usage in tests constructs Active Record input queries only; no Upkeep
+analyzer inspects Arel.
 
 ## Execution status
 
 Completed:
 
-- [x] Added `sqlglot` as the production runtime parser.
+- [x] Added `Upkeep::SQLGlot` as the production runtime parser.
 - [x] Added generic SQL AST dependency lowering in
   `Upkeep::SQLDependencyAnalysis`.
 - [x] Switched `ActiveRecordQuery.analyze` from `Relation#arel` to
-  `Sqlglot.parse(relation.to_sql, dialect:)`.
+  `Upkeep::SQLGlot.parse(relation.to_sql, dialect:)`.
 - [x] Kept schema access on Active Record's existing schema cache; Upkeep owns
   no analysis or schema cache.
 - [x] Added a separate conservative write-analysis path without introducing a
@@ -188,10 +178,10 @@ Completed:
   the collector and its test-support require.
 - [x] Added direct raw-SQL coverage, including correlated subqueries, CTEs,
   set operations, PostgreSQL operators, and MySQL/SQLite functions.
-- [x] Embedded `MappingSchema`, `qualify_columns`, `build_scope`, and `lineage`
-  in `upkeep-rails`, matching the established SQLGlot APIs.
-- [x] Preserved Rust scope and lineage fields and locked the v0.10.12 CTE
-  behavior in a binding test.
+- [x] Bound parse, generate, transpile, `MappingSchema`, qualification, scope,
+  and lineage directly to `sql-glot-rust` v0.10.25.
+- [x] Preserved Rust scope and lineage fields and locked the corrected CTE
+  scope-source behavior in a binding test.
 - [x] Added five platform-specific `upkeep-rails` artifacts for macOS, Linux,
   and Windows, with no source gem or install-time Cargo build.
 - [x] Added an adapter corpus for PostgreSQL, MySQL, and SQLite.
@@ -201,14 +191,13 @@ Completed:
 - [x] Removed compatibility and mixed-installation handling; this release
   requires a full reinstall.
 
-Upstream follow-up:
+Upstream and ecosystem follow-up:
 
-- [ ] Submit the semantic Ruby bindings to `sql-glot-ruby`.
+- [x] Open the semantic Ruby bindings in `sql-glot-ruby`.
 - [x] Merge the CTE source-overwrite fix in `sql-glot-rust`; it shipped in
       v0.10.24 through
       [`protegrity/sql-glot-rust#26`](https://github.com/protegrity/sql-glot-rust/pull/26).
-- [ ] Merge and release the Rust semantic C ABI. A fork-only draft is open for
-      review at
-      [`fc-anjos/sql-glot-rust#1`](https://github.com/fc-anjos/sql-glot-rust/pull/1).
-- [ ] Delete the embedded extension in favor of upstream releases once both are
-  available, without changing Upkeep callers.
+- [x] Merge and release the Rust semantic C ABI in v0.10.25.
+- [x] Delete the Upkeep-specific Rust bridge and external Ruby SQLGlot
+      dependency.
+- [ ] Continue the Ruby wrapper PRs as optional ecosystem contributions.

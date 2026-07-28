@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "minitest/autorun"
-require "upkeep/sqlglot_semantics"
+require "upkeep/sqlglot"
 
 class SqlglotSemanticsTest < Minitest::Test
   SCHEMA = {
@@ -22,34 +22,49 @@ class SqlglotSemanticsTest < Minitest::Test
     }
   }.freeze
 
-  def test_mapping_schema_matches_established_schema_operations
+  def test_wrapper_stays_inside_the_upkeep_namespace
+    refute Object.const_defined?(:Sqlglot)
+  end
+
+  def test_mapping_schema_preserves_ordered_table_paths_and_types
     schema = mapping_schema
 
-    assert_equal [
-      ["", "", "cards"],
-      ["", "", "efforts"],
-      ["", "", "projects"]
-    ], schema.table_names
-    assert_equal %w[id project_id status title], schema.column_names("cards")
-    assert_equal "INTEGER", schema.get_column_type("cards", "id")
-    assert schema.has_column("cards", "title")
-    refute schema.has_column("cards", "missing")
+    assert_equal :sqlite, schema.dialect.to_sym
+    assert_equal(
+      {
+        path: ["cards"],
+        columns: [
+          {name: "id", data_type: "INTEGER"},
+          {name: "project_id", data_type: "INTEGER"},
+          {name: "status", data_type: "TEXT"},
+          {name: "title", data_type: "TEXT"}
+        ]
+      },
+      schema.to_native.fetch(:tables).fetch(0)
+    )
+  end
 
-    schema.add_table(%w[public labels], {"id" => "BIGINT"})
-    assert_equal ["id"], schema.column_names("public.labels")
-    assert_raises(ArgumentError) do
-      schema.add_table("public.labels", {"id" => "BIGINT"})
-    end
-    schema.replace_table("public.labels", {"name" => "TEXT"})
-    assert_equal ["name"], schema.column_names("public.labels")
-    assert schema.remove_table("public.labels")
+  def test_parse_generate_and_transpile_use_the_bundled_rust_library
+    statement = parse("SELECT id FROM cards")
+
+    assert_equal "0.10.25", Upkeep::SQLGlot.version
+    assert_includes Upkeep::SQLGlot.generate(statement, dialect: :sqlite),
+      "SELECT id FROM cards"
+    assert_includes(
+      Upkeep::SQLGlot.transpile(
+        "SELECT * FROM cards LIMIT 1",
+        from: :mysql,
+        to: :tsql
+      ),
+      "TOP 1"
+    )
   end
 
   def test_qualify_columns_returns_the_sqlglot_statement_shape
     statement = parse("SELECT id, title FROM cards WHERE project_id = 42")
-    qualified = Sqlglot.qualify_columns(statement, mapping_schema)
+    qualified = Upkeep::SQLGlot.qualify_columns(statement, mapping_schema)
 
-    sql = Sqlglot.generate(qualified, dialect: :sqlite)
+    sql = Upkeep::SQLGlot.generate(qualified, dialect: :sqlite)
     assert_includes sql, "cards.id"
     assert_includes sql, "cards.title"
     assert_includes sql, "cards.project_id"
@@ -66,19 +81,19 @@ class SqlglotSemanticsTest < Minitest::Test
           AND efforts.status = 'active'
       )
     SQL
-    scope = Sqlglot.build_scope(statement)
+    scope = Upkeep::SQLGlot.build_scope(statement)
     inner = scope.subquery_scopes.fetch(0)
 
-    assert_equal :Root, scope.scope_type
-    assert_equal :Subquery, inner.scope_type
+    assert_equal :root, scope.scope_type
+    assert_equal :subquery, inner.scope_type
     assert inner.is_correlated
     assert_includes inner.external_columns,
-      Sqlglot::ColumnRef.new(table: "cards", name: "id")
+      Upkeep::SQLGlot::ColumnRef.new(table: "cards", name: "id")
     assert_equal ["efforts"], inner.sources.keys
     assert_equal [inner], scope.child_scopes
   end
 
-  def test_build_scope_exposes_cte_scope_even_with_upstream_01012_source_bug
+  def test_build_scope_preserves_cte_sources_as_scopes
     statement = parse(<<~SQL)
       WITH active_cards AS (
         SELECT id, project_id FROM cards WHERE status = 'active'
@@ -87,19 +102,17 @@ class SqlglotSemanticsTest < Minitest::Test
       FROM projects
       JOIN active_cards ON active_cards.project_id = projects.id
     SQL
-    qualified = Sqlglot.qualify_columns(statement, mapping_schema)
-    scope = Sqlglot.build_scope(qualified)
+    qualified = Upkeep::SQLGlot.qualify_columns(statement, mapping_schema)
+    scope = Upkeep::SQLGlot.build_scope(qualified)
 
-    assert_equal :table, scope.sources.fetch("active_cards").kind
-    assert_equal "active_cards",
-      scope.sources.fetch("active_cards").table.qualified_name
-    assert_equal :Cte, scope.cte_scopes.fetch(0).scope_type
+    assert_equal :scope, scope.sources.fetch("active_cards").kind
+    assert_equal :cte, scope.cte_scopes.fetch(0).scope_type
     assert_equal ["cards"], scope.cte_scopes.fetch(0).sources.keys
   end
 
   def test_lineage_matches_the_rust_graph_shape
     statement = parse("SELECT cards.id AS card_id FROM cards")
-    graph = Sqlglot.lineage("card_id", statement, mapping_schema)
+    graph = Upkeep::SQLGlot.lineage("card_id", statement, mapping_schema)
 
     assert_equal :sqlite, graph.dialect
     assert_equal "card_id", graph.node.name
@@ -110,20 +123,20 @@ class SqlglotSemanticsTest < Minitest::Test
   def test_native_errors_cross_the_boundary_with_diagnostics
     invalid = {"Select" => {"not" => "a statement"}}
 
-    error = assert_raises(Sqlglot::Error) do
-      Sqlglot.build_scope(invalid)
+    error = assert_raises(Upkeep::SQLGlot::SemanticError) do
+      Upkeep::SQLGlot.build_scope(invalid)
     end
 
-    assert_match(/statement JSON|missing field|unknown field/i, error.message)
+    assert_equal "Failed to build SQLGlot scope", error.message
   end
 
   private
 
   def mapping_schema
-    Sqlglot::MappingSchema.new(SCHEMA, dialect: :sqlite)
+    Upkeep::SQLGlot::MappingSchema.new(SCHEMA, dialect: :sqlite)
   end
 
   def parse(sql)
-    Sqlglot.parse(sql.gsub(/\s+/, " ").strip, dialect: :sqlite)
+    Upkeep::SQLGlot.parse(sql.gsub(/\s+/, " ").strip, dialect: :sqlite)
   end
 end

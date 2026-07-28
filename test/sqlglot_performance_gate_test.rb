@@ -25,10 +25,10 @@ class SQLGlotPerformanceGateTest < Minitest::Test
   SQL
 
   def test_warm_semantic_analysis_stays_inside_the_ci_budget
-    mapping = Sqlglot::MappingSchema.new(SCHEMA, dialect: :sqlite)
+    mapping = Upkeep::SQLGlot::MappingSchema.new(SCHEMA, dialect: :sqlite)
     analyze = lambda do
-      statement = Sqlglot.parse(SQL, dialect: :sqlite)
-      qualified = Sqlglot.qualify_columns(statement, mapping)
+      statement = Upkeep::SQLGlot.parse(SQL, dialect: :sqlite)
+      qualified = Upkeep::SQLGlot.qualify_columns(statement, mapping)
       dependency_statement =
         Upkeep::SQLDependencyAnalysis.preserve_wildcard_projections(
           statement,
@@ -37,7 +37,7 @@ class SQLGlotPerformanceGateTest < Minitest::Test
       Upkeep::SQLDependencyAnalysis.analyze(
         dependency_statement,
         schema: SCHEMA,
-        scope: Sqlglot.build_scope(dependency_statement)
+        scope: Upkeep::SQLGlot.build_scope(dependency_statement)
       )
     end
 

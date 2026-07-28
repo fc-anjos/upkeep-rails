@@ -88,7 +88,7 @@ class SQLDependencyAnalysisTest < Minitest::Test
   private
 
   def analyze(sql)
-    statement = Sqlglot.parse(sql, dialect: :sqlite)
+    statement = Upkeep::SQLGlot.parse(sql, dialect: :sqlite)
     Upkeep::SQLDependencyAnalysis.analyze(statement, schema: SCHEMA)
   end
 end
