@@ -43,7 +43,7 @@ Gem::Specification.new do |spec|
 
   if native_platform
     native_libraries = Dir[
-      "lib/upkeep/sqlglot_semantics/{lib,}upkeep_sqlglot_semantics.{so,dylib,dll}"
+      "lib/upkeep/sqlglot/{lib,}sqlglot_rust.{so,dylib,dll}"
     ]
     raise "native library is required for platform gem #{native_platform}" if native_libraries.empty?
 
@@ -59,8 +59,8 @@ Gem::Specification.new do |spec|
   spec.add_dependency "activerecord", ">= 7.1", "< 9.0"
   spec.add_dependency "activesupport", ">= 7.1", "< 9.0"
   spec.add_dependency "herb", ">= 0.10.1", "< 0.11"
+  spec.add_dependency "ffi", ">= 1.15", "< 2.0"
   spec.add_dependency "nokogiri", ">= 1.15", "< 2.0"
   spec.add_dependency "railties", ">= 7.1", "< 9.0"
-  spec.add_dependency "sqlglot", ">= 0.1.1", "< 0.2"
   spec.add_dependency "turbo-rails", ">= 2.0", "< 3.0"
 end

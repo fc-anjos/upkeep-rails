@@ -53,7 +53,7 @@ Releases are precompiled for `x86_64-linux-gnu`, `aarch64-linux-gnu`,
 `x86_64-darwin`, `arm64-darwin`, and `x64-mingw-ucrt`. Installing Upkeep does
 not require Rust.
 Upkeep 0.2 requires a full bundle reinstall so Bundler selects the matching
-SQLGlot and Upkeep platform gems; mixed installs with 0.1 are not supported.
+Upkeep platform gem; mixed installs with 0.1 are not supported.
 
 ## Configure runtime
 

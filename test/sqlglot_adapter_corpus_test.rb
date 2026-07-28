@@ -106,20 +106,20 @@ class SQLGlotAdapterCorpusTest < Minitest::Test
   end
 
   def test_scope_validation_rejects_a_dependency_omission
-    statement = Sqlglot.parse("SELECT cards.id FROM cards", dialect: :sqlite)
-    schema = Sqlglot::MappingSchema.new(SCHEMA, dialect: :sqlite)
-    qualified = Sqlglot.qualify_columns(statement, schema)
-    wider_statement = Sqlglot.parse(
+    statement = Upkeep::SQLGlot.parse("SELECT cards.id FROM cards", dialect: :sqlite)
+    schema = Upkeep::SQLGlot::MappingSchema.new(SCHEMA, dialect: :sqlite)
+    qualified = Upkeep::SQLGlot.qualify_columns(statement, schema)
+    wider_statement = Upkeep::SQLGlot.parse(
       "SELECT cards.id FROM cards JOIN projects ON projects.id = cards.project_id",
       dialect: :sqlite
     )
-    wider_qualified = Sqlglot.qualify_columns(wider_statement, schema)
+    wider_qualified = Upkeep::SQLGlot.qualify_columns(wider_statement, schema)
 
     error = assert_raises(Upkeep::SQLDependencyAnalysis::UnsupportedError) do
       Upkeep::SQLDependencyAnalysis.analyze(
         qualified,
         schema: SCHEMA,
-        scope: Sqlglot.build_scope(wider_qualified)
+        scope: Upkeep::SQLGlot.build_scope(wider_qualified)
       )
     end
 
@@ -129,9 +129,9 @@ class SQLGlotAdapterCorpusTest < Minitest::Test
   private
 
   def analyze(sql, dialect:)
-    statement = Sqlglot.parse(sql, dialect: dialect)
-    mapping = Sqlglot::MappingSchema.new(SCHEMA, dialect: dialect)
-    qualified = Sqlglot.qualify_columns(statement, mapping)
+    statement = Upkeep::SQLGlot.parse(sql, dialect: dialect)
+    mapping = Upkeep::SQLGlot::MappingSchema.new(SCHEMA, dialect: dialect)
+    qualified = Upkeep::SQLGlot.qualify_columns(statement, mapping)
     dependency_statement =
       Upkeep::SQLDependencyAnalysis.preserve_wildcard_projections(
         statement,
@@ -141,7 +141,7 @@ class SQLGlotAdapterCorpusTest < Minitest::Test
     Upkeep::SQLDependencyAnalysis.analyze(
       dependency_statement,
       schema: SCHEMA,
-      scope: Sqlglot.build_scope(dependency_statement)
+      scope: Upkeep::SQLGlot.build_scope(dependency_statement)
     )
   end
 end

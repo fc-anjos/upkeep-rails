@@ -8,9 +8,9 @@ require "rbconfig"
 require_relative "lib/upkeep/version"
 
 namespace :native do
-  desc "Build Upkeep's SQLGlot semantic extension for the current platform"
+  desc "Build Upkeep's SQLGlot library for the current platform"
   task :build do
-    ruby File.expand_path("ext/upkeep_sqlglot_semantics/extconf.rb", __dir__)
+    ruby File.expand_path("ext/sqlglot_rust/extconf.rb", __dir__)
   end
 
   desc "Build a platform-specific upkeep-rails gem"
