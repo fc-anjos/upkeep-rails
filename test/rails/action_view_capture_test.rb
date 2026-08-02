@@ -317,7 +317,7 @@ class ActionViewCaptureTest < Minitest::Test
       MatrixExpectation.new("matrix/helper_hidden_collection", ["page"], 0, 0, "Plan"),
       MatrixExpectation.new("matrix/component_hidden_collection", ["page"], 0, 0, "Plan"),
       MatrixExpectation.new("matrix/render_relation_shorthand", ["render_site"], 1, 1, "Plan"),
-      MatrixExpectation.new("matrix/aggregate_only", [], 0, 0, "Total:"),
+      MatrixExpectation.new("matrix/aggregate_only", ["page"], 0, 0, "Total:"),
       MatrixExpectation.new("matrix/manual_helper_frame", ["render_site"], 1, 1, "Plan")
     ]
     failures = []
