@@ -2,7 +2,10 @@
 
 require "json"
 require "test_helper"
+require "rails"
 require "turbo-rails"
+require "active_support/key_generator"
+require "active_support/messages/rotation_configuration"
 require File.join(Gem.loaded_specs.fetch("turbo-rails").full_gem_path, "app/helpers/turbo/frames_helper")
 
 class RailsCaptureCard < ActiveRecord::Base
@@ -21,7 +24,20 @@ class RailsCaptureAuthor < ActiveRecord::Base
   has_many :cards, class_name: "RailsCaptureCard", foreign_key: :author_id
 end
 
+class RailsCaptureSession < ActiveRecord::Base
+  self.table_name = "rails_capture_sessions"
+
+  belongs_to :user, class_name: "RailsCaptureAuthor"
+end
+
+class RailsCaptureCurrent < ActiveSupport::CurrentAttributes
+  attribute :session
+  delegate :user, to: :session, allow_nil: true
+end
+
 class RailsCaptureCardsController < ActionController::Base
+  before_action :require_rails_authentication, only: :rails_auth_index
+
   def index
     @cards = RailsCaptureCard.where(status: params.fetch(:status)).order(:id)
     render template: "controller_cards/index"
@@ -77,6 +93,12 @@ class RailsCaptureCardsController < ActionController::Base
     render template: "controller_cards/session_index"
   end
 
+  def rails_auth_index
+    @viewer = RailsCaptureCurrent.user.name
+    @cards = RailsCaptureCard.order(:id)
+    render template: "controller_cards/session_index"
+  end
+
   def frame
     @cards = RailsCaptureCard.where(status: params.fetch(:status)).order(:id)
     render template: "controller_cards/frame"
@@ -85,6 +107,17 @@ class RailsCaptureCardsController < ActionController::Base
   def session_members
     @cards = RailsCaptureCard.order(:id)
     render template: "controller_cards/session_members"
+  end
+
+  private
+
+  def require_rails_authentication
+    RailsCaptureCurrent.session ||= find_rails_session_by_cookie
+    head :unauthorized unless RailsCaptureCurrent.session
+  end
+
+  def find_rails_session_by_cookie
+    RailsCaptureSession.find_by(id: cookies.signed[:session_id]) if cookies.signed[:session_id]
   end
 end
 
@@ -183,6 +216,10 @@ class ActionViewCaptureTest < Minitest::Test
         table.references :author
         table.string :title, null: false
         table.string :status, null: false
+      end
+
+      create_table :rails_capture_sessions, force: true do |table|
+        table.references :user, null: false
       end
     end
 
@@ -415,6 +452,35 @@ class ActionViewCaptureTest < Minitest::Test
     assert_includes replayed_html, "Plan"
     assert_equal viewer.id.to_s,
       recipe_snapshot.dig(:replay, :env, "warden", "users", "user", :id).to_s
+  end
+
+  def test_controller_page_recipe_replays_rails_generated_authentication
+    viewer = RailsCaptureAuthor.create!(name: "Alice")
+    login = RailsCaptureSession.create!(user: viewer)
+    create_card!("Plan")
+    cookie_env = rails_cookie_env
+
+    html, recorder = capture_controller_request(
+      :rails_auth_index,
+      "/cards/rails-auth",
+      cookies: { session_id: signed_session_cookie(login.id, env: cookie_env) },
+      env: cookie_env
+    )
+
+    assert_includes html, "Alice"
+
+    page_frame = recorder.graph.node("page:rails:controller_cards/session_index")
+    recipe_snapshot = page_frame.payload.fetch(:recipe).to_h
+    RailsCaptureCurrent.reset
+    replayed_html = with_application_env_config(cookie_env) do
+      Upkeep::Replay::Recipe.from_h(JSON.parse(JSON.generate(recipe_snapshot))).render
+    end
+
+    assert_includes replayed_html, "Alice"
+    assert_includes replayed_html, "Plan"
+    assert_nil recipe_snapshot.dig(:replay, :env, "warden")
+  ensure
+    RailsCaptureCurrent.reset
   end
 
   def test_unread_rack_session_values_do_not_change_page_replay_env
@@ -944,6 +1010,36 @@ class ActionViewCaptureTest < Minitest::Test
 
   def cookie_header(cookies)
     cookies.map { |key, value| "#{CGI.escape(key.to_s)}=#{CGI.escape(value.to_s)}" }.join("; ")
+  end
+
+  def rails_cookie_env
+    key_generator = ActiveSupport::CachingKeyGenerator.new(
+      ActiveSupport::KeyGenerator.new("upkeep-test-secret", iterations: 1_000)
+    )
+
+    {
+      "action_dispatch.key_generator" => key_generator,
+      "action_dispatch.signed_cookie_salt" => "signed cookie",
+      "action_dispatch.cookies_serializer" => :json,
+      "action_dispatch.use_cookies_with_metadata" => false,
+      "action_dispatch.cookies_rotations" => ActiveSupport::Messages::RotationConfiguration.new
+    }
+  end
+
+  def signed_session_cookie(session_id, env:)
+    request = ActionDispatch::Request.new(Rack::MockRequest.env_for("/").merge(env))
+    jar = ActionDispatch::Cookies::CookieJar.build(request, {})
+    jar.signed[:session_id] = session_id
+    Rack::Utils.parse_cookies_header(jar.to_header).fetch("session_id")
+  end
+
+  def with_application_env_config(env)
+    original = ::Rails.application
+    config = Struct.new(:root).new(nil)
+    ::Rails.application = Struct.new(:env_config, :config).new(env, config)
+    yield
+  ensure
+    ::Rails.application = original
   end
 
   def controller_page_recipe_env(recorder, frame_id)

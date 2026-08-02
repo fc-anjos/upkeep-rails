@@ -109,10 +109,19 @@ module Upkeep
       end
 
       def rack_env(env)
-        env = env.each_with_object({}) { |(key, value), copy| copy[key.to_s] = revive_env_value(value) }
+        env = application_env_config.merge(
+          env.each_with_object({}) { |(key, value), copy| copy[key.to_s] = revive_env_value(value) }
+        )
         env["rack.input"] = StringIO.new
         env["rack.errors"] ||= StringIO.new
         env
+      end
+
+      def application_env_config
+        return {} unless defined?(::Rails) && ::Rails.respond_to?(:application)
+
+        application = ::Rails.application
+        application.respond_to?(:env_config) ? application.env_config : {}
       end
 
       def revive_hash(values, template: replay_template_context)
