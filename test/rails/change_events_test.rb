@@ -293,6 +293,31 @@ class ChangeEventsTest < Minitest::Test
     refute_includes dependency_sources, "active_record_collection"
   end
 
+  def test_relation_calculation_records_query_dependency
+    card = ChangeEventCard.create!(title: "Plan", status: "open", position: 1)
+
+    result, recorder = Upkeep::Runtime::Observation.capture_request do
+      Upkeep::Runtime::Observation.capture_frame("page:test", kind: "page") do
+        ChangeEventCard.where(status: "open").sum(:position)
+      end
+    end
+
+    dependency = recorder.graph.dependency_nodes.map(&:payload).find do |candidate|
+      candidate.source == :active_record_query
+    end
+
+    assert_equal 1, result
+    assert dependency
+    assert_includes dependency.metadata.fetch(:table_columns).fetch("change_event_cards"), "status"
+    assert_includes dependency.metadata.fetch(:table_columns).fetch("change_event_cards"), "position"
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.update!(position: 2)
+
+    targets = Upkeep::Targeting::Selector.new.select(recorder, Upkeep::Runtime::ChangeLog.events)
+    assert_equal ["page:test"], targets.map(&:id)
+  end
+
   def test_relation_materialization_records_query_dependency_for_empty_result
     result, recorder = Upkeep::Runtime::Observation.capture_request do
       Upkeep::Runtime::Observation.capture_frame("page:test", kind: "page") do

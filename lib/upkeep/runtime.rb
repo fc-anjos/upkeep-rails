@@ -1004,6 +1004,11 @@ module Upkeep
         super
       end
 
+      def calculate(operation, column_name)
+        record_calculation_dependency(operation, column_name)
+        super
+      end
+
       def update_all(updates)
         analysis = ActiveRecordQuery.analyze_for_write(self)
         event = ChangeEvents.bulk_update(
@@ -1086,6 +1091,14 @@ module Upkeep
         )
       rescue ActiveRecordQuery::OpaqueRelationError => error
         handle_opaque_relation_dependency(error)
+      end
+
+      def record_calculation_dependency(operation, column_name)
+        column_names = Array(column_name)
+        column_names = select_values if operation.to_s == "count" && column_names.empty? && select_values.any?
+        column_names = [klass.primary_key || Arel.star] if column_names.empty? || column_names == [:all] || column_names == ["*"]
+
+        record_query_dependency(column_names)
       end
 
       def handle_opaque_relation_dependency(error)
