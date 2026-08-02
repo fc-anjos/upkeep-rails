@@ -113,7 +113,7 @@ module Upkeep
       return unless application_js_path.exist?
 
       append_import("@hotwired/turbo-rails")
-      append_import("upkeep/subscription")
+      append_import(importmap_path.exist? ? "upkeep/subscription" : "./upkeep/subscription")
     end
 
     def pin_action_cable

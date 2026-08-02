@@ -67,6 +67,22 @@ Upkeep::Rails.configure do |config|
 end
 ```
 
+To introduce Upkeep one controller action at a time, use opt-in request activation:
+
+```ruby
+Upkeep::Rails.configure do |config|
+  config.request_activation = :opt_in
+end
+
+class Projects::MilestonesController < ApplicationController
+  upkeep_reactive only: :index
+end
+```
+
+This changes only which GET and HEAD responses register live subscriptions.
+Writes from every controller remain captured so they can update subscribed
+pages. Routes and Turbo navigation do not change.
+
 **Subscription store:** Use `:memory` for test suites. Use `:active_record` for production—it stores subscriptions durably across restarts.
 
 **Delivery mode:** Upkeep broadcasts from a background dispatcher in the same process that performed the write. For tests and console sessions where you want synchronous behavior, set `deliver_inline = true`.

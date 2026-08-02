@@ -22,6 +22,8 @@ end
 
 class RuntimeDeliveryCardsController < ActionController::Base
   def index
+    return render json: {cards: []} if request.format.json?
+
     @cards = RuntimeDeliveryCard.order(:id)
     render template: "runtime_delivery_cards/index"
   end
@@ -96,9 +98,11 @@ class ControllerRuntimeTest < Minitest::Test
   def setup
     ActionView::Base.include(Turbo::FramesHelper)
     Upkeep::Rails.configuration.clear_identities!
+    Upkeep::Rails.configuration.request_activation = :all
     Upkeep::Rails.reset_runtime!
     Upkeep::Rails::Install.reset!
     Upkeep::Rails::Install.call
+    RuntimeDeliveryCardsController.upkeep_reactive only: :index
     RuntimeDeliveryCardsController.view_paths = [resolver]
 
     @database_dir = Dir.mktmpdir("upkeep-controller-runtime")
@@ -122,6 +126,7 @@ class ControllerRuntimeTest < Minitest::Test
   def teardown
     RuntimeDeliveryCurrent.reset
     Upkeep::Rails.configuration.clear_identities!
+    Upkeep::Rails.configuration.request_activation = :all
     Upkeep::Rails.reset_runtime!
     FileUtils.rm_rf(@database_dir) if @database_dir
   end
@@ -158,6 +163,37 @@ class ControllerRuntimeTest < Minitest::Test
       marker_payload.fetch("activation_token"),
       subscription.id
     )
+  end
+
+  def test_opt_in_activation_registers_only_declared_actions
+    Upkeep::Rails.configuration.request_activation = :opt_in
+    user = RuntimeDeliveryUser.create!(name: "Alice")
+    RuntimeDeliveryCard.create!(title: "Plan")
+    configure_current_user_identity
+    RuntimeDeliveryCurrent.user = user
+
+    _status, _headers, body = RuntimeDeliveryCardsController.action(:anonymous).call(env_for("/cards"))
+    anonymous_html = collect_body(body)
+
+    assert_empty Upkeep::Rails.subscriptions.subscriptions
+    refute_includes anonymous_html, "data-upkeep-subscription"
+
+    _status, _headers, body = RuntimeDeliveryCardsController.action(:index).call(env_for("/cards?status=open"))
+    index_html = collect_body(body)
+
+    assert_equal 1, Upkeep::Rails.subscriptions.subscriptions.size
+    assert_includes index_html, "data-upkeep-subscription"
+  end
+
+  def test_reactive_action_does_not_capture_non_html_representation
+    Upkeep::Rails.configuration.request_activation = :opt_in
+    env = env_for("/cards")
+    env["HTTP_ACCEPT"] = "application/json"
+
+    _status, _headers, body = RuntimeDeliveryCardsController.action(:index).call(env)
+    collect_body(body)
+
+    assert_empty Upkeep::Rails.subscriptions.subscriptions
   end
 
   def test_current_attribute_identity_requires_explicit_mapping
@@ -428,6 +464,7 @@ class ControllerRuntimeTest < Minitest::Test
   end
 
   def test_mutation_request_delivers_planned_streams_to_connected_subscriber
+    Upkeep::Rails.configuration.request_activation = :opt_in
     user = RuntimeDeliveryUser.create!(name: "Alice")
     card = RuntimeDeliveryCard.create!(title: "Plan")
     configure_current_user_identity

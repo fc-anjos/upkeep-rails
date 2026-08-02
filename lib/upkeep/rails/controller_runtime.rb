@@ -10,17 +10,23 @@ module Upkeep
       SUPPRESS_KEY = :upkeep_rails_controller_runtime_suppressed
 
       included do
+        class_attribute :upkeep_reactive_actions, instance_accessor: false, default: [].freeze
         prepend_around_action :upkeep_capture_request
       end
 
-      # Public override point for host controllers. Return false to opt a request out
-      # of Upkeep capture and live registration: the action still runs and the page
-      # renders normally, but no subscription is recorded, no source is injected, and
-      # no boundary is analyzed (so an opaque relation on that request neither raises
-      # nor warns). Use for render paths Upkeep cannot prove and that should not be
-      # made reactive, e.g. full-text search results backed by raw tsvector SQL.
+      class_methods do
+        def upkeep_reactive(only:)
+          self.upkeep_reactive_actions = Array(only).map(&:to_s).freeze
+        end
+      end
+
+      # Public override point for host controllers. Return false to skip subscription
+      # capture and registration for this request. Writes are still captured and can
+      # update subscribed pages.
       def upkeep_reactive_request?
-        true
+        return true if Upkeep::Rails.configuration.request_activation == :all
+
+        self.class.upkeep_reactive_actions.include?(action_name)
       end
 
       module_function
@@ -164,7 +170,7 @@ module Upkeep
       end
 
       def upkeep_subscription_request?
-        upkeep_reactive_request? && (request.get? || request.head?)
+        upkeep_reactive_request? && request.format.html? && (request.get? || request.head?)
       end
 
       def request_capture_profile?

@@ -22,6 +22,33 @@ class HerbTemplateManifestTest < Minitest::Test
     assert_equal ["data-upkeep-frame", "data-upkeep-template"], tag.fetch(:attributes).map { |attribute| attribute.fetch(:name) }
   end
 
+  def test_silent_erb_before_partial_root_preserves_fragment_target_and_identity_local
+    manifest = build_manifest(
+      path: "app/views/cards/_card.html.erb",
+      source: <<~ERB
+        <% status = card.status %>
+        <li id="<%= dom_id(card) %>"><%= status %></li>
+      ERB
+    )
+
+    assert manifest.root_shape.fetch(:single_root)
+    assert_equal "card", manifest.root_shape.fetch(:identity_local)
+    assert_equal ["fragment_root"], manifest.frontend_tag_plan.map { |tag| tag.fetch(:kind) }
+  end
+
+  def test_output_erb_before_partial_root_is_not_a_single_root
+    manifest = build_manifest(
+      path: "app/views/cards/_card.html.erb",
+      source: <<~ERB
+        <%= card.badge %>
+        <li id="<%= dom_id(card) %>"><%= card.title %></li>
+      ERB
+    )
+
+    refute manifest.root_shape.fetch(:single_root)
+    assert_empty manifest.frontend_tag_plan
+  end
+
   def test_collection_render_gets_stable_render_site_tag
     manifest = build_manifest(
       path: "app/views/boards/show.html.erb",

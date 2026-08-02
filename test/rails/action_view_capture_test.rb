@@ -207,6 +207,17 @@ class ActionViewCaptureTest < Minitest::Test
     assert_includes html, %(data-upkeep-frame="fragment:rails:cards/_card:rails_capture_cards:#{explicit.id}")
   end
 
+  def test_fragment_dom_id_selects_identity_local_independent_of_local_order
+    author = RailsCaptureAuthor.create!(name: "Ada")
+    card = create_card!("Plan", author: author)
+
+    html, recorder = capture_render("boards/contextual_card", author: author, card: card)
+    frame_id = "fragment:rails:cards/_contextual_card:rails_capture_cards:#{card.id}"
+
+    assert recorder.graph.node(frame_id)
+    assert_includes html, %(data-upkeep-frame="#{frame_id}")
+  end
+
   def test_page_recipe_rerenders_with_fresh_relation
     create_card!("Plan")
     create_card!("Build")
@@ -948,6 +959,11 @@ class ActionViewCaptureTest < Minitest::Test
           </ul>
         </main>
       ERB
+      "boards/contextual_card.html.erb" => <<~ERB,
+        <main>
+          <%= render "cards/contextual_card", author: author, card: card %>
+        </main>
+      ERB
       "boards/non_reactive.html.erb" => <<~ERB,
         <main>Rendered</main>
       ERB
@@ -1092,6 +1108,13 @@ class ActionViewCaptureTest < Minitest::Test
         <li id="card_<%= card.id %>">
           <span class="title"><%= card.title %></span>
           <span class="status"><%= card.status %></span>
+        </li>
+      ERB
+      "cards/_contextual_card.html.erb" => <<~ERB,
+        <% status = card.status %>
+        <li id="<%= dom_id(card) %>">
+          <span class="author"><%= author.name %></span>
+          <span class="status"><%= status %></span>
         </li>
       ERB
       "cards/_assigned_card.html.erb" => <<~ERB,

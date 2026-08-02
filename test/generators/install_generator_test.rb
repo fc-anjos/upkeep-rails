@@ -42,6 +42,7 @@ class InstallGeneratorTest < Rails::Generators::TestCase
     assert_file "config/initializers/upkeep.rb", /Upkeep::Rails\.configure do \|config\|/
     assert_file "config/initializers/upkeep.rb", /app_config = Rails\.application\.config\.upkeep/
     assert_file "config/initializers/upkeep.rb", /config\.enabled = app_config\.fetch\(:enabled, true\)/
+    assert_file "config/initializers/upkeep.rb", /config\.request_activation = app_config\.fetch\(:request_activation, :all\)/
     assert_file "config/initializers/upkeep.rb", /config\.subscription_store = app_config\.fetch\(:subscription_store, Rails\.env\.test\? \? :memory : :active_record\)/
     assert_file "config/initializers/upkeep.rb", /config\.deliver_inline = app_config\.fetch\(:deliver_inline, false\)/
     assert_file "config/initializers/upkeep.rb", /Delivery setup:/
@@ -96,6 +97,14 @@ class InstallGeneratorTest < Rails::Generators::TestCase
     assert_equal 1, File.read(File.join(destination_root, "config/importmap.rb")).scan("@hotwired/turbo-rails").size
     assert_equal 1, File.read(File.join(destination_root, "config/importmap.rb")).scan(%r{pin "upkeep/subscription"}).size
     assert_equal 1, File.read(File.join(destination_root, "config/routes.rb")).scan("ActionCable.server").size
+  end
+
+  def test_install_uses_relative_subscription_import_without_importmap
+    FileUtils.rm_f(File.join(destination_root, "config/importmap.rb"))
+
+    run_generator
+
+    assert_file "app/javascript/application.js", %r{import "\./upkeep/subscription"}
   end
 
   def test_install_updates_cable_yml_development_when_solid_cable_is_bundled

@@ -7,6 +7,7 @@ module Upkeep
     class Configuration
       SUBSCRIPTION_STORES = [:active_record, :memory].freeze
       REFUSED_BOUNDARY_BEHAVIORS = [:raise, :warn].freeze
+      REQUEST_ACTIVATIONS = [:all, :opt_in].freeze
       IDENTITY_SOURCES = [:current, :session, :cookie, :warden].freeze
 
       class IdentityDefinition
@@ -106,6 +107,7 @@ module Upkeep
       # of on the in-process background dispatcher.
       attr_accessor :deliver_inline
       attr_reader :subscription_store
+      attr_reader :request_activation
 
       def initialize
         @enabled = true
@@ -113,6 +115,7 @@ module Upkeep
         @deliver_inline = false
         @delivery_batch_window = 0.01
         @refused_boundary_behavior = nil
+        @request_activation = :all
         @activation_token_expires_in = 24 * 60 * 60
         @subscription_ttl = 24 * 60 * 60
         @identity_definitions = {}
@@ -142,6 +145,17 @@ module Upkeep
         end
 
         @refused_boundary_behavior = value
+      end
+
+      def request_activation=(value)
+        value = value.to_sym if value.respond_to?(:to_sym)
+
+        unless REQUEST_ACTIVATIONS.include?(value)
+          raise ConfigurationError,
+            "Unknown Upkeep request_activation #{value.inspect}; expected one of #{REQUEST_ACTIVATIONS.join(", ")}"
+        end
+
+        @request_activation = value
       end
 
       def identify(name, current: nil, session: nil, cookie: nil, warden: nil, &block)
