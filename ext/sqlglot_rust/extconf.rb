@@ -5,8 +5,7 @@ require "rbconfig"
 require_relative "../../lib/upkeep/sqlglot/native_library"
 
 RUST_REPOSITORY = "https://github.com/protegrity/sql-glot-rust.git"
-RUST_TAG = "v0.10.25"
-RUST_COMMIT = "a4d491873c8a72df10de21097265338b65b54c3a"
+RUST_TAG = "v0.10.26"
 
 extension_dir = __dir__
 gem_root = File.expand_path("../..", extension_dir)
@@ -53,11 +52,11 @@ unless packaged_library
     abort "ERROR: SQLGlot source checkout failed" unless success
   end
 
-  revision = IO.popen(
-    ["git", "-C", source_dir, "rev-parse", "HEAD"],
+  source_tag = IO.popen(
+    ["git", "-C", source_dir, "describe", "--tags", "--exact-match", "HEAD"],
     &:read
   ).strip
-  abort "ERROR: expected SQLGlot #{RUST_COMMIT}, found #{revision}" unless revision == RUST_COMMIT
+  abort "ERROR: expected SQLGlot #{RUST_TAG}, found #{source_tag}" unless source_tag == RUST_TAG
 
   success = system(
     "cargo",

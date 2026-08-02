@@ -59,7 +59,7 @@ bundle/gem reinstall so Bundler selects the matching Upkeep platform gem.
 
 ## Native SQLGlot packaging
 
-`upkeep-rails` depends on `ffi` and binds `sql-glot-rust` v0.10.25 directly.
+`upkeep-rails` depends on `ffi` and binds `sql-glot-rust` v0.10.26 directly.
 The Ruby boundary lives under `Upkeep::SQLGlot`; there is no external
 `sqlglot` Ruby gem dependency and no Upkeep-specific Rust crate or C ABI.
 
@@ -72,15 +72,21 @@ release consists of five platform-specific `upkeep-rails` artifacts:
 - `arm64-darwin`; and
 - `x64-mingw-ucrt`.
 
-The exact v0.10.25 source commit is built in release CI and its unmodified
-shared library is included in each artifact. Rust sources are build inputs and
-are not shipped in the gem, so installation never requires Rust. There is
-deliberately no generic source artifact.
+The released v0.10.26 tag is built in release CI and its unmodified shared
+library is included in each artifact. Rust sources are build inputs and are not
+shipped in the gem, so installation never requires Rust. There is deliberately
+no generic source artifact.
 
-The v0.10.25 scope builder preserves CTE references as scope sources. Upkeep
+The v0.10.26 scope builder preserves CTE references as scope sources. Upkeep
 does not treat a scope source as a physical table; the AST lowerer resolves the
 logical CTE to its physical child and scope validation checks every
 schema-backed source.
+
+Active Record SQL types remain available in the Ruby `MappingSchema`. The
+native dependency schema represents every column type as `UNKNOWN` because
+qualification and lineage inspect table and column identity, not column type.
+Database-specific types therefore cannot prevent dependency extraction, and
+Upkeep does not maintain a parallel SQL type catalog.
 
 `qualify_columns` expands wildcards by design. Upkeep restores wildcard
 projection nodes before dependency lowering so `SELECT table.*` does not add
@@ -179,7 +185,9 @@ Completed:
 - [x] Added direct raw-SQL coverage, including correlated subqueries, CTEs,
   set operations, PostgreSQL operators, and MySQL/SQLite functions.
 - [x] Bound parse, generate, transpile, `MappingSchema`, qualification, scope,
-  and lineage directly to `sql-glot-rust` v0.10.25.
+  and lineage directly to `sql-glot-rust` v0.10.26.
+- [x] Decoupled dependency schemas from database type parsing while retaining
+  the original SQL types at the Ruby boundary.
 - [x] Preserved Rust scope and lineage fields and locked the corrected CTE
   scope-source behavior in a binding test.
 - [x] Added five platform-specific `upkeep-rails` artifacts for macOS, Linux,
