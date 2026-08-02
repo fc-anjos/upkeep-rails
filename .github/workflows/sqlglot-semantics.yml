@@ -64,7 +64,7 @@ jobs:
         shell: bash
         run: |
           package=$(find pkg -maxdepth 1 -name "upkeep-rails-*.gem" -print -quit)
-          gem install "${package}" --local --force --no-document
+          gem install "${package}" --force --no-document
           ruby -e 'gem "upkeep-rails"; require "upkeep/sqlglot"; abort unless Upkeep::SQLGlot.parse("SELECT 1").key?("Select")'
 
       - uses: actions/upload-artifact@v4
