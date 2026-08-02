@@ -36,6 +36,8 @@ module Upkeep
           Target.new("render_site", frame.payload.fetch(:site_id), "render-site dependency matched committed change")
         when "fragment"
           Target.new("fragment", frame.id, "record attribute read matched committed attributes")
+        when "turbo_frame"
+          Target.new("turbo_frame", frame.payload.fetch(:target_id), "Turbo Frame dependency matched committed change")
         end
       end
 
@@ -102,6 +104,8 @@ module Upkeep
           fragment.at_css(%([data-upkeep-frame="#{css_escape(target.id)}"]))
         when "render_site"
           fragment.at_css(%([data-upkeep-render-site="#{css_escape(target.id)}"]))
+        when "turbo_frame"
+          fragment.at_css(%(turbo-frame[id="#{css_escape(target.id)}"]))
         end
       end
 
@@ -114,7 +118,14 @@ module Upkeep
       end
 
       def frame_id_for(target)
-        target.kind == "render_site" ? "site:#{target.id}" : target.id
+        case target.kind
+        when "render_site"
+          "site:#{target.id}"
+        when "turbo_frame"
+          "turbo_frame:#{target.id}"
+        else
+          target.id
+        end
       end
 
       def css_escape(value)

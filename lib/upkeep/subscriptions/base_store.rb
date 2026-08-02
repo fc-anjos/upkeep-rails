@@ -39,6 +39,10 @@ module Upkeep
         active_registry.fetch(id) || pending_registry.fetch(id) || fetch_missing(id)
       end
 
+      def fetch_for_composition(id)
+        fetch(id)
+      end
+
       def explain(id)
         fetch(id).explain
       end

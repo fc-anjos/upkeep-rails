@@ -61,6 +61,11 @@ class InstallGeneratorTest < Rails::Generators::TestCase
     assert_file "app/javascript/upkeep/subscription.js", /activation_token: payload\.activation_token/
     assert_file "app/javascript/upkeep/subscription.js", /connectStreamSource/
     assert_file "app/javascript/upkeep/subscription.js", /disconnectStreamSource/
+    assert_file "app/javascript/upkeep/subscription.js", /turbo:before-fetch-request/
+    assert_file "app/javascript/upkeep/subscription.js", /turbo:frame-render/
+    assert_file "app/javascript/upkeep/subscription.js", /replaceSubscription/
+    assert_file "app/javascript/upkeep/subscription.js", /ensureSourceElement/
+    assert_file "app/javascript/upkeep/subscription.js", /X-Upkeep-Subscription-Id/
     assert_file "app/javascript/upkeep/subscription.js", /subscription rejected by the server/
     refute_match(/document\.write/, File.read(File.join(destination_root, "app/javascript/upkeep/subscription.js")))
     assert_file "app/javascript/application.js", /import "@hotwired\/turbo-rails"/

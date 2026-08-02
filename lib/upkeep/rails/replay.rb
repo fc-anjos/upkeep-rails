@@ -25,6 +25,8 @@ module Upkeep
         case replay
         when ::Upkeep::Replay::ControllerPage
           render_controller_page(replay)
+        when ::Upkeep::Replay::ControllerTurboFrame
+          render_controller_turbo_frame(replay)
         when ::Upkeep::Replay::Template
           render_template(replay)
         when ::Upkeep::Replay::Fragment
@@ -44,6 +46,12 @@ module Upkeep
           controller.action(replay.action).call(rack_env(replay.env))
         end
         collect_response_body(body)
+      end
+
+      def render_controller_turbo_frame(replay)
+        html = render_controller_page(replay)
+        target = Targeting::Target.new("turbo_frame", replay.target_id, "Turbo Frame replay")
+        Targeting::Extraction.extract_target_html(html, target)
       end
 
       def render_template(replay)

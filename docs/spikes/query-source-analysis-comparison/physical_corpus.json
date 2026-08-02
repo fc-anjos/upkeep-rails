@@ -1,0 +1,26 @@
+[
+  {
+    "name": "SQLite view expansion",
+    "dialect": "sqlite",
+    "sql": "SELECT * FROM published_posts",
+    "tables": ["posts"]
+  },
+  {
+    "name": "PostgreSQL view expansion",
+    "dialect": "postgres",
+    "sql": "SELECT * FROM active_accounts",
+    "tables": ["accounts"]
+  },
+  {
+    "name": "PostgreSQL stable SQL function",
+    "dialect": "postgres",
+    "sql": "SELECT * FROM account_events(42)",
+    "tables": ["audit.events"]
+  },
+  {
+    "name": "PostgreSQL volatile SQL function",
+    "dialect": "postgres",
+    "sql": "SELECT * FROM volatile_account_events(42)",
+    "tables": ["audit.events"]
+  }
+]

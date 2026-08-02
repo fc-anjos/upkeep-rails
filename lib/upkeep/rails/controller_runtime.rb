@@ -107,6 +107,10 @@ module Upkeep
         payload[:registered] = !!registration
         if capture && registration
           measure_phase(payload, :inject_ms) do
+            Upkeep::Rails::ClientSubscription.headers_for(
+              identity: registration.identity,
+              subscription: registration.subscription
+            ).each { |name, value| response.headers[name] = value }
             response.body = Upkeep::Rails::ClientSubscription.inject(
               capture.html,
               identity: registration.identity,

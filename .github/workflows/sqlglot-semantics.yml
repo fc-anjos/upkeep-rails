@@ -1,0 +1,112 @@
+name: Upkeep native packages
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/sqlglot-semantics.yml"
+      - "ext/sqlglot_rust/**"
+      - "lib/upkeep/sqlglot.rb"
+      - "lib/upkeep/sqlglot/**"
+      - "Rakefile"
+      - "upkeep-rails.gemspec"
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  platform-gem:
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            platform: x86_64-linux-gnu
+          - runner: ubuntu-24.04-arm
+            platform: aarch64-linux-gnu
+          - runner: macos-15-intel
+            platform: x86_64-darwin
+          - runner: macos-15
+            platform: arm64-darwin
+          - runner: windows-2022
+            platform: x64-mingw-ucrt
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2.9"
+
+      - name: Install Rust
+        run: rustup toolchain install stable --profile minimal
+
+      - name: Install Ruby dependencies
+        run: |
+          ruby -S gem install ffi minitest rake bundler --no-document
+
+      - name: Validate release tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: ruby -Ilib -rupkeep/version -e 'abort "tag does not match version" unless ENV.fetch("GITHUB_REF_NAME") == "v#{Upkeep::VERSION}"'
+
+      - name: Test and package
+        run: |
+          ruby -S rake native:build
+          ruby -Ilib test/sqlglot_semantics_api_test.rb
+          ruby -S rake native:package PLATFORM=${{ matrix.platform }}
+
+      - name: Verify packaged gem
+        shell: bash
+        run: |
+          package=$(find pkg -maxdepth 1 -name "upkeep-rails-*.gem" -print -quit)
+          gem install "${package}" --local --force --ignore-dependencies --no-document
+          gem_path=$(ruby -e 'puts Gem::Specification.find_by_name("upkeep-rails").full_gem_path')
+          ruby -I"${gem_path}/lib" -e 'require "upkeep/sqlglot"; abort unless Upkeep::SQLGlot.parse("SELECT 1").key?("Select")'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: upkeep-rails-${{ matrix.platform }}
+          path: pkg/upkeep-rails-*.gem
+          if-no-files-found: error
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: platform-gem
+    runs-on: ubuntu-24.04
+    environment: release
+
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: upkeep-rails-*
+          path: pkg
+          merge-multiple: true
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2.9"
+
+      - name: Verify release artifacts
+        run: |
+          gem_count=$(find pkg -maxdepth 1 -name "upkeep-rails-*.gem" | wc -l)
+          test "${gem_count}" -eq 5
+          for package in pkg/*.gem
+          do
+            gem specification "${package}" name
+            gem specification "${package}" version
+            gem specification "${package}" platform
+          done
+
+      - name: Publish platform gems
+        env:
+          GEM_HOST_API_KEY: ${{ secrets.RUBYGEMS_API_KEY }}
+        run: |
+          for package in pkg/*.gem
+          do
+            gem push "${package}"
+          done
