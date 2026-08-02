@@ -224,6 +224,7 @@ module Upkeep
         def visit_document_node(node)
           significant_children = node.children.reject { |child| insignificant_document_child?(child) }
           root_elements = significant_children.select { |child| html_element?(child) }
+          identity_local = root_identity_local(root_elements.first) if root_elements.one?
 
           @root_shape = {
             significant_children: significant_children.size,
@@ -231,8 +232,9 @@ module Upkeep
             root_types: significant_children.map { |child| child.class.name },
             single_root: significant_children.size == 1 && root_elements.size == 1,
             single_root_element: root_elements.size == 1,
-            multi_root: root_elements.size > 1
-          }
+            multi_root: root_elements.size > 1,
+            identity_local: identity_local
+          }.compact
 
           if partial_template?
             plan_fragment_root_tag(root_elements.first) if root_shape.fetch(:single_root)
@@ -445,8 +447,32 @@ module Upkeep
           return true if html_text?(node) && token_value(node.content).to_s.strip.empty?
           return true if html_doctype?(node)
           return true if erb_comment?(node)
+          return true if erb_silent?(node)
 
           false
+        end
+
+        def root_identity_local(root_element)
+          attributes = Array(root_element&.open_tag&.children).select do |child|
+            child.class.name == "Herb::AST::HTMLAttributeNode"
+          end
+          id_attribute = attributes.find { |attribute| attribute_name(attribute) == "id" }
+          expressions = Array(id_attribute&.value&.children).filter_map do |child|
+            next unless child.class.name == "Herb::AST::ERBContentNode"
+            next unless token_value(child.tag_opening) == "<%="
+
+            token_value(child.content).to_s.strip
+          end
+          return unless expressions.one?
+
+          expressions.first.match(/\Adom_id(?:\s*\(\s*|\s+)([a-z_]\w*)/)&.captures&.first
+        end
+
+        def attribute_name(attribute)
+          children = attribute.name.respond_to?(:children) ? attribute.name.children : []
+          children.filter_map do |child|
+            token_value(child.respond_to?(:content) ? child.content : child)
+          end.join
         end
 
         def html_text?(node)
@@ -470,6 +496,10 @@ module Upkeep
 
         def erb_comment?(node)
           node.respond_to?(:tag_opening) && token_value(node.tag_opening).to_s.start_with?("<%#")
+        end
+
+        def erb_silent?(node)
+          node.respond_to?(:tag_opening) && token_value(node.tag_opening) == "<%"
         end
 
         def partial_template?
