@@ -18,6 +18,13 @@ module Upkeep
             action: snapshot.fetch(:action),
             env: snapshot.fetch(:env)
           )
+        when "controller_turbo_frame"
+          ControllerTurboFrame.new(
+            controller_class: snapshot[:controller_class],
+            action: snapshot.fetch(:action),
+            env: snapshot.fetch(:env),
+            target_id: snapshot.fetch(:target_id)
+          )
         when "template"
           Template.new(
             controller_class: snapshot[:controller_class],
@@ -131,6 +138,22 @@ module Upkeep
           controller_class: controller_class,
           action: action,
           env: env
+        }.compact
+      end
+    end
+
+    class ControllerTurboFrame < Data.define(:controller_class, :action, :env, :target_id)
+      include Payload
+
+      def type = "controller_turbo_frame"
+
+      def to_h
+        {
+          type: type,
+          controller_class: controller_class,
+          action: action,
+          env: env,
+          target_id: target_id
         }.compact
       end
     end

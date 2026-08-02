@@ -314,6 +314,8 @@ module Upkeep
           %([data-upkeep-render-site="#{css_escape(target.id)}"])
         when "dom_id"
           %[##{css_escape(target.id)}]
+        when "turbo_frame"
+          %[turbo-frame[id="#{css_escape(target.id)}"]]
         else
           raise "unknown delivery target kind: #{target.kind.inspect}"
         end

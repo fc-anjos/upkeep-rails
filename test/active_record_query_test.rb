@@ -346,14 +346,19 @@ class ActiveRecordQueryTest < Minitest::Test
     )
   end
 
-  def test_opaque_predicate_raises_relation_error
-    error = assert_raises(Upkeep::ActiveRecordQuery::OpaqueRelationError) do
-      analyze(QueryAnalysisCard.where("status = ?", "open").order(:position))
-    end
+  def test_raw_predicate_is_analyzed_by_sqlglot
+    analysis = analyze(QueryAnalysisCard.where("status = ?", "open").order(:position))
 
-    assert_includes error.message, "cannot make this Active Record relation reactive"
-    assert_includes error.message, "raw SQL predicate"
-    assert_includes error.message, "Rewrite raw SQL predicates"
+    assert_equal :columns, analysis.coverage
+    assert_equal({
+      "query_analysis_cards" => %w[id position status]
+    }, analysis.table_columns)
+    assert_equal [{
+      table: "query_analysis_cards",
+      column: "status",
+      operator: "eq",
+      values: ["open"]
+    }], analysis.predicates
   end
 
   def test_association_join_records_joined_table_columns
@@ -380,35 +385,39 @@ class ActiveRecordQueryTest < Minitest::Test
     assert dependency.matches_change?(change(table: "query_analysis_people", attributes: ["manager_id"]))
   end
 
-  def test_raw_join_raises_opaque_relation_error
+  def test_raw_join_is_analyzed_by_sqlglot
     relation = QueryAnalysisCard
       .joins("INNER JOIN query_analysis_authors ON query_analysis_authors.id = query_analysis_cards.author_id")
       .where("query_analysis_authors.name = ?", "Ada")
 
-    error = assert_raises(Upkeep::ActiveRecordQuery::OpaqueRelationError) { analyze(relation) }
+    analysis = analyze(relation)
 
-    assert_includes error.message, "cannot make this Active Record relation reactive"
-    assert_includes error.message, "raw SQL join"
-    assert_includes error.message, "Rewrite raw SQL joins"
+    assert_equal :columns, analysis.coverage
+    assert_equal %w[id name], analysis.table_columns.fetch("query_analysis_authors")
+    assert_equal %w[author_id id], analysis.table_columns.fetch("query_analysis_cards")
+    assert_equal [{
+      table: "query_analysis_authors",
+      column: "name",
+      operator: "eq",
+      values: ["Ada"]
+    }], analysis.predicates
   end
 
-  def test_write_observation_can_describe_opaque_relation_against_the_model_table
-    analysis = analyze(
-      QueryAnalysisCard.joins("INNER JOIN query_analysis_authors ON query_analysis_authors.id = query_analysis_cards.author_id"),
-      opaque_table_policy: :allow_table
+  def test_write_observation_uses_precise_sqlglot_analysis_for_raw_join
+    analysis = Upkeep::ActiveRecordQuery.analyze_for_write(
+      QueryAnalysisCard.joins("INNER JOIN query_analysis_authors ON query_analysis_authors.id = query_analysis_cards.author_id")
     )
 
-    assert_equal :tables, analysis.coverage
-    assert_equal ["query_analysis_cards"], analysis.tables
+    assert_equal :columns, analysis.coverage
+    assert_equal %w[query_analysis_authors query_analysis_cards], analysis.tables
   end
 
-  def test_write_observation_can_describe_opaque_predicate_against_the_model_table
-    analysis = analyze(
-      QueryAnalysisCard.where("status = ?", "open"),
-      opaque_table_policy: :allow_table
+  def test_write_observation_uses_precise_sqlglot_analysis_for_raw_predicate
+    analysis = Upkeep::ActiveRecordQuery.analyze_for_write(
+      QueryAnalysisCard.where("status = ?", "open")
     )
 
-    assert_equal :tables, analysis.coverage
+    assert_equal :columns, analysis.coverage
     assert_equal ["query_analysis_cards"], analysis.tables
   end
 
@@ -427,11 +436,120 @@ class ActiveRecordQueryTest < Minitest::Test
 
   def test_appendability_comes_from_relation_shape
     assert analyze(QueryAnalysisCard.where(status: "open").order(:id)).appendable?
-    refute analyze(QueryAnalysisCard.where("status = ?", "open").order(:id), opaque_table_policy: :allow_table).appendable?
+    assert analyze(QueryAnalysisCard.where("status = ?", "open").order(:id)).appendable?
     refute analyze(QueryAnalysisCard.where(status: "open").limit(10)).appendable?
     assert_equal 10, analyze(QueryAnalysisCard.where(status: "open").limit(10)).limit_value
     refute analyze(QueryAnalysisCard.distinct.where(status: "open")).appendable?
     refute analyze(QueryAnalysisCard.group(:status)).appendable?
+  end
+
+  def test_sqlglot_matches_the_frozen_arel_oracle_corpus
+    cards = QueryAnalysisCard.arel_table
+    people = QueryAnalysisPerson.arel_table
+    lower_title = Arel::Nodes::NamedFunction.new("LOWER", [cards[:title]])
+
+    relations = {
+      simple_filter_and_order: QueryAnalysisCard.where(status: "open").order(:position),
+      in_filter: QueryAnalysisCard.where(status: %w[open done]),
+      null_filter: QueryAnalysisCard.where(status: nil),
+      negated_filter: QueryAnalysisCard.where.not(status: "closed"),
+      function_filter: QueryAnalysisCard.where(lower_title.matches("%plan%")),
+      association_join: QueryAnalysisCard
+        .joins(:author)
+        .where(query_analysis_authors: {name: "Ada"})
+        .order(:position),
+      self_join: QueryAnalysisPerson.joins(:manager).where(manager: {name: "Ada"}),
+      limited: QueryAnalysisCard.where(status: "open").limit(10),
+      distinct: QueryAnalysisCard.distinct.where(status: "open"),
+      grouped: QueryAnalysisCard.group(:status),
+      arel_column_comparison: QueryAnalysisPerson.where(people[:manager_id].eq(people[:id]))
+    }
+
+    expected = {
+      simple_filter_and_order: {
+        table_columns: {"query_analysis_cards" => %w[id position status]},
+        predicates: [{table: "query_analysis_cards", column: "status", operator: "eq", values: ["open"]}],
+        limit_value: nil,
+        appendable: true
+      },
+      in_filter: {
+        table_columns: {"query_analysis_cards" => %w[id status]},
+        predicates: [{table: "query_analysis_cards", column: "status", operator: "in", values: %w[open done]}],
+        limit_value: nil,
+        appendable: true
+      },
+      null_filter: {
+        table_columns: {"query_analysis_cards" => %w[id status]},
+        predicates: [{table: "query_analysis_cards", column: "status", operator: "eq", values: [nil]}],
+        limit_value: nil,
+        appendable: true
+      },
+      negated_filter: {
+        table_columns: {"query_analysis_cards" => %w[id status]},
+        predicates: [{table: "query_analysis_cards", column: "status", operator: "not_eq", values: ["closed"]}],
+        limit_value: nil,
+        appendable: true
+      },
+      function_filter: {
+        table_columns: {"query_analysis_cards" => %w[id title]},
+        predicates: [],
+        limit_value: nil,
+        appendable: true
+      },
+      association_join: {
+        table_columns: {
+          "query_analysis_authors" => %w[id name],
+          "query_analysis_cards" => %w[author_id id position]
+        },
+        predicates: [{table: "query_analysis_authors", column: "name", operator: "eq", values: ["Ada"]}],
+        limit_value: nil,
+        appendable: true
+      },
+      self_join: {
+        table_columns: {"query_analysis_people" => %w[id manager_id name]},
+        predicates: [{table: "query_analysis_people", column: "name", operator: "eq", values: ["Ada"]}],
+        limit_value: nil,
+        appendable: true
+      },
+      limited: {
+        table_columns: {"query_analysis_cards" => %w[id status]},
+        predicates: [{table: "query_analysis_cards", column: "status", operator: "eq", values: ["open"]}],
+        limit_value: 10,
+        appendable: false
+      },
+      distinct: {
+        table_columns: {"query_analysis_cards" => %w[id status]},
+        predicates: [{table: "query_analysis_cards", column: "status", operator: "eq", values: ["open"]}],
+        limit_value: nil,
+        appendable: false
+      },
+      grouped: {
+        table_columns: {"query_analysis_cards" => %w[id status]},
+        predicates: [],
+        limit_value: nil,
+        appendable: false
+      },
+      arel_column_comparison: {
+        table_columns: {"query_analysis_people" => %w[id manager_id]},
+        predicates: [],
+        limit_value: nil,
+        appendable: true
+      }
+    }
+
+    relations.each do |name, relation|
+      result = analyze(relation)
+      oracle = expected.fetch(name)
+
+      assert_equal oracle.fetch(:table_columns), result.table_columns, "#{name}: columns"
+      assert_equal oracle.fetch(:predicates), result.predicates, "#{name}: predicates"
+      if oracle.fetch(:limit_value)
+        assert_equal oracle.fetch(:limit_value), result.limit_value, "#{name}: limit"
+      else
+        assert_nil result.limit_value, "#{name}: limit"
+      end
+      assert_equal oracle.fetch(:appendable), result.appendable?, "#{name}: appendability"
+    end
   end
 
   def test_append_recipe_only_handles_creates_for_the_collection_model_table
@@ -475,7 +593,7 @@ class ActiveRecordQueryTest < Minitest::Test
 
     event = Upkeep::Runtime::ChangeLog.events.fetch(0)
     assert_equal "bulk_update", event.fetch(:type)
-    assert_equal :tables, event.fetch(:predicate_coverage).to_sym
+    assert_equal :columns, event.fetch(:predicate_coverage).to_sym
     assert_equal QueryAnalysisCard.column_names.sort, event.fetch(:changed_attributes).sort
     assert_equal ["id", "author_id", "title", "status", "position"].sort, event.fetch(:changed_attributes).sort
   end

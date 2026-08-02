@@ -100,6 +100,19 @@ module Upkeep
         new(graph: DAG::Graph.from_h(snapshot.fetch(:graph)))
       end
 
+      def replace_scope(scope_id, replacement)
+        composed = if graph.node?(scope_id)
+          graph.replace_subgraph(scope_id, replacement.graph)
+        else
+          graph.attach_subgraph(
+            scope_id,
+            replacement.graph,
+            parent_id: REQUEST_NODE_ID
+          )
+        end
+        self.class.new(graph: composed)
+      end
+
       def to_h(dependencies: :all)
         flush_pending_dependencies
         { graph: graph.to_h(dependencies: dependencies) }
@@ -971,7 +984,7 @@ module Upkeep
       end
 
       def update_all(updates)
-        analysis = ActiveRecordQuery.analyze(self, opaque_table_policy: :allow_table)
+        analysis = ActiveRecordQuery.analyze_for_write(self)
         event = ChangeEvents.bulk_update(
           table: klass.table_name,
           model: klass.name,
@@ -987,7 +1000,7 @@ module Upkeep
       end
 
       def delete_all
-        analysis = ActiveRecordQuery.analyze(self, opaque_table_policy: :allow_table)
+        analysis = ActiveRecordQuery.analyze_for_write(self)
         event = ChangeEvents.bulk_delete(
           table: klass.table_name,
           model: klass.name,
@@ -1035,13 +1048,16 @@ module Upkeep
       end
 
       def record_query_dependency(column_names)
-        analysis = relation_analysis_for_observation
+        return unless Observation.recorder
+        return if RelationObserver.dependency_tracking_suppressed?
+
+        analysis = ActiveRecordQuery.analyze(reselect(*column_names))
         return unless analysis
 
         Observation.record_dependency(
           Dependencies::ActiveRecordQuery.new(
             primary_table: analysis.primary_table,
-            table_columns: relation_table_columns(analysis, pluck_dependency_columns(column_names)),
+            table_columns: analysis.table_columns,
             coverage: analysis.coverage,
             sql: analysis.sql,
             predicates: analysis.predicates
@@ -1049,42 +1065,6 @@ module Upkeep
         )
       rescue ActiveRecordQuery::OpaqueRelationError => error
         handle_opaque_relation_dependency(error)
-      end
-
-      def relation_table_columns(analysis, extra_columns)
-        analysis.table_columns.merge(
-          klass.table_name => (analysis.table_columns.fetch(klass.table_name, []) + extra_columns).uniq.sort
-        )
-      end
-
-      def pluck_dependency_columns(column_names)
-        column_names.flatten.map do |column_name|
-          pluck_dependency_column(column_name)
-        end
-      end
-
-      def pluck_dependency_column(column_name)
-        case column_name
-        when Symbol
-          return column_name.to_s
-        when String
-          return column_name if klass.column_names.include?(column_name)
-        else
-          if column_name.respond_to?(:to_sym)
-            name = column_name.to_sym.to_s
-            return name if klass.column_names.include?(name)
-          end
-
-          if column_name.respond_to?(:name) && column_name.respond_to?(:relation)
-            name = column_name.name.to_s
-            return name if klass.column_names.include?(name)
-          end
-        end
-
-        raise ActiveRecordQuery::OpaqueRelationError.new(
-          self,
-          reasons: ["opaque pluck column #{column_name.inspect}"]
-        )
       end
 
       def handle_opaque_relation_dependency(error)

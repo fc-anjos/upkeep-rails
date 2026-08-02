@@ -13,6 +13,10 @@
 /test/tmp/
 /tmp/
 /results/
+/ext/sqlglot_rust/sql-glot-rust/
+/ext/sqlglot_rust/Makefile
+/lib/upkeep/sqlglot/libsqlglot_rust.*
+/lib/upkeep/sqlglot/sqlglot_rust.*
 /benchmark/results/
 /benchmark/**/.bundle/
 /benchmark/**/Gemfile.lock

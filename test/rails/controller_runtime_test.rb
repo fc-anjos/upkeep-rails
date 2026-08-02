@@ -3,6 +3,8 @@
 require "test_helper"
 require "cgi"
 require "tmpdir"
+require "turbo-rails"
+require File.join(Gem.loaded_specs.fetch("turbo-rails").full_gem_path, "app/helpers/turbo/frames_helper")
 
 class RuntimeDeliveryUser < ActiveRecord::Base
   self.table_name = "runtime_delivery_users"
@@ -56,6 +58,12 @@ class RuntimeDeliveryCardsController < ActionController::Base
     render template: "runtime_delivery_cards/request_variant"
   end
 
+  def framed
+    @shell = RuntimeDeliveryCard.find(params.fetch(:shell_id))
+    @selected = RuntimeDeliveryCard.find(params.fetch(:selected_id))
+    render template: "runtime_delivery_cards/framed"
+  end
+
   # Renders an opaque relation but opts out of reactivity via upkeep_reactive_request?,
   # so Upkeep skips capture entirely.
   def non_reactive
@@ -86,6 +94,7 @@ class ControllerRuntimeTest < Minitest::Test
   end
 
   def setup
+    ActionView::Base.include(Turbo::FramesHelper)
     Upkeep::Rails.configuration.clear_identities!
     Upkeep::Rails.reset_runtime!
     Upkeep::Rails::Install.reset!
@@ -141,7 +150,7 @@ class ControllerRuntimeTest < Minitest::Test
     assert_equal subscription.subscriber_id, expected_identity.subscriber_id
     assert_includes html, "<upkeep-subscription-source"
     assert_includes html, "data-upkeep-subscription"
-    assert_includes html, "data-turbo-temporary"
+    refute_includes html, "data-turbo-temporary"
     assert_includes html, subscription.id
     assert_includes html, expected_identity.stream_name
     marker_payload = subscription_marker_payload(html)
@@ -188,7 +197,7 @@ class ControllerRuntimeTest < Minitest::Test
     assert_equal true, events.last.payload.fetch(:anonymous)
     assert_includes html, "<upkeep-subscription-source"
     assert_includes html, "data-upkeep-subscription"
-    assert_includes html, "data-turbo-temporary"
+    refute_includes html, "data-turbo-temporary"
     assert_includes html, subscription.id
     assert_includes html, subscription.metadata.fetch(:stream_name)
     marker_payload = subscription_marker_payload(html)
@@ -196,6 +205,69 @@ class ControllerRuntimeTest < Minitest::Test
       marker_payload.fetch("activation_token"),
       subscription.id
     )
+  end
+
+  def test_turbo_frame_request_replaces_only_its_subscription_subgraph
+    shell = RuntimeDeliveryCard.create!(title: "Shell")
+    first = RuntimeDeliveryCard.create!(title: "First")
+    second = RuntimeDeliveryCard.create!(title: "Second")
+
+    _status, _headers, body = RuntimeDeliveryCardsController.action(:framed).call(
+      env_for("/cards/framed?shell_id=#{shell.id}&selected_id=#{first.id}")
+    )
+    initial_html = collect_body(body)
+    initial = Upkeep::Rails.subscriptions.subscriptions.first
+    initial_payload = subscription_marker_payload(initial_html)
+
+    env = env_for("/cards/framed?shell_id=#{shell.id}&selected_id=#{second.id}")
+    env["HTTP_TURBO_FRAME"] = "cards"
+    env["HTTP_X_UPKEEP_SUBSCRIPTION_ID"] = initial.id
+    env["HTTP_X_UPKEEP_SUBSCRIPTION_TOKEN"] = initial_payload.fetch("activation_token")
+    _status, headers, frame_body = RuntimeDeliveryCardsController.action(:framed).call(env)
+    collect_body(frame_body)
+
+    replacement_id = headers.fetch(Upkeep::Rails::ClientSubscription::ID_HEADER)
+    replacement = Upkeep::Rails.subscriptions.fetch(replacement_id)
+    scope_ids = replacement.graph.contained_node_ids("turbo_frame:cards")
+    scope_dependencies = scope_ids.flat_map { |node_id| replacement.graph.dependencies_for(node_id) }
+    page_dependencies = replacement.graph.dependencies_for("page:rails:runtime_delivery_cards/framed")
+
+    assert_equal initial.id, replacement.metadata.fetch(:replaces_subscription_id)
+    assert_includes page_dependencies.map { |dependency| dependency.key[:id].to_s }, shell.id.to_s
+    assert_includes scope_dependencies.map { |dependency| dependency.key[:id].to_s }, second.id.to_s
+    refute_includes scope_dependencies.map { |dependency| dependency.key[:id].to_s }, first.id.to_s
+    assert Upkeep::Rails::ActivationToken.valid_for_subscription?(
+      headers.fetch(Upkeep::Rails::ClientSubscription::TOKEN_HEADER),
+      replacement.id
+    )
+
+    Upkeep::Rails.subscriptions.activate(replacement.id)
+    Upkeep::Runtime::ChangeLog.reset
+    second.update!(title: "Second v2")
+    plan = Upkeep::Invalidation::Planner.new(store: Upkeep::Rails.subscriptions).plan(
+      Upkeep::Runtime::ChangeLog.drain
+    )
+    stream = Upkeep::Delivery::TurboStreams.new.build(plan).streams.first
+
+    assert_equal "turbo_frame", stream.target.kind
+    assert_equal "cards", stream.target.id
+    assert_equal %[turbo-frame[id="cards"]], stream.target_selector
+    assert_includes stream.html, "Second v2"
+    refute_includes stream.html, "First"
+  end
+
+  def test_first_reactive_turbo_frame_registers_without_a_base_subscription
+    card = RuntimeDeliveryCard.create!(title: "Card")
+    env = env_for("/cards/framed?shell_id=#{card.id}&selected_id=#{card.id}")
+    env["HTTP_TURBO_FRAME"] = "cards"
+
+    _status, headers, body = RuntimeDeliveryCardsController.action(:framed).call(env)
+    collect_body(body)
+
+    subscription_id = headers.fetch(Upkeep::Rails::ClientSubscription::ID_HEADER)
+
+    assert Upkeep::Rails.subscriptions.fetch(subscription_id)
+    assert_nil headers[Upkeep::Rails::ClientSubscription::ACTION_HEADER]
   end
 
   def test_non_reactive_request_skips_capture_without_registering_or_refusing
@@ -326,7 +398,7 @@ class ControllerRuntimeTest < Minitest::Test
     assert_includes subscription.recorder.graph.summary.fetch(:dependency_sources), "request"
   end
 
-  def test_warn_policy_refuses_subscription_registration_for_opaque_collection
+  def test_warn_policy_registers_subscription_for_sqlglot_analyzable_collection
     previous_behavior = Upkeep::Rails.configuration.refused_boundary_behavior
     Upkeep::Rails.configuration.refused_boundary_behavior = :warn
     user = RuntimeDeliveryUser.create!(name: "Alice")
@@ -338,8 +410,8 @@ class ControllerRuntimeTest < Minitest::Test
     html = collect_body(body)
 
     assert_includes html, "Plan"
-    assert_empty Upkeep::Rails.subscriptions.subscriptions
-    refute_includes html, "data-upkeep-subscription"
+    refute_empty Upkeep::Rails.subscriptions.subscriptions
+    assert_includes html, "data-upkeep-subscription"
   ensure
     Upkeep::Rails.configuration.refused_boundary_behavior = previous_behavior if previous_behavior
   end
@@ -484,15 +556,12 @@ class ControllerRuntimeTest < Minitest::Test
   end
 
   def stub_turbo_current_request_id(request_id)
-    raise "Turbo already defined" if defined?(::Turbo)
-
-    turbo = Module.new do
-      define_singleton_method(:current_request_id) { request_id }
-    end
-    Object.const_set(:Turbo, turbo)
+    turbo = ::Turbo
+    previous = turbo.current_request_id if turbo.respond_to?(:current_request_id)
+    turbo.current_request_id = request_id
     yield
   ensure
-    Object.send(:remove_const, :Turbo) if defined?(::Turbo)
+    turbo.current_request_id = previous if turbo
   end
 
   def collect_body(body)
@@ -574,6 +643,14 @@ class ControllerRuntimeTest < Minitest::Test
           <ul>
             <%= render partial: "runtime_delivery_cards/card", collection: @cards, as: :card %>
           </ul>
+        </main>
+      ERB
+      "runtime_delivery_cards/framed.html.erb" => <<~ERB,
+        <main>
+          <h1><%= @shell.title %></h1>
+          <%= turbo_frame_tag "cards" do %>
+            <p><%= @selected.title %></p>
+          <% end %>
         </main>
       ERB
       "runtime_delivery_cards/_card.html.erb" => <<~ERB

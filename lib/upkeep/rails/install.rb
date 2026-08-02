@@ -7,7 +7,6 @@ module Upkeep
 
       def call
         return unless Upkeep::Rails.configuration.enabled
-        return if @installed
 
         Runtime::Install.call if defined?(::ActiveRecord::Base)
         ActionViewCapture.install if defined?(::ActionView::Template)

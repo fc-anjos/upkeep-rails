@@ -146,6 +146,90 @@ module Upkeep
         ids
       end
 
+      def replace_subgraph(scope_id, replacement_graph, replacement_scope_id: scope_id)
+        raise KeyError, scope_id unless node?(scope_id)
+        raise KeyError, replacement_scope_id unless replacement_graph.node?(replacement_scope_id)
+
+        removed_ids = contained_node_ids(scope_id).to_h { |id| [id, true] }
+        replacement_ids = replacement_graph.contained_node_ids(replacement_scope_id).to_h { |id| [id, true] }
+        composed = self.class.new
+
+        nodes.each_value do |node|
+          next if node.kind == :dependency || removed_ids[node.id]
+
+          composed.add_node(node.id, kind: node.kind, payload: node.payload)
+        end
+        replacement_graph.nodes.each_value do |node|
+          next if node.kind == :dependency || !replacement_ids[node.id]
+
+          composed.add_node(node.id, kind: node.kind, payload: node.payload)
+        end
+
+        edges.each do |edge|
+          next unless edge.reason == :contains
+          next unless composed.node?(edge.from) && composed.node?(edge.to)
+          next if removed_ids[edge.from] || edge.to != scope_id && removed_ids[edge.to]
+
+          composed.add_edge(edge.from, edge.to, reason: :contains)
+        end
+        replacement_graph.edges.each do |edge|
+          next unless edge.reason == :contains
+          next unless replacement_ids[edge.from] && replacement_ids[edge.to]
+
+          composed.add_edge(edge.from, edge.to, reason: :contains)
+        end
+
+        composed.nodes.keys.each do |owner_id|
+          source = replacement_ids[owner_id] ? replacement_graph : self
+          source.dependencies_for(owner_id).each { |dependency| composed.add_dependency(owner_id, dependency) }
+        end
+
+        composed
+      end
+
+      def attach_subgraph(scope_id, replacement_graph, parent_id:, replacement_scope_id: scope_id)
+        raise KeyError, scope_id if node?(scope_id)
+        raise KeyError, replacement_scope_id unless replacement_graph.node?(replacement_scope_id)
+        raise KeyError, parent_id unless node?(parent_id)
+
+        replacement_ids = replacement_graph.contained_node_ids(replacement_scope_id).to_h { |id| [id, true] }
+        composed = self.class.new
+
+        nodes.each_value do |node|
+          next if node.kind == :dependency
+
+          composed.add_node(node.id, kind: node.kind, payload: node.payload)
+        end
+        edges.each do |edge|
+          next unless edge.reason == :contains
+
+          composed.add_edge(edge.from, edge.to, reason: :contains)
+        end
+        composed.nodes.keys.each do |owner_id|
+          dependencies_for(owner_id).each { |dependency| composed.add_dependency(owner_id, dependency) }
+        end
+
+        replacement_graph.nodes.each_value do |node|
+          next if node.kind == :dependency || !replacement_ids[node.id]
+
+          composed.add_node(node.id, kind: node.kind, payload: node.payload)
+        end
+        replacement_graph.edges.each do |edge|
+          next unless edge.reason == :contains
+          next unless replacement_ids[edge.from] && replacement_ids[edge.to]
+
+          composed.add_edge(edge.from, edge.to, reason: :contains)
+        end
+        composed.add_edge(parent_id, replacement_scope_id, reason: :contains)
+        replacement_ids.each_key do |owner_id|
+          replacement_graph.dependencies_for(owner_id).each do |dependency|
+            composed.add_dependency(owner_id, dependency)
+          end
+        end
+
+        composed
+      end
+
       def frame_nodes
         nodes.values.select { |node| node.kind == :frame }
       end
