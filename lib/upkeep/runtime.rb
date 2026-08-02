@@ -523,6 +523,7 @@ module Upkeep
           **identity_presence_metadata(:warden, scope, user)
         )
         Observation.record_dependency(dependency)
+        Observation.record_ambient_replay_input(:warden, scope, user)
       end
 
       def identity_presence_metadata(source, key, value)
@@ -637,6 +638,7 @@ module Upkeep
       end
 
       def user(scope = :user, **options)
+        scope = scope.fetch(:scope, :user) if scope.is_a?(Hash)
         scope = options.fetch(:scope, scope)
         value = @users_by_scope[scope] || @users_by_scope[scope.to_s] || @users_by_scope[scope.to_sym]
         Ambient.record_warden_user(scope, value)
@@ -647,6 +649,11 @@ module Upkeep
         user(extract_scope(args, options))
       end
 
+      def authenticate!(*args, **options)
+        scope = extract_scope(args, options)
+        user(scope) || throw(:warden, scope: scope)
+      end
+
       def authenticated?(*args, **options)
         !user(extract_scope(args, options)).nil?
       end
@@ -654,7 +661,8 @@ module Upkeep
       private
 
       def extract_scope(args, options)
-        options.fetch(:scope) { args.first || :user }
+        positional_options = args.last.is_a?(Hash) ? args.last : {}
+        options.fetch(:scope) { positional_options.fetch(:scope, :user) }
       end
     end
 
@@ -669,20 +677,33 @@ module Upkeep
     module WardenObserver
       def user(*args, **options, &block)
         value = super
-        Runtime::Ambient.record_warden_user(warden_scope(args, options), value)
+        Runtime::Ambient.record_warden_user(warden_user_scope(args, options), value)
         value
       end
 
       def authenticate(*args, **options, &block)
         value = super
-        Runtime::Ambient.record_warden_user(warden_scope(args, options), value)
+        Runtime::Ambient.record_warden_user(warden_authentication_scope(args, options), value)
+        value
+      end
+
+      def authenticate!(*args, **options, &block)
+        value = super
+        Runtime::Ambient.record_warden_user(warden_authentication_scope(args, options), value)
         value
       end
 
       private
 
-      def warden_scope(args, options)
-        options.fetch(:scope) { args.first || :user }
+      def warden_user_scope(args, options)
+        positional = args.first
+        positional = positional.fetch(:scope, config.default_scope) if positional.is_a?(Hash)
+        options.fetch(:scope) { positional || config.default_scope }
+      end
+
+      def warden_authentication_scope(args, options)
+        positional_options = args.last.is_a?(Hash) ? args.last : {}
+        options.fetch(:scope) { positional_options.fetch(:scope, config.default_scope) }
       end
     end
 
@@ -983,6 +1004,11 @@ module Upkeep
         super
       end
 
+      def calculate(operation, column_name)
+        record_calculation_dependency(operation, column_name)
+        super
+      end
+
       def update_all(updates)
         analysis = ActiveRecordQuery.analyze_for_write(self)
         event = ChangeEvents.bulk_update(
@@ -1065,6 +1091,14 @@ module Upkeep
         )
       rescue ActiveRecordQuery::OpaqueRelationError => error
         handle_opaque_relation_dependency(error)
+      end
+
+      def record_calculation_dependency(operation, column_name)
+        column_names = Array(column_name)
+        column_names = select_values if operation.to_s == "count" && column_names.empty? && select_values.any?
+        column_names = [klass.primary_key || Arel.star] if column_names.empty? || column_names == [:all] || column_names == ["*"]
+
+        record_query_dependency(column_names)
       end
 
       def handle_opaque_relation_dependency(error)
