@@ -159,6 +159,7 @@ module Upkeep
 
       def revive_env_value(value)
         return revive_replay_session(value) if replay_session_snapshot?(value)
+        return revive_replay_warden(value) if replay_warden_snapshot?(value)
 
         case value
         when Hash
@@ -180,6 +181,22 @@ module Upkeep
       def revive_replay_session(snapshot)
         values = snapshot["values"] || snapshot[:values] || {}
         RackSession.new(revive_env_value(values))
+      end
+
+      def replay_warden_snapshot?(value)
+        return false unless value.is_a?(Hash)
+
+        type = value["__upkeep_replay_type"] || value[:__upkeep_replay_type]
+        type == "warden"
+      end
+
+      def revive_replay_warden(snapshot)
+        users = snapshot["users"] || snapshot[:users] || {}
+        revived_users = users.to_h do |scope, user_snapshot|
+          value = ::Upkeep::Replay::Value.from_h(user_snapshot)
+          [scope, revive_value(value)]
+        end
+        Runtime::ObservedWarden.new(revived_users)
       end
 
       def partial_path(template)

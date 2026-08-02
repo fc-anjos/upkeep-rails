@@ -340,8 +340,10 @@ module Upkeep
           observed_values: ambient_inputs.fetch(:session, {})
         )
         cookie_header = cookie_replay_header(ambient_inputs.fetch(:cookie, {}))
+        warden_snapshot = warden_replay_snapshot(ambient_inputs.fetch(:warden, {}))
         copy["rack.session"] = session_snapshot if session_snapshot
         copy["HTTP_COOKIE"] = cookie_header if cookie_header
+        copy["warden"] = warden_snapshot if warden_snapshot
         request_replay_env(ambient_inputs.fetch(:request, {})).each do |key, value|
           copy[key] = value
         end
@@ -422,6 +424,17 @@ module Upkeep
         values.map do |key, value|
           "#{CGI.escape(key)}=#{CGI.escape(value.to_s)}"
         end.join("; ")
+      end
+
+      def warden_replay_snapshot(observed_values)
+        return if observed_values.empty?
+
+        {
+          "__upkeep_replay_type" => "warden",
+          "users" => observed_values.transform_keys(&:to_s).transform_values do |user|
+            snapshot_value(user).to_h
+          end
+        }
       end
 
       def request_replay_env(observed_values)
