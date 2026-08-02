@@ -4,6 +4,7 @@ Upkeep::Rails.configure do |config|
   app_config = Rails.application.config.upkeep
 
   config.enabled = app_config.fetch(:enabled, true)
+  config.request_activation = app_config.fetch(:request_activation, :all)
   config.subscription_store = app_config.fetch(:subscription_store, Rails.env.test? ? :memory : :active_record)
   config.deliver_inline = app_config.fetch(:deliver_inline, false)
 

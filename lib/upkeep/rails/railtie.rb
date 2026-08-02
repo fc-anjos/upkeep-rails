@@ -14,6 +14,8 @@ module Upkeep
             app.config.upkeep.fetch(:delivery_batch_window, config.delivery_batch_window)
           config.activation_token_expires_in =
             app.config.upkeep.fetch(:activation_token_expires_in, config.activation_token_expires_in)
+          config.request_activation =
+            app.config.upkeep.fetch(:request_activation, config.request_activation)
           config.refused_boundary_behavior =
             app.config.upkeep.fetch(:refused_boundary_behavior, config.refused_boundary_behavior)
         end

@@ -496,7 +496,7 @@ module Upkeep
 
         return {} unless path && fingerprint
 
-        {
+        metadata = {
           manifest_path: path,
           manifest_fingerprint: fingerprint,
           manifest: {
@@ -504,6 +504,9 @@ module Upkeep
             fingerprint: fingerprint
           }
         }
+        identity_local = manifest.root_shape[:identity_local] if manifest.respond_to?(:root_shape)
+        metadata[:identity_local] = identity_local if identity_local
+        metadata
       end
 
       def with_frame_id(frame_id)
@@ -571,7 +574,8 @@ module Upkeep
 
       def frame_id_for_template(metadata, locals)
         if metadata.fetch(:kind) == "fragment"
-          "fragment:rails:#{metadata.fetch(:template)}:#{locals_identity(locals)}"
+          identity = locals_identity(locals, identity_local: metadata[:identity_local])
+          "fragment:rails:#{metadata.fetch(:template)}:#{identity}"
         else
           "page:rails:#{metadata.fetch(:template)}"
         end
@@ -593,8 +597,10 @@ module Upkeep
         end
       end
 
-      def locals_identity(locals)
-        record = locals.values.find { |value| value.is_a?(ActiveRecord::Base) }
+      def locals_identity(locals, identity_local: nil)
+        record = locals[identity_local.to_sym] if identity_local
+        record = nil unless record.is_a?(ActiveRecord::Base)
+        record ||= locals.values.find { |value| value.is_a?(ActiveRecord::Base) }
         return "#{record.class.table_name}:#{record.id}" if record
 
         Digest::SHA256.hexdigest(local_metadata(locals).inspect)[0, 16]
