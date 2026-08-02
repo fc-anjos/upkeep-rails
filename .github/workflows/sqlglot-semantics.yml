@@ -64,8 +64,9 @@ jobs:
         shell: bash
         run: |
           package=$(find pkg -maxdepth 1 -name "upkeep-rails-*.gem" -print -quit)
-          gem install "${package}" --force --no-document
-          ruby -e 'gem "upkeep-rails"; require "upkeep/sqlglot"; abort unless Upkeep::SQLGlot.parse("SELECT 1").key?("Select")'
+          gem install "${package}" --local --force --ignore-dependencies --no-document
+          gem_path=$(ruby -e 'puts Gem::Specification.find_by_name("upkeep-rails").full_gem_path')
+          ruby -I"${gem_path}/lib" -e 'require "upkeep/sqlglot"; abort unless Upkeep::SQLGlot.parse("SELECT 1").key?("Select")'
 
       - uses: actions/upload-artifact@v4
         with:
