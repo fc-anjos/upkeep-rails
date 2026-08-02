@@ -243,19 +243,25 @@ module Upkeep
       end
 
       def to_native
-        {
-          tables: @tables.map do |path, columns|
-            {
-              path: path,
-              columns: columns.map do |name, data_type|
-                {name: name, data_type: data_type}
-              end
-            }
-          end
-        }
+        {tables: native_tables { |_name, data_type| data_type }}
+      end
+
+      def to_dependency_native
+        {tables: native_tables { "UNKNOWN" }}
       end
 
       private
+
+      def native_tables
+        @tables.map do |path, columns|
+          {
+            path: path,
+            columns: columns.map do |name, data_type|
+              {name: name, data_type: yield(name, data_type)}
+            end
+          }
+        end
+      end
 
       def flatten_tables(node, prefix = [])
         node.each_with_object([]) do |(name, value), tables|
@@ -332,7 +338,7 @@ module Upkeep
       JSON.parse(
         Native.qualify_columns(
           JSON.generate(statement),
-          JSON.generate(schema.to_native),
+          JSON.generate(schema.to_dependency_native),
           schema.dialect
         )
       )
@@ -351,7 +357,7 @@ module Upkeep
           Native.lineage(
             column.to_s,
             JSON.generate(statement),
-            JSON.generate(schema.to_native),
+            JSON.generate(schema.to_dependency_native),
             JSON.generate(config.to_h)
           )
         )

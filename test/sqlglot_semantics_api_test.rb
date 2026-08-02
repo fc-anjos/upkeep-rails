@@ -42,12 +42,17 @@ class SqlglotSemanticsTest < Minitest::Test
       },
       schema.to_native.fetch(:tables).fetch(0)
     )
+    assert_equal(
+      %w[UNKNOWN UNKNOWN UNKNOWN UNKNOWN],
+      schema.to_dependency_native.fetch(:tables).fetch(0).fetch(:columns)
+        .map { |column| column.fetch(:data_type) }
+    )
   end
 
   def test_parse_generate_and_transpile_use_the_bundled_rust_library
     statement = parse("SELECT id FROM cards")
 
-    assert_equal "0.10.25", Upkeep::SQLGlot.version
+    assert_equal "0.10.26", Upkeep::SQLGlot.version
     assert_includes Upkeep::SQLGlot.generate(statement, dialect: :sqlite),
       "SELECT id FROM cards"
     assert_includes(
@@ -68,6 +73,38 @@ class SqlglotSemanticsTest < Minitest::Test
     assert_includes sql, "cards.id"
     assert_includes sql, "cards.title"
     assert_includes sql, "cards.project_id"
+  end
+
+  def test_dependency_analysis_does_not_parse_database_types
+    schema = Upkeep::SQLGlot::MappingSchema.new(
+      {
+        "events" => {
+          "id" => "BIGINT",
+          "state" => "app.custom_type",
+          "measurements" => "NUMERIC(38, 9)[]"
+        }
+      },
+      dialect: :postgres
+    )
+    statement = Upkeep::SQLGlot.parse(
+      "SELECT id, state, measurements FROM events",
+      dialect: :postgres
+    )
+
+    qualified = Upkeep::SQLGlot.qualify_columns(statement, schema)
+    sql = Upkeep::SQLGlot.generate(qualified, dialect: :postgres)
+
+    assert_includes sql, "events.id"
+    assert_includes sql, "events.state"
+    assert_includes sql, "events.measurements"
+
+    lineage = Upkeep::SQLGlot.lineage("state", qualified, schema)
+    assert_includes lineage.source_tables, "events"
+    assert_equal(
+      ["BIGINT", "app.custom_type", "NUMERIC(38, 9)[]"],
+      schema.to_native.fetch(:tables).fetch(0).fetch(:columns)
+        .map { |column| column.fetch(:data_type) }
+    )
   end
 
   def test_build_scope_preserves_rust_fields_and_correlation
