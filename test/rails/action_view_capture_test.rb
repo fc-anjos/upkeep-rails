@@ -71,6 +71,12 @@ class RailsCaptureCardsController < ActionController::Base
     render template: "controller_cards/session_index"
   end
 
+  def warden_index
+    @viewer = request.env.fetch("warden").authenticate!(scope: :user).name
+    @cards = RailsCaptureCard.order(:id)
+    render template: "controller_cards/session_index"
+  end
+
   def frame
     @cards = RailsCaptureCard.where(status: params.fetch(:status)).order(:id)
     render template: "controller_cards/frame"
@@ -387,6 +393,28 @@ class ActionViewCaptureTest < Minitest::Test
     assert_includes replayed_html, "Plan"
     assert_equal "rack_session", session_snapshot.fetch("__upkeep_replay_type")
     assert_equal({ "viewer" => "Alice" }, session_snapshot.fetch("values"))
+  end
+
+  def test_controller_page_recipe_preserves_observed_warden_user
+    viewer = RailsCaptureAuthor.create!(name: "Alice")
+    create_card!("Plan")
+
+    html, recorder = capture_controller_request(
+      :warden_index,
+      "/cards/warden",
+      env: { "warden" => Upkeep::Runtime::ObservedWarden.new(user: viewer) }
+    )
+
+    assert_includes html, "Alice"
+
+    page_frame = recorder.graph.node("page:rails:controller_cards/session_index")
+    recipe_snapshot = page_frame.payload.fetch(:recipe).to_h
+    replayed_html = Upkeep::Replay::Recipe.from_h(recipe_snapshot).render
+
+    assert_includes replayed_html, "Alice"
+    assert_includes replayed_html, "Plan"
+    assert_equal viewer.id.to_s,
+      recipe_snapshot.dig(:replay, :env, "warden", "users", "user", :id).to_s
   end
 
   def test_unread_rack_session_values_do_not_change_page_replay_env
