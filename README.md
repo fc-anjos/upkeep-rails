@@ -47,7 +47,7 @@ bin/rails db:migrate
 
 This creates the subscription tables, writes an initializer, mounts ActionCable if needed, and imports the browser client.
 
-Requirements: Ruby 3.2+, Rails 7.1+, Turbo 2.0+.
+Requirements: Ruby 3.2+, Rails 7.1+, `turbo-rails` 2.x, and Turbo JavaScript 8.x.
 
 Releases are precompiled for `x86_64-linux-gnu`, `aarch64-linux-gnu`,
 `x86_64-darwin`, `arm64-darwin`, and `x64-mingw-ucrt`. Installing Upkeep does

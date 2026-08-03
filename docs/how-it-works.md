@@ -154,7 +154,7 @@ JavaScript.
 
 When a change was committed while handling a GET or HEAD request, the refresh
 tag also carries that request's Turbo id as `request-id` (from
-`Turbo.current_request_id` or the `X-Turbo-Request-Id` header). Turbo's client
+`Turbo.current_request_id` or the `X-Turbo-Request-Id` header). Turbo 8's client
 ignores refreshes for its own recent requests, so view tracking cannot refresh
 the viewer who caused it into a self-refresh loop. Mutations omit the request id
 so the originating tab still refreshes when its response does not render every
