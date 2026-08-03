@@ -26,7 +26,7 @@ module Upkeep
       def upkeep_reactive_request?
         return true if Upkeep::Rails.configuration.request_activation == :all
 
-        self.class.upkeep_reactive_actions.include?(action_name)
+        self.class.upkeep_reactive_actions.include?(action_name) || upkeep_reactive_continuation_request?
       end
 
       module_function
@@ -129,11 +129,11 @@ module Upkeep
         result
       end
 
-      # Changes committed while handling this request carry the originating Turbo
-      # request id, so the client that caused them ignores its own refresh delivery
-      # (Turbo's recentRequests debounce). Breaks self-refresh loops from writes
-      # during GETs, e.g. view tracking.
+      # GET writes can otherwise self-refresh in a loop. Mutation deliveries must
+      # still reach the originating tab when the response omits an affected region.
       def upkeep_stamp_change_request_id(changes)
+        return changes unless request.get? || request.head?
+
         request_id = upkeep_turbo_request_id
         return changes unless request_id
 
@@ -171,6 +171,12 @@ module Upkeep
 
       def upkeep_subscription_request?
         upkeep_reactive_request? && request.format.html? && (request.get? || request.head?)
+      end
+
+      def upkeep_reactive_continuation_request?
+        request.headers["Turbo-Frame"].present? &&
+          request.headers[ClientSubscription::ID_HEADER].present? &&
+          request.headers[ClientSubscription::TOKEN_HEADER].present?
       end
 
       def request_capture_profile?

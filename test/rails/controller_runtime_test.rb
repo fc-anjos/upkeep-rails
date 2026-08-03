@@ -67,6 +67,10 @@ class RuntimeDeliveryCardsController < ActionController::Base
     render template: "runtime_delivery_cards/framed"
   end
 
+  def frame_destination
+    framed
+  end
+
   def lazy_framed
     @shell = RuntimeDeliveryCard.find(params.fetch(:shell_id))
     @selected = RuntimeDeliveryCard.find(params.fetch(:selected_id))
@@ -299,6 +303,37 @@ class ControllerRuntimeTest < Minitest::Test
     assert_includes stream.html, %(src="/cards/framed?shell_id=#{shell.id}&amp;selected_id=#{second.id}")
     assert_includes stream.html, "Second v2"
     refute_includes stream.html, "First"
+  end
+
+  def test_opt_in_turbo_frame_request_inherits_the_base_subscription
+    Upkeep::Rails.configuration.request_activation = :opt_in
+    RuntimeDeliveryCardsController.upkeep_reactive only: :framed
+    shell = RuntimeDeliveryCard.create!(title: "Shell")
+    first = RuntimeDeliveryCard.create!(title: "First")
+    second = RuntimeDeliveryCard.create!(title: "Second")
+
+    _status, _headers, body = RuntimeDeliveryCardsController.action(:framed).call(
+      env_for("/cards/framed?shell_id=#{shell.id}&selected_id=#{first.id}")
+    )
+    initial_html = collect_body(body)
+    initial = Upkeep::Rails.subscriptions.subscriptions.first
+    initial_payload = subscription_marker_payload(initial_html)
+
+    env = env_for("/cards/frame_destination?shell_id=#{shell.id}&selected_id=#{second.id}")
+    env["HTTP_TURBO_FRAME"] = "cards"
+    env["HTTP_X_UPKEEP_SUBSCRIPTION_ID"] = initial.id
+    env["HTTP_X_UPKEEP_SUBSCRIPTION_TOKEN"] = initial_payload.fetch("activation_token")
+    _status, headers, frame_body = RuntimeDeliveryCardsController.action(:frame_destination).call(env)
+    collect_body(frame_body)
+
+    replacement = Upkeep::Rails.subscriptions.fetch(headers.fetch(Upkeep::Rails::ClientSubscription::ID_HEADER))
+    scope_dependencies = replacement.graph
+      .contained_node_ids("turbo_frame:cards")
+      .flat_map { |node_id| replacement.graph.dependencies_for(node_id) }
+
+    assert_equal initial.id, replacement.metadata.fetch(:replaces_subscription_id)
+    assert_includes scope_dependencies.map { |dependency| dependency.key[:id].to_s }, second.id.to_s
+    refute_includes scope_dependencies.map { |dependency| dependency.key[:id].to_s }, first.id.to_s
   end
 
   def test_first_reactive_turbo_frame_registers_without_a_base_subscription
@@ -554,14 +589,14 @@ class ControllerRuntimeTest < Minitest::Test
     assert_equal 1, Upkeep::Rails.subscriptions.subscriptions.size
   end
 
-  def test_request_changes_carry_turbo_request_id_from_header
-    card = RuntimeDeliveryCard.create!(title: "Plan")
+  def test_get_request_changes_carry_turbo_request_id_from_header
+    RuntimeDeliveryCard.create!(title: "Plan")
     Upkeep::Runtime::ChangeLog.reset
 
     _result, facts = Upkeep::Rails::Testing.capture_change_facts do
-      env = env_for("/cards/#{card.id}", method: "PATCH", params: { id: card.id, title: "Plan v2" })
+      env = env_for("/cards/self_mutating")
       env["HTTP_X_TURBO_REQUEST_ID"] = "turbo-request-1"
-      _status, _headers, body = RuntimeDeliveryCardsController.action(:update).call(env)
+      _status, _headers, body = RuntimeDeliveryCardsController.action(:self_mutating_index).call(env)
       collect_body(body)
     end
 
@@ -569,14 +604,14 @@ class ControllerRuntimeTest < Minitest::Test
     assert_equal ["turbo-request-1"], facts.map { |fact| fact.fetch(:request_id) }.uniq
   end
 
-  def test_request_changes_prefer_turbo_current_request_id_over_header
-    card = RuntimeDeliveryCard.create!(title: "Plan")
+  def test_get_request_changes_prefer_turbo_current_request_id_over_header
+    RuntimeDeliveryCard.create!(title: "Plan")
     Upkeep::Runtime::ChangeLog.reset
     stub_turbo_current_request_id("turbo-request-tracked") do
       _result, facts = Upkeep::Rails::Testing.capture_change_facts do
-        env = env_for("/cards/#{card.id}", method: "PATCH", params: { id: card.id, title: "Plan v2" })
+        env = env_for("/cards/self_mutating")
         env["HTTP_X_TURBO_REQUEST_ID"] = "turbo-request-header"
-        _status, _headers, body = RuntimeDeliveryCardsController.action(:update).call(env)
+        _status, _headers, body = RuntimeDeliveryCardsController.action(:self_mutating_index).call(env)
         collect_body(body)
       end
 
@@ -584,14 +619,14 @@ class ControllerRuntimeTest < Minitest::Test
     end
   end
 
-  def test_request_changes_omit_request_id_without_turbo_header
+  def test_mutation_request_changes_omit_turbo_request_id
     card = RuntimeDeliveryCard.create!(title: "Plan")
     Upkeep::Runtime::ChangeLog.reset
 
     _result, facts = Upkeep::Rails::Testing.capture_change_facts do
-      _status, _headers, body = RuntimeDeliveryCardsController.action(:update).call(
-        env_for("/cards/#{card.id}", method: "PATCH", params: { id: card.id, title: "Plan v2" })
-      )
+      env = env_for("/cards/#{card.id}", method: "PATCH", params: { id: card.id, title: "Plan v2" })
+      env["HTTP_X_TURBO_REQUEST_ID"] = "turbo-request-1"
+      _status, _headers, body = RuntimeDeliveryCardsController.action(:update).call(env)
       collect_body(body)
     end
 
