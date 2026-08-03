@@ -32,6 +32,47 @@ The `upkeep_frame` helper is an advanced escape hatch for generated or
 helper-built boundaries that cannot be derived from template source. Ordinary
 ERB and partial collections should not need it.
 
+### Controller Work and Render Regions
+
+Dependencies inherit the frame that is active when the read occurs. A query
+inside a partial or `upkeep_frame` belongs to that render region. A query in a
+controller callback or action runs before rendering, so its narrowest sound
+boundary is the page:
+
+```ruby
+before_action do
+  @show_reminder = !current_user.time_logs.where(log_date: Date.current).exists?
+end
+```
+
+Rails does not record which later template expression consumes an instance
+variable. Ruby may also pass or access that value dynamically, so Upkeep cannot
+reliably infer that `@show_reminder` affects only one element. A matching
+`TimeLog` change can therefore select a page replay.
+
+When controller work exists only to render one section, execute it inside that
+section instead:
+
+```erb
+<%= upkeep_frame "layout/time-log-reminder" do %>
+  <div data-upkeep-render-site="layout/time-log-reminder">
+    <% if time_log_reminder_data %>
+      <%= render "shared/time_log_reminder" %>
+    <% end %>
+  </div>
+<% end %>
+```
+
+The helper or partial can perform the query while this frame is active. Upkeep
+then associates the dependency with the reminder region instead of the page.
+The region must always render a stable target, including when its conditional
+content is empty, so it can transition in either direction.
+
+This is a granularity rule, not a refusal: controller-level reads remain live
+through a conservative page replay. Use an explicit region only when that
+broader replay is undesirable and the application knows the true presentation
+boundary.
+
 ## Surfaces
 
 A surface is the set of facts about future writes that would make a frame
@@ -45,6 +86,11 @@ and the records rendered in that collection.
 
 When a write commits, Upkeep compares the write facts with registered surfaces.
 Only frames whose surfaces can be affected are selected for delivery.
+
+Controller requests and Active Job executions both establish a change-capture
+boundary. After the boundary completes, Upkeep plans and delivers updates for
+the committed Active Record changes. Sidekiq jobs using the Active Job adapter
+are covered by this lifecycle; direct Sidekiq workers are not.
 
 ## Identity Boundaries
 

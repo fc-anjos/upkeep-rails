@@ -196,7 +196,8 @@ module Upkeep
       def upkeep_stream_names(subscription = upkeep_subscription)
         raise ArgumentError, "no Upkeep subscription is registered" unless subscription
 
-        ([subscription.metadata.fetch(:stream_name)] + subscription.metadata.fetch(:shared_stream_names, [])).uniq
+        ([Delivery::ActionCableAdapter.subscription_stream_name_for(subscription.id)] +
+          subscription.metadata.fetch(:shared_stream_names, [])).uniq
       end
 
       # Activates the registered subscription so delivery lookup can find it.

@@ -66,7 +66,7 @@ class CableChannelTest < ActionCable::Channel::TestCase
     subscribe subscription_params(subscription_record, client_subscriber_id: "attacker")
 
     assert subscription.confirmed?
-    assert_has_stream "upkeep:test:user-1"
+    assert_has_stream Upkeep::Delivery::ActionCableAdapter.subscription_stream_name_for(subscription_record.id)
     refute Upkeep::Rails.transport.connected?("attacker")
   end
 
@@ -119,7 +119,7 @@ class CableChannelTest < ActionCable::Channel::TestCase
     subscribe subscription_params(subscription_record)
 
     assert subscription.confirmed?
-    assert_has_stream "upkeep:test:user-1"
+    assert_has_stream Upkeep::Delivery::ActionCableAdapter.subscription_stream_name_for(subscription_record.id)
     assert_has_stream shared_stream_name
   end
 
@@ -136,7 +136,7 @@ class CableChannelTest < ActionCable::Channel::TestCase
     subscribe subscription_params(subscription_record)
 
     assert subscription.confirmed?
-    assert_has_stream "upkeep:test:anonymous"
+    assert_has_stream Upkeep::Delivery::ActionCableAdapter.subscription_stream_name_for(subscription_record.id)
   end
 
   def test_rejects_identified_subscription_when_connection_identity_does_not_match

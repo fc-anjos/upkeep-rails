@@ -18,6 +18,10 @@ class SQLGlotAdapterCorpusTest < Minitest::Test
     "projects" => {
       "id" => "INTEGER",
       "name" => "TEXT"
+    },
+    "commits" => {
+      "id" => "INTEGER",
+      "data" => "JSONB"
     }
   }.freeze
 
@@ -81,6 +85,18 @@ class SQLGlotAdapterCorpusTest < Minitest::Test
       expected: {
         "cards" => %w[id project_id status],
         "projects" => %w[id]
+      }
+    },
+    postgres_json_path_cast: {
+      dialect: :postgres,
+      sql: <<~SQL,
+        SELECT commits.*
+        FROM commits
+        WHERE CAST(commits.data #>> '{commit,author,date}' AS timestamptz) > '2026-01-01'
+        ORDER BY CAST(commits.data #>> '{commit,author,date}' AS timestamptz) DESC
+      SQL
+      expected: {
+        "commits" => %w[data]
       }
     },
     mysql_union: {

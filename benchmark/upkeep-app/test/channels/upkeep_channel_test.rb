@@ -20,7 +20,7 @@ class UpkeepChannelTest < ActionCable::Channel::TestCase
     subscribe subscription_params(subscription_record, client_subscriber_id: "attacker")
 
     assert subscription.confirmed?
-    assert_has_stream "upkeep:test:user-#{@user.id}"
+    assert_has_stream Upkeep::Delivery::ActionCableAdapter.subscription_stream_name_for(subscription_record.id)
     refute Upkeep::Rails.transport.connected?("attacker")
   end
 

@@ -112,8 +112,20 @@ module Upkeep
     def append_application_import
       return unless application_js_path.exist?
 
-      append_import("@hotwired/turbo-rails")
-      append_import(importmap_path.exist? ? "upkeep/subscription" : "./upkeep/subscription")
+      upkeep_specifier = importmap_path.exist? ? "upkeep/subscription" : "./upkeep/subscription"
+      content = application_js_path.read
+        .gsub(/^import ["'](?:\.\/)?upkeep\/subscription["']\s*\n?/, "")
+
+      turbo_import = /^import ["']@hotwired\/turbo-rails["']\s*$/
+      if (match = content.match(turbo_import))
+        content.insert(match.begin(0), %(import "#{upkeep_specifier}"\n))
+      else
+        content << "\n" unless content.empty? || content.end_with?("\n")
+        content << %(import "#{upkeep_specifier}"\n)
+        content << %(import "@hotwired/turbo-rails"\n)
+      end
+
+      File.write(application_js_path, content)
     end
 
     def pin_action_cable
@@ -122,12 +134,6 @@ module Upkeep
       pin_importmap("@hotwired/turbo-rails", "turbo.min.js")
       pin_importmap("@rails/actioncable", "actioncable.esm.js")
       pin_importmap("upkeep/subscription", "upkeep/subscription.js")
-    end
-
-    def append_import(specifier)
-      return if application_js_path.read.include?(specifier)
-
-      append_to_file application_js_path.to_s, %(import "#{specifier}"\n)
     end
 
     def pin_importmap(specifier, asset)

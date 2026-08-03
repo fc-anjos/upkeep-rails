@@ -149,7 +149,7 @@ module Upkeep
         end
 
         def stream_name_for(subscription)
-          metadata_value(subscription, :stream_name) || subscription.metadata.fetch(:stream_name)
+          Delivery::ActionCableAdapter.subscription_stream_name_for(subscription.id)
         end
 
         def shared_stream_names_for(subscription)

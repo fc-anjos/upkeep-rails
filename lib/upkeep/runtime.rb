@@ -101,6 +101,10 @@ module Upkeep
       end
 
       def replace_scope(scope_id, replacement)
+        replacement.graph.dependencies_for(REQUEST_NODE_ID).each do |dependency|
+          replacement.graph.add_dependency(scope_id, dependency)
+        end
+
         composed = if graph.node?(scope_id)
           graph.replace_subgraph(scope_id, replacement.graph)
         else
@@ -333,6 +337,10 @@ module Upkeep
         end
       end
 
+      def capturing?
+        !Thread.current[THREAD_KEY].nil?
+      end
+
       def drain
         if (events = Thread.current[THREAD_KEY])
           drained = events.dup
@@ -364,7 +372,7 @@ module Upkeep
       def active_record_commit(record)
         return active_record_destroy(record) if record.destroyed?
 
-        attribute_changes = previous_changes(record.previous_changes)
+        attribute_changes = previous_changes(record.previous_changes, record.class)
 
         {
           type: created_record?(record, attribute_changes) ? "create" : "update",
@@ -379,7 +387,9 @@ module Upkeep
       end
 
       def active_record_destroy(record)
-        old_values = record.attributes.transform_keys(&:to_s)
+        old_values = record.attributes.to_h do |attribute, value|
+          [attribute.to_s, serialize_attribute_value(record.class, attribute, value)]
+        end
 
         {
           type: "destroy",
@@ -395,7 +405,10 @@ module Upkeep
 
       def active_record_update_columns(record, changed_attributes:, new_values: {})
         changed_attributes = Array(changed_attributes).map(&:to_s).sort
-        new_values = new_values.transform_keys(&:to_s)
+        new_values = new_values.to_h do |attribute, value|
+          attribute = attribute.to_s
+          [attribute, serialize_attribute_value(record.class, attribute, value)]
+        end
 
         {
           type: "update",
@@ -452,10 +465,20 @@ module Upkeep
         event
       end
 
-      def previous_changes(changes)
-        changes.to_h.transform_keys(&:to_s).transform_values do |(old_value, new_value)|
-          { old: old_value, new: new_value }
+      def previous_changes(changes, model_class)
+        changes.to_h do |attribute, (old_value, new_value)|
+          attribute = attribute.to_s
+          [attribute, {
+            old: serialize_attribute_value(model_class, attribute, old_value),
+            new: serialize_attribute_value(model_class, attribute, new_value)
+          }]
         end
+      end
+
+      def serialize_attribute_value(model_class, attribute, value)
+        model_class.type_for_attribute(attribute.to_s).serialize(value)
+      rescue StandardError
+        value
       end
 
       def created_record?(record, attribute_changes)

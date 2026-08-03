@@ -83,9 +83,16 @@ This changes only which GET and HEAD responses register live subscriptions.
 Writes from every controller remain captured so they can update subscribed
 pages. Routes and Turbo navigation do not change.
 
+Queries performed by controller actions or callbacks are page-level
+dependencies unless rendering establishes a narrower boundary. For
+presentation-specific controller work, see
+[Controller Work and Render Regions](docs/how-it-works.md#controller-work-and-render-regions).
+
 **Subscription store:** Use `:memory` for test suites. Use `:active_record` for production—it stores subscriptions durably across restarts.
 
 **Delivery mode:** Upkeep broadcasts from a background dispatcher in the same process that performed the write. For tests and console sessions where you want synchronous behavior, set `deliver_inline = true`.
+
+**Background jobs:** Active Job executions are captured automatically, including jobs run through Sidekiq's Active Job adapter. A job that commits an Active Record change therefore updates subscribed pages just like a controller write. Direct Sidekiq workers that bypass Active Job are not captured.
 
 **Subscription lifecycle:** Subscriptions clean themselves up. A clean disconnect deletes the subscription immediately; abandoned subscriptions (crashed browsers, dropped connections) are trimmed opportunistically in small batches once they go untouched for `config.subscription_ttl` (default 24 hours); and connected pages send a liveness heartbeat every 20 minutes, so a long-lived open tab is never pruned. Adjust `subscription_ttl` to control how long abandoned subscriptions may linger.
 

@@ -4,6 +4,8 @@ require "test_helper"
 
 class ChangeEventCard < ActiveRecord::Base
   self.table_name = "change_event_cards"
+
+  enum :priority, {low: 0, critical: 4}
 end
 
 class TouchEventCard < ActiveRecord::Base
@@ -27,6 +29,7 @@ class ChangeEventsTest < Minitest::Test
         table.string :title, null: false
         table.string :status, null: false
         table.integer :position, null: false
+        table.integer :priority, null: false, default: 0
       end
 
       create_table :touch_event_cards, force: true do |table|
@@ -313,6 +316,26 @@ class ChangeEventsTest < Minitest::Test
 
     Upkeep::Runtime::ChangeLog.reset
     card.update!(position: 2)
+
+    targets = Upkeep::Targeting::Selector.new.select(recorder, Upkeep::Runtime::ChangeLog.events)
+    assert_equal ["page:test"], targets.map(&:id)
+  end
+
+  def test_enum_change_values_match_calculation_predicates_in_database_form
+    card = ChangeEventCard.create!(title: "Plan", status: "open", position: 1, priority: :critical)
+
+    _result, recorder = Upkeep::Runtime::Observation.capture_request do
+      Upkeep::Runtime::Observation.capture_frame("page:test", kind: "page") do
+        ChangeEventCard.where(priority: :critical).distinct.count
+      end
+    end
+
+    Upkeep::Runtime::ChangeLog.reset
+    card.update!(priority: :low)
+
+    event = Upkeep::Runtime::ChangeLog.events.fetch(0)
+    assert_equal 4, event.fetch(:old_values).fetch("priority")
+    assert_equal 0, event.fetch(:new_values).fetch("priority")
 
     targets = Upkeep::Targeting::Selector.new.select(recorder, Upkeep::Runtime::ChangeLog.events)
     assert_equal ["page:test"], targets.map(&:id)

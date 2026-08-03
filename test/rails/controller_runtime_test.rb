@@ -63,7 +63,15 @@ class RuntimeDeliveryCardsController < ActionController::Base
   def framed
     @shell = RuntimeDeliveryCard.find(params.fetch(:shell_id))
     @selected = RuntimeDeliveryCard.find(params.fetch(:selected_id))
+    @selected_label = @selected.title.to_s
     render template: "runtime_delivery_cards/framed"
+  end
+
+  def lazy_framed
+    @shell = RuntimeDeliveryCard.find(params.fetch(:shell_id))
+    @selected = RuntimeDeliveryCard.find(params.fetch(:selected_id))
+    template = request.headers["Turbo-Frame"].present? ? "runtime_delivery_cards/lazy_frame" : "runtime_delivery_cards/lazy_shell"
+    render template: template
   end
 
   # Renders an opaque relation but opts out of reactivity via upkeep_reactive_request?,
@@ -288,6 +296,7 @@ class ControllerRuntimeTest < Minitest::Test
     assert_equal "turbo_frame", stream.target.kind
     assert_equal "cards", stream.target.id
     assert_equal %[turbo-frame[id="cards"]], stream.target_selector
+    assert_includes stream.html, %(src="/cards/framed?shell_id=#{shell.id}&amp;selected_id=#{second.id}")
     assert_includes stream.html, "Second v2"
     refute_includes stream.html, "First"
   end
@@ -304,6 +313,23 @@ class ControllerRuntimeTest < Minitest::Test
 
     assert Upkeep::Rails.subscriptions.fetch(subscription_id)
     assert_nil headers[Upkeep::Rails::ClientSubscription::ACTION_HEADER]
+  end
+
+  def test_turbo_frame_replay_preserves_frame_request_semantics
+    shell = RuntimeDeliveryCard.create!(title: "Shell")
+    selected = RuntimeDeliveryCard.create!(title: "Selected")
+    env = env_for("/cards/lazy_framed?shell_id=#{shell.id}&selected_id=#{selected.id}")
+    env["HTTP_TURBO_FRAME"] = "cards"
+
+    _status, headers, body = RuntimeDeliveryCardsController.action(:lazy_framed).call(env)
+    collect_body(body)
+
+    subscription = Upkeep::Rails.subscriptions.fetch(headers.fetch(Upkeep::Rails::ClientSubscription::ID_HEADER))
+    recipe = subscription.graph.node("turbo_frame:cards").payload.fetch(:recipe)
+    replayed_html = recipe.render
+
+    assert_includes replayed_html, "Selected"
+    refute_includes replayed_html, "Loading"
   end
 
   def test_non_reactive_request_skips_capture_without_registering_or_refusing
@@ -686,9 +712,22 @@ class ControllerRuntimeTest < Minitest::Test
         <main>
           <h1><%= @shell.title %></h1>
           <%= turbo_frame_tag "cards" do %>
-            <p><%= @selected.title %></p>
+            <p><%= @selected_label %></p>
           <% end %>
         </main>
+      ERB
+      "runtime_delivery_cards/lazy_shell.html.erb" => <<~ERB,
+        <main>
+          <h1><%= @shell.title %></h1>
+          <%= turbo_frame_tag "cards", src: "/cards/lazy_framed" do %>
+            <p>Loading</p>
+          <% end %>
+        </main>
+      ERB
+      "runtime_delivery_cards/lazy_frame.html.erb" => <<~ERB,
+        <%= turbo_frame_tag "cards" do %>
+          <p><%= @selected.title %></p>
+        <% end %>
       ERB
       "runtime_delivery_cards/_card.html.erb" => <<~ERB
         <li id="runtime_delivery_card_<%= card.id %>"><%= card.title %></li>

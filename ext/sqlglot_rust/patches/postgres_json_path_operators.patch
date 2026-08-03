@@ -1,0 +1,143 @@
+diff --git a/src/ast/types.rs b/src/ast/types.rs
+index a56d3d2..ef9acee 100644
+--- a/src/ast/types.rs
++++ b/src/ast/types.rs
+@@ -529,6 +529,8 @@ pub enum Expr {
+         path: Box<Expr>,
+         /// false = ->, true = ->>
+         as_text: bool,
++        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
++        path_array: bool,
+     },
+     /// Lambda expression: `x -> x + 1`
+     Lambda {
+@@ -2328,10 +2330,12 @@ impl Expr {
+                 expr,
+                 path,
+                 as_text,
++                path_array,
+             } => Expr::JsonAccess {
+                 expr: Box::new(expr.transform(func)),
+                 path: Box::new(path.transform(func)),
+                 as_text,
++                path_array,
+             },
+             Expr::Lambda { params, body } => Expr::Lambda {
+                 params,
+diff --git a/src/generator/sql_generator.rs b/src/generator/sql_generator.rs
+index 61f419b..dd146fa 100644
+--- a/src/generator/sql_generator.rs
++++ b/src/generator/sql_generator.rs
+@@ -2515,12 +2515,13 @@ impl Generator {
+                 expr,
+                 path,
+                 as_text,
++                path_array,
+             } => {
+                 self.gen_expr(expr);
+-                if *as_text {
+-                    self.write("->>");
++                if *path_array {
++                    self.write(if *as_text { " #>> " } else { " #> " });
+                 } else {
+-                    self.write("->");
++                    self.write(if *as_text { "->>" } else { "->" });
+                 }
+                 self.gen_expr(path);
+             }
+diff --git a/src/parser/sql_parser.rs b/src/parser/sql_parser.rs
+index 9feef57..4ae5b3e 100644
+--- a/src/parser/sql_parser.rs
++++ b/src/parser/sql_parser.rs
+@@ -7370,7 +7370,7 @@ impl Parser {
+         }
+     }
+ 
+-    /// Parse postfix operators: `::type`, `[index]`, `->`, `->>`
++    /// Parse postfix operators: `::type`, `[index]`, `->`, `->>`, `#>`, `#>>`
+     fn parse_postfix(&mut self) -> Result<Expr> {
+         let mut expr = self.parse_primary()?;
+ 
+@@ -7435,6 +7435,7 @@ impl Parser {
+                     expr: Box::new(expr),
+                     path: Box::new(path),
+                     as_text: false,
++                    path_array: false,
+                 };
+             } else if self.match_token(TokenType::DoubleArrow) {
+                 let path = self.parse_primary()?;
+@@ -7442,6 +7443,23 @@ impl Parser {
+                     expr: Box::new(expr),
+                     path: Box::new(path),
+                     as_text: true,
++                    path_array: false,
++                };
++            } else if self.match_token(TokenType::HashArrow) {
++                let path = self.parse_primary()?;
++                expr = Expr::JsonAccess {
++                    expr: Box::new(expr),
++                    path: Box::new(path),
++                    as_text: false,
++                    path_array: true,
++                };
++            } else if self.match_token(TokenType::HashDoubleArrow) {
++                let path = self.parse_primary()?;
++                expr = Expr::JsonAccess {
++                    expr: Box::new(expr),
++                    path: Box::new(path),
++                    as_text: true,
++                    path_array: true,
+                 };
+             } else if self.peek_type() == &TokenType::Colon
+                 && self
+@@ -7466,6 +7484,7 @@ impl Parser {
+                     expr: Box::new(expr),
+                     path: Box::new(Expr::StringLiteral(part.value)),
+                     as_text: false,
++                    path_array: false,
+                 };
+             } else if self.match_token(TokenType::Collate) {
+                 // Postgres / Spark `expr COLLATE collation_name` — we don't
+@@ -7519,6 +7538,7 @@ impl Parser {
+                         expr: Box::new(expr),
+                         path: Box::new(Expr::StringLiteral(part.value)),
+                         as_text: false,
++                        path_array: false,
+                     };
+                 } else {
+                     return Err(SqlglotError::UnexpectedToken {
+@@ -7575,6 +7595,7 @@ impl Parser {
+                         expr: Box::new(expr),
+                         path: Box::new(Expr::StringLiteral(part.value)),
+                         as_text: false,
++                        path_array: false,
+                     };
+                 }
+             } else if matches!(expr, Expr::Function { .. })
+diff --git a/tests/test_expressions.rs b/tests/test_expressions.rs
+index ce56e3c..db31523 100644
+--- a/tests/test_expressions.rs
++++ b/tests/test_expressions.rs
+@@ -384,3 +384,22 @@ fn test_all_comparison_ops_with_any() {
+         );
+     }
+ }
++
++#[test]
++fn test_postgres_json_path_operators_roundtrip() {
++    for operator in ["#>", "#>>"] {
++        let sql = format!("SELECT data {} '{{commit,author,date}}' FROM commits", operator);
++        let stmt = parse(&sql, Dialect::Postgres).unwrap();
++
++        assert_eq!(generate(&stmt, Dialect::Postgres), sql);
++    }
++}
++
++#[test]
++fn test_postgres_json_path_operator_composes_with_cast() {
++    let sql = "SELECT CAST(data #>> '{commit,author,date}' AS TIMESTAMPTZ) FROM commits";
++    let stmt = parse(sql, Dialect::Postgres).unwrap();
++    let generated = generate(&stmt, Dialect::Postgres);
++
++    assert_eq!(parse(&generated, Dialect::Postgres).unwrap(), stmt);
++}

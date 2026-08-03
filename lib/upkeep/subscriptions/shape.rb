@@ -97,7 +97,8 @@ module Upkeep
           entry.dependency_cache_key,
           entry.dependency,
           nil,
-          entry.cohort_key
+          entry.cohort_key,
+          nil
         )
       end
 

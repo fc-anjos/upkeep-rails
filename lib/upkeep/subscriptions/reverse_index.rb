@@ -5,9 +5,16 @@ module Upkeep
     class ReverseIndex
       COHORT_IDENTITY_SOURCES = %w[Current.user cookie current_attribute session warden_user].freeze
 
-      Entry = Data.define(:subscription_id, :owner_id, :dependency_cache_key, :dependency, :subscriber_ids, :cohort_key) do
+      Entry = Data.define(:subscription_id, :owner_id, :dependency_cache_key, :dependency, :subscriber_ids, :cohort_key, :recipients) do
         def represented_subscriber_ids
-          Array(subscriber_ids)
+          ids = Array(subscriber_ids)
+          return ids unless ids.empty?
+
+          represented_recipients.map(&:last).uniq
+        end
+
+        def represented_recipients
+          Array(recipients)
         end
 
         def cohort?
@@ -92,7 +99,8 @@ module Upkeep
               node.payload.cache_key,
               node.payload,
               [subscription.subscriber_id],
-              cohort_key
+              cohort_key,
+              [[subscription.id, subscription.subscriber_id]]
             )
           end
         end
@@ -152,7 +160,7 @@ module Upkeep
 
         existing_entry = @cohort_entries_by_index_key[index_key]
         members[entry.subscription_id] = subscriber_ids
-        replacement_entry = existing_entry ? append_cohort_members(existing_entry, subscriber_ids) : cohort_entry_from(entry, members)
+        replacement_entry = existing_entry ? append_cohort_members(existing_entry, entry.subscription_id, subscriber_ids) : cohort_entry_from(entry, members)
 
         if existing_entry
           replace_entry(lookup_key, existing_entry, replacement_entry)
@@ -194,18 +202,20 @@ module Upkeep
           entry.dependency_cache_key,
           entry.dependency,
           members.values.flatten.uniq.sort_by(&:to_s),
-          entry.cohort_key
+          entry.cohort_key,
+          members.flat_map { |subscription_id, ids| ids.map { |subscriber_id| [subscription_id, subscriber_id] } }
         )
       end
 
-      def append_cohort_members(entry, subscriber_ids)
+      def append_cohort_members(entry, subscription_id, subscriber_ids)
         Entry.new(
           entry.subscription_id,
           entry.owner_id,
           entry.dependency_cache_key,
           entry.dependency,
           entry.represented_subscriber_ids | subscriber_ids,
-          entry.cohort_key
+          entry.cohort_key,
+          (entry.represented_recipients + subscriber_ids.map { |subscriber_id| [subscription_id, subscriber_id] }).uniq
         )
       end
 
@@ -234,7 +244,8 @@ module Upkeep
           entry.dependency_cache_key,
           entry.dependency,
           entry.subscriber_ids || [subscription.subscriber_id],
-          entry.cohort_key || cohort_key_for(subscription)
+          entry.cohort_key || cohort_key_for(subscription),
+          entry.recipients || [[subscription.id, subscription.subscriber_id]]
         )
       end
 
@@ -261,7 +272,8 @@ module Upkeep
           representative.dependency_cache_key,
           representative.dependency,
           entries.flat_map(&:represented_subscriber_ids).uniq.sort_by(&:to_s),
-          representative.cohort_key
+          representative.cohort_key,
+          entries.flat_map(&:represented_recipients).uniq
         )
       end
 

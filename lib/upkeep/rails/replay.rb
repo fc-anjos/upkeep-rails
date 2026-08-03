@@ -40,18 +40,31 @@ module Upkeep
         end
       end
 
-      def render_controller_page(replay)
+      def render_controller_page(replay, env: replay.env)
         controller = constantize(replay.controller_class)
         _status, _headers, body = ControllerRuntime.suppress do
-          controller.action(replay.action).call(rack_env(replay.env))
+          controller.action(replay.action).call(rack_env(env))
         end
         collect_response_body(body)
       end
 
       def render_controller_turbo_frame(replay)
-        html = render_controller_page(replay)
+        html = render_controller_page(
+          replay,
+          env: replay.env.merge("HTTP_TURBO_FRAME" => replay.target_id)
+        )
         target = Targeting::Target.new("turbo_frame", replay.target_id, "Turbo Frame replay")
-        Targeting::Extraction.extract_target_html(html, target)
+        frame_html = Targeting::Extraction.extract_target_html(html, target)
+        frame = Nokogiri::HTML5.fragment(frame_html).at_css("turbo-frame")
+        frame["src"] = turbo_frame_src(replay.env)
+        frame.to_html
+      end
+
+      def turbo_frame_src(env)
+        env = env.transform_keys(&:to_s)
+        path = "#{env["SCRIPT_NAME"]}#{env["PATH_INFO"]}"
+        query = env["QUERY_STRING"].to_s
+        query.empty? ? path : "#{path}?#{query}"
       end
 
       def render_template(replay)

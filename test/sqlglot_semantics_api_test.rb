@@ -65,6 +65,15 @@ class SqlglotSemanticsTest < Minitest::Test
     )
   end
 
+  def test_postgres_json_path_operators_round_trip
+    sql = "SELECT data #> '{commit,author}', data #>> '{commit,author,date}' FROM commits"
+    statement = Upkeep::SQLGlot.parse(sql, dialect: :postgres)
+    generated = Upkeep::SQLGlot.generate(statement, dialect: :postgres)
+
+    assert_includes generated, "data #> '{commit,author}'"
+    assert_includes generated, "data #>> '{commit,author,date}'"
+  end
+
   def test_qualify_columns_returns_the_sqlglot_statement_shape
     statement = parse("SELECT id, title FROM cards WHERE project_id = 42")
     qualified = Upkeep::SQLGlot.qualify_columns(statement, mapping_schema)

@@ -96,6 +96,41 @@ class TurboStreamsDeliveryTest < Minitest::Test
     ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
   end
 
+  def test_distinct_subscriptions_for_one_subscriber_receive_only_their_render
+    open_card = create_delivery_card!("Open card")
+    closed_card = create_delivery_card!("Closed card", status: "closed")
+
+    store = Upkeep::Subscriptions::Store.new
+    open_subscription = register_controller_subscription(
+      store,
+      subscriber_id: "subscriber-a",
+      path: "/cards?status=open"
+    )
+    closed_subscription = register_controller_subscription(
+      store,
+      subscriber_id: "subscriber-a",
+      path: "/cards?status=closed"
+    )
+
+    Upkeep::Runtime::ChangeLog.reset
+    open_card.update!(title: "Updated open card")
+    closed_card.update!(title: "Updated closed card")
+
+    batch = delivery.build(plan_for(store))
+    envelopes = batch.envelopes.index_by(&:stream_name)
+    open_body = envelopes.fetch(
+      Upkeep::Delivery::ActionCableAdapter.subscription_stream_name_for(open_subscription.id)
+    ).body
+    closed_body = envelopes.fetch(
+      Upkeep::Delivery::ActionCableAdapter.subscription_stream_name_for(closed_subscription.id)
+    ).body
+
+    assert_includes open_body, "Updated open card"
+    refute_includes open_body, "Updated closed card"
+    assert_includes closed_body, "Updated closed card"
+    refute_includes closed_body, "Updated open card"
+  end
+
   def test_collection_create_appends_to_upkeep_collection_container
     create_delivery_card!("Plan")
     create_delivery_card!("Build")
@@ -154,7 +189,8 @@ class TurboStreamsDeliveryTest < Minitest::Test
     assert_nil plan.targets.first.sharing_signature
     assert_nil batch.streams.first.shared_stream_name
     assert_equal ["subscriber-a"], batch.envelopes.map(&:subscriber_id)
-    assert_nil batch.envelopes.first.stream_name
+    assert_equal Upkeep::Delivery::ActionCableAdapter.subscription_stream_name_for(plan.targets.first.subscription_id),
+      batch.envelopes.first.stream_name
     assert_includes batch.envelopes.first.body, "Review"
   end
 
@@ -368,7 +404,8 @@ class TurboStreamsDeliveryTest < Minitest::Test
     batch = delivery.build(plan_for(store))
 
     assert batch.streams.none?(&:shared_stream_name)
-    assert_equal [nil], batch.envelopes.map(&:stream_name).uniq
+    assert_equal 2, batch.envelopes.map(&:stream_name).uniq.size
+    assert batch.envelopes.all? { |envelope| envelope.stream_name.start_with?("upkeep:subscription:") }
     assert_equal ["subscriber-a", "subscriber-b"], batch.envelopes.map(&:subscriber_id).sort
   end
 
@@ -761,6 +798,7 @@ class TurboStreamsDeliveryTest < Minitest::Test
       "public",
       nil,
       ["subscriber-a"],
+      [["subscription-a", "subscriber-a"]],
       [],
       nil,
       0.0,
@@ -782,6 +820,7 @@ class TurboStreamsDeliveryTest < Minitest::Test
       "subscription-z",
       "subscriber-z",
       ["subscriber-z"],
+      [["subscription-z", "subscriber-z"]],
       target,
       target,
       "fragment:rails:delivery_cards/_card:boom",

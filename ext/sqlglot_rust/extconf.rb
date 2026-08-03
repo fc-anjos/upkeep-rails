@@ -6,6 +6,7 @@ require_relative "../../lib/upkeep/sqlglot/native_library"
 
 RUST_REPOSITORY = "https://github.com/protegrity/sql-glot-rust.git"
 RUST_TAG = "v0.10.26"
+PATCHES = Dir[File.join(__dir__, "patches", "*.patch")].sort.freeze
 
 extension_dir = __dir__
 gem_root = File.expand_path("../..", extension_dir)
@@ -58,6 +59,14 @@ unless packaged_library
   ).strip
   abort "ERROR: expected SQLGlot #{RUST_TAG}, found #{source_tag}" unless source_tag == RUST_TAG
 
+  PATCHES.each do |patch|
+    next if system("git", "-C", source_dir, "apply", "--reverse", "--check", patch, out: File::NULL, err: File::NULL)
+
+    success = system("git", "-C", source_dir, "apply", "--check", patch) &&
+      system("git", "-C", source_dir, "apply", patch)
+    abort "ERROR: SQLGlot patch failed: #{File.basename(patch)}" unless success
+  end
+
   success = system(
     "cargo",
     "build",
@@ -75,6 +84,17 @@ unless packaged_library
 
   FileUtils.mkdir_p(library_dir)
   FileUtils.cp(built_library, library_dir)
+
+  if host_os.match?(/darwin/)
+    destination = File.join(library_dir, File.basename(built_library))
+    abort "ERROR: SQLGlot native library signing failed" unless system(
+      "codesign",
+      "--force",
+      "--sign",
+      "-",
+      destination
+    )
+  end
 end
 
 File.write(

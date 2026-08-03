@@ -7,9 +7,14 @@ module Upkeep
   module Delivery
     class ActionCableAdapter
       STREAM_PREFIX = "upkeep:subscriber"
+      SUBSCRIPTION_STREAM_PREFIX = "upkeep:subscription"
 
       def self.stream_name_for(subscriber_id)
         "#{STREAM_PREFIX}:#{Digest::SHA256.hexdigest(subscriber_id.to_s)[0, 32]}"
+      end
+
+      def self.subscription_stream_name_for(subscription_id)
+        "#{SUBSCRIPTION_STREAM_PREFIX}:#{Digest::SHA256.hexdigest(subscription_id.to_s)[0, 32]}"
       end
 
       def initialize(server: default_server)

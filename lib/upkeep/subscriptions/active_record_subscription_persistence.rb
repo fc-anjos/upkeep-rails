@@ -317,6 +317,7 @@ module Upkeep
             dependency.cache_key,
             dependency,
             nil,
+            nil,
             nil
           )
         end

@@ -66,11 +66,17 @@ class InstallGeneratorTest < Rails::Generators::TestCase
     assert_file "app/javascript/upkeep/subscription.js", /turbo:frame-render/
     assert_file "app/javascript/upkeep/subscription.js", /replaceSubscription/
     assert_file "app/javascript/upkeep/subscription.js", /ensureSourceElement/
+    assert_file "app/javascript/upkeep/subscription.js", /StreamActions\.refresh/
     assert_file "app/javascript/upkeep/subscription.js", /X-Upkeep-Subscription-Id/
     assert_file "app/javascript/upkeep/subscription.js", /subscription rejected by the server/
-    refute_match(/document\.write/, File.read(File.join(destination_root, "app/javascript/upkeep/subscription.js")))
+    subscription_js = File.read(File.join(destination_root, "app/javascript/upkeep/subscription.js"))
+    refute_match(/from "@hotwired\/turbo-rails"/, subscription_js)
+    refute_match(/document\.write/, subscription_js)
     assert_file "app/javascript/application.js", /import "@hotwired\/turbo-rails"/
     assert_file "app/javascript/application.js", %r{import "upkeep/subscription"}
+    application_js = File.read(File.join(destination_root, "app/javascript/application.js"))
+    assert_operator application_js.index(%(import "upkeep/subscription")), :<,
+      application_js.index(%(import "@hotwired/turbo-rails"))
     assert_file "config/importmap.rb", /pin "@hotwired\/turbo-rails", to: "turbo\.min\.js"/
     assert_file "config/importmap.rb", /pin "@rails\/actioncable", to: "actioncable\.esm\.js"/
     assert_file "config/importmap.rb", %r{pin "upkeep/subscription", to: "upkeep/subscription\.js"}
@@ -93,6 +99,9 @@ class InstallGeneratorTest < Rails::Generators::TestCase
     assert_equal 1, Dir[File.join(destination_root, "db/migrate/*create_upkeep_subscriptions.rb")].size
     assert_equal 1, File.read(File.join(destination_root, "app/javascript/application.js")).scan(%r{import "upkeep/subscription"}).size
     assert_equal 1, File.read(File.join(destination_root, "app/javascript/application.js")).scan("@hotwired/turbo-rails").size
+    application_js = File.read(File.join(destination_root, "app/javascript/application.js"))
+    assert_operator application_js.index(%(import "upkeep/subscription")), :<,
+      application_js.index(%(import "@hotwired/turbo-rails"))
     assert_equal 1, File.read(File.join(destination_root, "config/importmap.rb")).scan("@rails/actioncable").size
     assert_equal 1, File.read(File.join(destination_root, "config/importmap.rb")).scan("@hotwired/turbo-rails").size
     assert_equal 1, File.read(File.join(destination_root, "config/importmap.rb")).scan(%r{pin "upkeep/subscription"}).size

@@ -138,6 +138,7 @@ module Upkeep
             dependency_cache_key,
             dependency,
             nil,
+            nil,
             nil
           )
         end
@@ -158,6 +159,7 @@ module Upkeep
               owner_id,
               dependency_cache_key,
               dependency,
+              nil,
               nil,
               nil
             )

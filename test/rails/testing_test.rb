@@ -64,6 +64,19 @@ class RailsTestingTest < Minitest::Test
     assert_includes broadcasts.first, "turbo-stream"
   end
 
+  def test_upkeep_stream_names_include_the_subscription_stream
+    subscription = Upkeep::Rails.subscriptions.register(
+      subscriber_id: "subscriber-a",
+      recorder: recorder_with_page_dependency,
+      metadata: { stream_name: "identity-stream", shared_stream_names: ["shared-stream"] }
+    )
+
+    assert_equal [
+      Upkeep::Delivery::ActionCableAdapter.subscription_stream_name_for(subscription.id),
+      "shared-stream"
+    ], upkeep_stream_names(subscription)
+  end
+
   def test_delivery_batch_capture_no_ops_when_no_capture_is_active
     batch = Object.new
     def batch.envelopes

@@ -11,6 +11,7 @@ module Upkeep
         Runtime::Install.call if defined?(::ActiveRecord::Base)
         ActionViewCapture.install if defined?(::ActionView::Template)
         ControllerRuntime.install if defined?(::ActionController::Base)
+        JobRuntime.install if defined?(::ActiveJob::Base)
 
         @installed = true
       end

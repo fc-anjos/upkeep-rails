@@ -9,6 +9,7 @@ module Upkeep
         :subscription_id,
         :subscriber_id,
         :subscriber_ids,
+        :recipients,
         :target,
         :shared_stream_target,
         :frame_id,
@@ -163,11 +164,13 @@ module Upkeep
         action, recipe, delivery_target, deoptimization_reason = cached_delivery_strategy(subscription.graph, frame, recipe, entries, changes, sharing_signature: sharing_signature)
         target = delivery_target || target
         subscriber_ids = represented_subscriber_ids(subscription, entries)
+        recipients = represented_recipients(subscription, entries)
 
         PlannedTarget.new(
           subscription.id,
           subscription.subscriber_id,
           subscriber_ids,
+          recipients,
           target,
           shared_stream_target,
           frame_id,
@@ -186,6 +189,13 @@ module Upkeep
         return [subscription.subscriber_id] if subscriber_ids.empty?
 
         subscriber_ids
+      end
+
+      def represented_recipients(subscription, entries)
+        recipients = entries.flat_map(&:represented_recipients).uniq
+        return [[subscription.id, subscription.subscriber_id]] if recipients.empty?
+
+        recipients.sort_by { |subscription_id, subscriber_id| [subscription_id.to_s, subscriber_id.to_s] }
       end
 
       def cached_delivery_strategy(graph, frame, recipe, entries, changes, sharing_signature:)
@@ -383,6 +393,7 @@ module Upkeep
           existing.subscription_id,
           existing.subscriber_id,
           (existing.subscriber_ids + target.subscriber_ids).uniq.sort_by(&:to_s),
+          (existing.recipients + target.recipients).uniq.sort_by { |subscription_id, subscriber_id| [subscription_id.to_s, subscriber_id.to_s] },
           existing.target,
           existing.shared_stream_target,
           existing.frame_id,

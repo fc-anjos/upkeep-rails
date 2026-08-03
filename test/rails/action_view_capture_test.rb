@@ -324,7 +324,7 @@ class ActionViewCaptureTest < Minitest::Test
     create_card!("Review", status: "open")
     replayed_html = Upkeep::Replay::Recipe.from_h(frame.payload.fetch(:recipe).to_h).render
 
-    assert_includes replayed_html, '<turbo-frame id="cards">'
+    assert_includes replayed_html, '<turbo-frame id="cards" src="/cards/frame?status=open">'
     assert_includes replayed_html, "Plan"
     assert_includes replayed_html, "Review"
     refute_includes replayed_html, "Archived"

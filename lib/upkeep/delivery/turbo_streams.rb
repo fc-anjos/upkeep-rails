@@ -17,6 +17,7 @@ module Upkeep
         :identity_signature,
         :shared_stream_name,
         :subscriber_ids,
+        :recipients,
         :matched_dependency_keys,
         :deoptimization_reason,
         :render_duration_ms,
@@ -48,6 +49,10 @@ module Upkeep
           subscriber_ids.include?(subscriber_id)
         end
 
+        def for_subscription?(subscription_id)
+          recipients.any? { |recipient_subscription_id, _subscriber_id| recipient_subscription_id == subscription_id }
+        end
+
         def report
           {
             action: action,
@@ -57,6 +62,7 @@ module Upkeep
             shared_stream_name: shared_stream_name,
             html_digest: html_digest,
             subscriber_ids: subscriber_ids,
+            subscription_ids: recipients.map(&:first).uniq,
             matched_dependency_keys: matched_dependency_keys,
             deoptimization_reason: deoptimization_reason,
             render_duration_ms: render_duration_ms,
@@ -68,6 +74,10 @@ module Upkeep
       Envelope = Data.define(:subscriber_id, :streams, :stream_name) do
         def self.subscriber(subscriber_id, streams)
           new(subscriber_id, streams, nil)
+        end
+
+        def self.subscription(subscription_id, subscriber_id, streams)
+          new(subscriber_id, streams, ActionCableAdapter.subscription_stream_name_for(subscription_id))
         end
 
         def self.shared(stream_name, streams)
@@ -98,9 +108,6 @@ module Upkeep
         def envelopes
           return [] if streams.empty?
 
-          direct_subscriber_id = single_direct_subscriber_id
-          return [Envelope.subscriber(direct_subscriber_id, streams)] if direct_subscriber_id
-
           shared_envelopes + subscriber_envelopes
         end
 
@@ -117,13 +124,6 @@ module Upkeep
 
         private
 
-        def single_direct_subscriber_id
-          return if streams.any?(&:shared_stream_name)
-
-          subscriber_ids = streams.flat_map(&:subscriber_ids).uniq
-          subscriber_ids.first if subscriber_ids.one?
-        end
-
         def shared_envelopes
           streams
             .select(&:shared_stream_name)
@@ -134,10 +134,17 @@ module Upkeep
         def subscriber_envelopes
           direct_streams = streams.reject(&:shared_stream_name)
           direct_streams
-            .flat_map(&:subscriber_ids)
+            .flat_map(&:recipients)
             .uniq
-            .sort_by(&:to_s)
-            .map { |subscriber_id| Envelope.subscriber(subscriber_id, direct_streams.select { |stream| stream.for_subscriber?(subscriber_id) }) }
+            .group_by(&:first)
+            .sort_by { |subscription_id, _recipients| subscription_id.to_s }
+            .map do |subscription_id, recipients|
+              Envelope.subscription(
+                subscription_id,
+                recipients.first.last,
+                direct_streams.select { |stream| stream.for_subscription?(subscription_id) }
+              )
+            end
         end
       end
 
@@ -183,6 +190,7 @@ module Upkeep
           stream_for(
             targets.first,
             subscriber_ids: targets.flat_map(&:subscriber_ids),
+            recipients: targets.flat_map(&:recipients),
             matched_dependency_keys: targets.flat_map(&:matched_dependency_keys),
             request_id: request_id
           )
@@ -192,8 +200,8 @@ module Upkeep
       # The write that produced these changes has already committed; an isolated render/targeting
       # failure for one target must never propagate back into the writer's request. Rescue per
       # target, surface the failure via instrumentation, and keep delivering the other targets.
-      def stream_for(planned_target, request_id:, subscriber_ids: planned_target.subscriber_ids, matched_dependency_keys: planned_target.matched_dependency_keys)
-        build_stream(planned_target, subscriber_ids: subscriber_ids, matched_dependency_keys: matched_dependency_keys, request_id: request_id)
+      def stream_for(planned_target, request_id:, subscriber_ids: planned_target.subscriber_ids, recipients: planned_target.recipients, matched_dependency_keys: planned_target.matched_dependency_keys)
+        build_stream(planned_target, subscriber_ids: subscriber_ids, recipients: recipients, matched_dependency_keys: matched_dependency_keys, request_id: request_id)
       rescue StandardError => error
         ActiveSupport::Notifications.instrument(
           DELIVERY_ERROR,
@@ -207,7 +215,7 @@ module Upkeep
         nil
       end
 
-      def build_stream(planned_target, subscriber_ids:, matched_dependency_keys:, request_id:)
+      def build_stream(planned_target, subscriber_ids:, recipients:, matched_dependency_keys:, request_id:)
         html, render_duration_ms = render_target(planned_target)
 
         Stream.new(
@@ -219,6 +227,7 @@ module Upkeep
           planned_target.identity_signature,
           shared_stream_name_for(planned_target, subscriber_ids: subscriber_ids),
           subscriber_ids.uniq.sort_by(&:to_s),
+          recipients.uniq.sort_by { |subscription_id, subscriber_id| [subscription_id.to_s, subscriber_id.to_s] },
           matched_dependency_keys.uniq,
           planned_target.deoptimization_reason,
           render_duration_ms,
@@ -281,6 +290,7 @@ module Upkeep
           existing.identity_signature,
           existing.shared_stream_name,
           (existing.subscriber_ids + stream.subscriber_ids).uniq.sort_by(&:to_s),
+          (existing.recipients + stream.recipients).uniq.sort_by { |subscription_id, subscriber_id| [subscription_id.to_s, subscriber_id.to_s] },
           (existing.matched_dependency_keys + stream.matched_dependency_keys).uniq,
           existing.deoptimization_reason,
           (existing.render_duration_ms + stream.render_duration_ms).round(3),
