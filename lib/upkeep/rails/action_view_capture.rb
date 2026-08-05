@@ -664,6 +664,7 @@ module Upkeep
 
       def replayable_view_assign_value?(value)
         return true if value.is_a?(ActiveRecord::Base)
+        return true if active_record_relation?(value)
         return value.all? { |item| replayable_view_assign_value?(item) } if value.is_a?(Array)
         return value.all? { |_key, item| replayable_view_assign_value?(item) } if value.is_a?(Hash)
 
