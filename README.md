@@ -79,13 +79,14 @@ class Projects::MilestonesController < ApplicationController
 end
 ```
 
-This changes only which GET and HEAD responses register live subscriptions.
-Writes from every controller remain captured so they can update subscribed
-pages. Routes and Turbo navigation do not change.
+This changes only which HTML GET responses register live subscriptions. Writes
+from every controller remain captured so they can update subscribed pages.
+Routes and Turbo navigation do not change.
 
-Queries performed by controller actions or callbacks are page-level
-dependencies unless rendering establishes a narrower boundary. For
-presentation-specific controller work, see
+Scalar queries such as `pluck` and calculations performed by controller actions
+or callbacks are page-level dependencies. A materialized relation keeps query
+provenance and becomes a collection dependency only when Action View renders
+that same collection. For presentation-specific controller work, see
 [Controller Work and Render Regions](docs/how-it-works.md#controller-work-and-render-regions).
 
 **Subscription store:** Use `:memory` for test suites. Use `:active_record` for production—it stores subscriptions durably across restarts.

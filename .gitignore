@@ -1,6 +1,7 @@
 # Local-only tooling and working files
 /.claude/
 /scratch/
+/docs/drafts/
 /docs/handoffs/
 
 /.bundle/

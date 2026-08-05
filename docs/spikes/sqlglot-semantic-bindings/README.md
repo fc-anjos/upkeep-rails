@@ -1,5 +1,9 @@
 # Missing SQLGlot semantic bindings spike
 
+> Historical note: this spike predates Upkeep 0.2. Upkeep now binds the released
+> `sql-glot-rust` v0.10.26 semantic API directly; the v0.10.12 wrapper gaps and
+> CTE caveat below describe the investigation that led to that integration.
+
 The `sqlglot` Ruby gem 0.1.1 binds only parse, generate, transpile, and version.
 Its underlying `protegrity/sql-glot-rust` v0.10.12 already contains semantic
 APIs that are useful to Upkeep:

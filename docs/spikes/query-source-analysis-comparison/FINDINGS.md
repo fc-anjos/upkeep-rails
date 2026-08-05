@@ -1,5 +1,9 @@
 # Opaque-query source analysis comparison
 
+> Historical note: this comparison predates Upkeep 0.2. Production no longer
+> combines an Arel decoder with a SQLGlot fallback. It parses generated SQL
+> exclusively through `Upkeep::SQLGlot` and requires proven column coverage.
+
 Date: 2026-07-24
 
 ## Decision

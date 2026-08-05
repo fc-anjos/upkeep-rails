@@ -1,5 +1,9 @@
 # SQLGlot-first Active Record analysis spike
 
+> Historical note: this prototype led to the Upkeep 0.2 production analyzer.
+> The current runtime owns its `Upkeep::SQLGlot` binding and lowers qualified
+> generated SQL through `Upkeep::SQLDependencyAnalysis`.
+
 This spike asks whether `Relation#to_sql` plus database schema metadata can replace
 the Arel decoder. The analyzer never calls `Relation#arel` and produces the same
 small semantic contract Upkeep needs:

@@ -18,7 +18,9 @@ Gem::Specification.new do |spec|
   spec.metadata["bug_tracker_uri"] = "#{spec.homepage}/issues"
   spec.metadata["rubygems_mfa_required"] = "true"
 
-  internal_files = Dir[
+  excluded_files = Dir[
+    "docs/drafts/**/*",
+    "docs/handoffs/**/*",
     "lib/upkeep/probes/**/*.rb",
     "lib/upkeep/proofs/**/*.rb"
   ] + %w[
@@ -39,7 +41,7 @@ Gem::Specification.new do |spec|
     "upkeep-rails.gemspec",
     "lib/**/*.rb",
     "lib/generators/**/templates/**/*"
-  ] - internal_files).sort
+  ] - excluded_files).sort
 
   if native_platform
     native_libraries = Dir[

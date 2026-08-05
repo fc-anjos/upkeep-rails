@@ -1,5 +1,9 @@
 # Pulse #1802 SQLGlot edge-case findings
 
+> Historical note: this investigation predates Upkeep 0.2. Production now uses
+> SQLGlot as its only Active Record query decoder with proven column coverage;
+> the table-level fallback proposal below is not the current read path.
+
 Date: 2026-07-24
 
 Source: [fetchly/Pulse#1802](https://github.com/fetchly/Pulse/pull/1802)

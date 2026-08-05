@@ -1,5 +1,10 @@
 # SQLGlot-first vs Arel, and missing semantic bindings
 
+> Historical note: this investigation predates Upkeep 0.2. Production now uses
+> `Upkeep::SQLGlot` and `Upkeep::SQLDependencyAnalysis` as its only query
+> decoder; the Arel decoder and migration recommendations below describe the
+> path to that release, not the current runtime.
+
 ## Outcome
 
 A SQL-first decoder is viable enough to pursue. It can use one policy for both

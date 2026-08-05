@@ -1,5 +1,10 @@
 # SQLGlot query-analysis spike
 
+> Historical note: this investigation predates Upkeep 0.2. The proposed Arel
+> primary path and SQLGlot fallback were superseded by a single generated-SQL
+> production path through `Upkeep::SQLGlot` and
+> `Upkeep::SQLDependencyAnalysis`.
+
 Date: 2026-07-24
 
 ## Question
