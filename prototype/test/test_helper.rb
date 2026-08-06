@@ -3,6 +3,7 @@ ENV["RAILS_ENV"] = "test"
 require "rails"
 require "active_record/railtie"
 require "action_controller/railtie"
+require "active_job/railtie"
 require "action_cable/engine"
 require "turbo-rails"
 require "minitest/autorun"
@@ -21,7 +22,12 @@ class ProofApp < Rails::Application
   config.active_record.maintain_test_schema = false
   config.action_cable.cable = { "adapter" => "test" }
   config.action_controller.allow_forgery_protection = false
+  config.action_controller.perform_caching = true
+  config.cache_store = :memory_store
+  config.active_job.queue_adapter = :inline
 end
+
+Mime::Type.register "application/x-llm", :llm unless Mime[:llm]
 
 ProofApp.initialize!
 
@@ -51,6 +57,14 @@ ActiveRecord::Schema.define do
     t.string :role, default: "user"
     t.boolean :beta, default: false
   end
+  # Infrastructure tables (ignore-list fixtures).
+  create_table :sessions, force: true do |t|
+    t.string :session_id
+    t.text :data
+  end
+  create_table :audits, force: true do |t|
+    t.string :action
+  end
 end
 
 RefreshSync.install!
@@ -79,6 +93,22 @@ end
 
 class Current < ActiveSupport::CurrentAttributes
   attribute :locale
+end
+
+class SessionRecord < ActiveRecord::Base
+  self.table_name = "sessions"
+end
+
+class AuditRecord < ActiveRecord::Base
+  self.table_name = "audits"
+end
+
+class SidekiqStyleJob < ActiveJob::Base
+  # Pulse's chatbot pattern: a job drives the app's own controllers through
+  # an in-process integration session, authenticated as a real user.
+  def perform(session, path)
+    session.get(path)
+  end
 end
 
 # Bare renderer for scrubbed Tier S renders: same views, but no session, no
@@ -137,6 +167,29 @@ class CardsApiController < ActionController::Base
   def create
     Card.create!(params.permit(:board_id, :title, :status, :due_on, :uid))
     head :no_content
+  end
+end
+
+# Ignore-list misuse fixture: a reactive page that reads the audits table.
+class AuditLogsController < ActionController::Base
+  include RefreshSync::Capture
+  refresh_sync
+
+  def index
+    @audits = AuditRecord.all.to_a
+    render inline: "<ul><% @audits.each do |a| %><li><%= a.action %></li><% end %></ul>", layout: false
+  end
+end
+
+# Fragment-cache fixture: card list read INSIDE a cache block.
+class CachedBoardsController < ActionController::Base
+  include RefreshSync::Capture
+  prepend_view_path File.join(PROTO_ROOT, "test", "views")
+  refresh_sync
+
+  def show
+    @board_id = params[:id].to_i
+    render template: "cached/board", layout: false
   end
 end
 
@@ -199,6 +252,8 @@ Rails.application.routes.draw do
   get "/threadlocal", to: "surfaces#threadlocal"
   get "/flagged", to: "surfaces#flagged"
   get "/vip", to: "surfaces#vip"
+  get "/audit_log", to: "audit_logs#index"
+  get "/cached_board/:id", to: "cached_boards#show"
 end
 
 module ProofHelpers
@@ -211,6 +266,8 @@ module ProofHelpers
     RefreshSync.deploy_key = "deploy-1"
     RefreshSync.require_role_diversity = true
     RefreshSync.payload_limit = nil
+    RefreshSync.ignored_tables = nil
+    Rails.cache.clear
     RefreshSync.reset_stats!
     RefreshSync::Coercion.reset!
     RefreshSync::ActiveRecordStore.wipe!

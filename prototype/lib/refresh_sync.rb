@@ -30,6 +30,7 @@ module RefreshSync
   autoload :DbClaimer,        "refresh_sync/persistence"
   autoload :Health,           "refresh_sync/health"
   autoload :Provenance,       "refresh_sync/provenance"
+  autoload :FragmentCache,    "refresh_sync/fragment_cache"
 
   Change = Struct.new(:table, :id, :kind, :old_attrs, :new_attrs, keyword_init: true)
   # kind: :insert, :update, :delete, :table (bulk/raw write, row identity unknown)
@@ -54,6 +55,23 @@ module RefreshSync
     attr_writer :payload_limit
     def payload_limit = @payload_limit
 
+    # Infrastructure tables whose writes never become change events: our own
+    # tables (a cohort insert must not trigger cohort matching), session
+    # storage written on every request, audit/versioning echo writes, Rails
+    # bookkeeping. This is an INFRASTRUCTURE list, not a performance dial —
+    # if an active cohort actually depends on an ignored table, every
+    # skipped write emits a loud warning instead of silently going stale.
+    DEFAULT_IGNORED_TABLES = %w[
+      refresh_sync_cohorts refresh_sync_surfaces refresh_sync_claims
+      schema_migrations ar_internal_metadata sessions
+      active_storage_blobs active_storage_attachments active_storage_variant_records
+      audits versions
+    ].freeze
+
+    attr_writer :ignored_tables
+    def ignored_tables = @ignored_tables ||= DEFAULT_IGNORED_TABLES.dup.to_set
+    def ignored_table?(table) = ignored_tables.include?(table)
+
     def stats = @stats ||= Hash.new(0)
     def reset_stats! = @stats = Hash.new(0)
 
@@ -63,6 +81,18 @@ module RefreshSync
     # cohort to Tier S (a shared surface covers the changed table and is
     # promoted) or Tier P (debounced refresh).
     def report_change(change)
+      if ignored_table?(change.table)
+        # Misuse detector: an ignored table some ACTIVE cohort depends on
+        # means pages are silently going stale — warn loudly, still skip.
+        if watching?(change.table)
+          stats[:ignored_writes_warned] += 1
+          ActiveSupport::Notifications.instrument(
+            "ignored_table_write_skipped.refresh_sync",
+            table: change.table, watched: true
+          )
+        end
+        return
+      end
       return unless watching?(change.table)
       stats[:writes_analyzed] += 1
 
@@ -126,9 +156,33 @@ module RefreshSync
 
     def region_span(surface) = surface.region_addresses
 
+    # Registration suppression: cohorts must never register for requests
+    # that have no browser behind them (Pulse's chatbot drives controllers
+    # through in-process integration sessions from Sidekiq jobs, logged in
+    # as real users). Write CAPTURE stays global — only registration stops.
+    SUPPRESS_KEY = :refresh_sync_suppress_registration
+
+    def suppress_registration
+      prev = Thread.current[SUPPRESS_KEY]
+      Thread.current[SUPPRESS_KEY] = true
+      yield
+    ensure
+      Thread.current[SUPPRESS_KEY] = prev
+    end
+
+    def registration_suppressed? = !!Thread.current[SUPPRESS_KEY]
+
     def install!
       Hooks.install!
       Ambient.install!
+      FragmentCache.install!
+      # Anything executed by an Active Job is job context: suppress cohort
+      # registration for its whole duration (perform_now included).
+      ActiveSupport.on_load(:active_job) do
+        ActiveJob::Base.around_perform do |_job, block|
+          RefreshSync.suppress_registration(&block)
+        end
+      end
     end
   end
 end

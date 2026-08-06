@@ -15,10 +15,20 @@ module RefreshSync
       end
     end
 
+    # Cohorts register only for genuine browser HTML requests: HTML format
+    # (Pulse's chatbot speaks application/x-llm), not XHR/fetch, and not in
+    # a suppressed context (job-driven in-process integration sessions).
+    def self.registrable?(request)
+      return false if RefreshSync.registration_suppressed?
+      return false if request.xhr?
+      format = request.format
+      format.nil? || format.html?
+    end
+
     private
 
     def _refresh_sync_capture
-      return yield unless Capture.enabled && request.get?
+      return yield unless Capture.enabled && request.get? && Capture.registrable?(request)
 
       recording = Recording.start(
         request_id: request.headers["X-Turbo-Request-Id"] || request.request_id

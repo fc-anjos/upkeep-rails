@@ -41,6 +41,7 @@ module RefreshSync
       return if id.nil?
       deps(table).ids << id
       node_deps(table, node).ids << id if node
+      slices.each { |s| s.record_id(table, id, node: node) }
     end
 
     # An empty predicate is meaningful: it comes from an unscoped relation
@@ -48,11 +49,46 @@ module RefreshSync
     def record_predicate(table, predicate, node: nil)
       deps(table).predicates << predicate
       node_deps(table, node).predicates << predicate if node
+      slices.each { |s| s.record_predicate(table, predicate, node: node) }
     end
 
     def record_table(table, reason, node: nil)
       deps(table).table_reasons << reason
       node_deps(table, node).table_reasons << reason if node
+      slices.each { |s| s.record_table(table, reason, node: node) }
+    end
+
+    # --- fragment-cache slice capture ---------------------------------------
+    # A slice is a nested ReadSet collecting everything recorded while it is
+    # open (all open slices receive every record, so russian-doll outer
+    # fragments cover their inner blocks' reads).
+
+    def begin_slice
+      slices << ReadSet.new
+    end
+
+    def end_slice
+      slices.pop
+    end
+
+    # Replays a serialized read-set hash (a stored fragment slice) into this
+    # read set through the record_* calls, so node metadata and any open
+    # slices receive it too. Page-level entries that merely mirror node
+    # entries are not double-absorbed.
+    def absorb(h)
+      h.each do |table, d|
+        node_ids = []
+        node_predicates = []
+        node_reasons = []
+        d.fetch("node_reads", {}).each do |address, nd|
+          nd.fetch("ids", []).each { |id| record_id(table, id, node: address); node_ids << id }
+          nd.fetch("predicates", []).each { |p| record_predicate(table, p, node: address); node_predicates << p }
+          nd.fetch("table_reasons", []).each { |r| record_table(table, r.to_sym, node: address); node_reasons << r.to_sym }
+        end
+        (d.fetch("ids", []) - node_ids).each { |id| record_id(table, id) }
+        subtract_multiset(d.fetch("predicates", []), node_predicates).each { |p| record_predicate(table, p) }
+        subtract_multiset(d.fetch("table_reasons", []).map(&:to_sym), node_reasons).each { |r| record_table(table, r) }
+      end
     end
 
     def matches?(change)
@@ -122,6 +158,10 @@ module RefreshSync
     end
 
     private
+
+    def slices
+      @slices ||= []
+    end
 
     def deps_match?(deps, change)
       return true if deps.table_reasons.any?
