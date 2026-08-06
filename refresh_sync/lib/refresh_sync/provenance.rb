@@ -437,7 +437,28 @@ module RefreshSync
             digest: digest,
             stamp: Provenance.stamp_path?(identifier)
           }
-          ::ReActionView::Template::Handlers::Herb.call(template, source)
+          begin
+            code = ::ReActionView::Template::Handlers::Herb.call(template, source)
+            # Herb can emit invalid Ruby for template shapes it mis-parses
+            # (observed: multi-line helper calls inside <%= %> in attribute-
+            # heavy markup). The syntax error would otherwise surface at
+            # ActionView's module_eval, far from any quarantine. Validate
+            # here and fall back while it is still cheap.
+            require "ripper"
+            raise SyntaxError, "herb generated unparseable Ruby" if Ripper.sexp(code).nil?
+            code
+          rescue StandardError, SyntaxError => e
+            # Quarantine, loudly: a template Herb cannot compile renders
+            # through stock ERB. Its nodes are invisible to provenance, so
+            # its pages carry only page-level dependencies (pure Tier P) —
+            # capture stays sound, region delivery is simply unavailable.
+            RefreshSync.stats[:provenance_compile_failed] += 1
+            ActiveSupport::Notifications.instrument(
+              "provenance_compile_failed.refresh_sync",
+              template: identifier, error: e.class.name, message: e.message.to_s[0, 200]
+            )
+            super
+          end
         else
           super
         end
