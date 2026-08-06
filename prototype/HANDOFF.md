@@ -10,6 +10,38 @@ Worktree state at handoff: three commits (`ff24887` core proof, `b7faab3`
 two-tier + leak suite, `b8583bf` origin/persistence/coercion/health), all
 suites green: 41 runs, 223 assertions, 0 failures (two seeds).
 
+> **Phase 5 addendum (2026-08-06, gap-closing pass).** All six diagnosed
+> phase-4 gaps closed; 81 runs / 550 assertions across 19 suites (see
+> README phase 5 for the narrative). What the next agent must know beyond
+> the README:
+>
+> - **New version couplings** (added to §2): `ActiveRecord::AttributeMethods
+>   ::Read#_read_attribute` (iteration-identity verification),
+>   `ActiveRecord::StatementCache#execute` + ivars `@model`/`@bind_map` +
+>   `BindMap#bind` (the statement-cache read door — note the ivar is
+>   `@model`, NOT `@klass`, and `execute` takes an `async:` kwarg), herb's
+>   attribute-value ERB compilation (`::Herb::Engine.attr`), and
+>   turbo-rails `broadcast_action_to(attributes:)`.
+> - **Herb rejects whole-attribute ERB** (`<div <%= x %>>`) with a
+>   SecurityError; ERB inside an attribute VALUE compiles fine — that is
+>   why the dynamic stamp is injected as an ERBContentNode inside
+>   HTMLAttributeValueNode children (probed before building).
+> - **The pulse_fixture "first delivery baselines every region" assertion
+>   was rewritten** — the only pre-existing assertion changed in phase 5,
+>   because item 3 abolishes exactly that behavior. Everything else passed
+>   unmodified.
+> - **Harness traps added**: `RefreshSync.dispatch_interlock` is a test
+>   seam (reset to nil in ProofHelpers#setup — leave it that way);
+>   row_identity/baseline/delivery_ordering/unbroadcastable tests wipe
+>   `Item.unscoped` in their own setup like pulse_fixture does; the
+>   read-door audit means ANY new fixture page doing raw SQL reads during
+>   capture will refuse registration unless the query is named
+>   ("Model Action") — a bare `select_all` in a fixture controller is now
+>   a capture-refusal, not a silent pass.
+> - **`assert_refreshes`' final broadcast check asserts an exact count**,
+>   so tests that mix refreshes and region broadcasts on ONE stream will
+>   fight it — surface streams and cohort streams are distinct on purpose.
+
 > **Phase 4 addendum (2026-08-06, integration pass).** Provenance merged
 > into the runtime, demotion race closed, region broadcast + Pulse
 > hardening landed; 63 runs / 369 assertions across 14 suites, two seeds.
@@ -99,6 +131,10 @@ suites green: 41 runs, 223 assertions, 0 failures (two seeds).
 | `ActionCable::SubscriptionAdapter::Test` `@channels_data` | test_helper `all_broadcast_payloads` | No public "all broadcasts across all streams" API | Trivial to re-find in the adapter source |
 | `Turbo::StreamsChannel.broadcast_refresh_to(stream, request_id:)` → `request-id` attr | debouncer.rb default action | Relies on turbo-rails rendering arbitrary attributes into the tag | Assert in origin_test still parses `request-id="..."` |
 | `X-Request-Id` response header == `request.request_id` | capture.rb, origin_test | Prototype stamps Rails' request id; REAL Turbo clients compare against `X-Turbo-Request-Id` (their own header, tracked by Turbo JS) | Integration with real browsers must read `X-Turbo-Request-Id` first (capture.rb already prefers it) and confirm Turbo's discard actually fires — never tested against a real browser |
+| `ActiveRecord::AttributeMethods::Read#_read_attribute` | hooks.rb `AttributeReadObserver` | The one choke point all generated attribute readers funnel through; no public "attribute read" hook exists | If generated readers stop calling it, iteration-identity verification silently weakens (row targeting keeps working but loses its mismatch detector); grep for `define_method` in attribute_methods/read.rb after upgrades |
+| `ActiveRecord::StatementCache#execute(params, connection, async:)` + `@model`, `@bind_map`, `BindMap#bind` | hooks.rb `StatementCacheObserver`, recording.rb `record_statement_cache` | Statement caches bypass `Relation#exec_queries` entirely; the bind map is the only structured predicate source | The ivar is `@model` (NOT `@klass` — cost one debugging cycle). If ivars/signature change, the door silently stops recording and the audit starts flagging `Model Load` queries as unhooked — which is the designed failure mode, loud not stale |
+| Herb attribute-value ERB (`::Herb::Engine.attr`) | provenance.rb `Visitor#stamp_element`/`output_node` | The dynamic `data-rs-node` stamp is an ERBContentNode injected into HTMLAttributeValueNode children; herb REJECTS whole-attribute ERB position (SecurityError) | Recompile a stamped fixture and diff bytes; if `Engine.attr` changes escaping, instance stamps change everywhere at once (digest evidence resets — safe, loud) |
+| `Turbo::StreamsChannel.broadcast_action_to(attributes:)` | surfaces.rb `generation_stamp` | Arbitrary tag attributes on broadcast turbo-stream tags | origin/delivery_ordering tests parse `data-rs-gen="N"` |
 
 ## 3. Unwritten hunches (suspected, not proven)
 
@@ -197,7 +233,14 @@ suites green: 41 runs, 223 assertions, 0 failures (two seeds).
 | persistence_test.rb | Restart survival, cross-process routing/coalescing/promotion/demotion | Load-bearing; **process-global-state-dependent** (swaps `RefreshSync.store/registry/debouncer` — see §6) |
 | coercion_test.rb | JSON-roundtrip matching both directions, unit + end-to-end | Load-bearing, fast, no timing |
 | health_test.rb | Lifecycle events; dead-Tier-S signal recreating the reset_all incident | Load-bearing; subscribes to global notifications — a leaked subscriber from a crashed test could double-count (each test detaches in ensure) |
-| overhead_bench.rb / herd_bench.rb | Measurement scripts (README numbers) | Scaffolding — not regression tests, not in the combined run |
+| demotion_race_test.rb | Cross-process demotion vs pending broadcast; the narrowed post-render window via `dispatch_interlock` | Load-bearing; second test verified to fail against pre-fix ordering |
+| row_identity_test.rb | Row update -> instance replace; destroy -> remove; insert -> whole-region fallback; skip-loop unsoundness voids targeting; DOM instance stamps | Load-bearing for item-1 semantics |
+| baseline_test.rb | First write sends only the changed region; stale-baseline cohort gets the cumulative diff on its own stream | Load-bearing for per-cohort baselines |
+| delivery_ordering_test.rb | Generation stamps on pages + broadcasts; SimViewer rejects the stale in-flight morph | SimViewer is the reference client contract |
+| read_doors_test.rb | calculate/pluck/exists?/statement-cache doors; audit degrade + refuse paths | Load-bearing; also guards the audit's false-positive direction (hooked doors emit no events) |
+| unbroadcastable_region_test.rb | Bare in-flow cache block reported via region_unbroadcastable; refresh covers it | Signal-only semantics — promotion must still succeed |
+| pulse_fixture_test.rb (phase 5) | First-write assertion REWRITTEN to baseline-from-capture semantics | The one modified pre-existing assertion |
+| overhead_bench.rb / herd_bench.rb | Measurement scripts (README numbers) | Scaffolding — not regression tests, not in the combined run; NOTE: phase-5 hooks (attribute reads, read doors) postdate the README phase-1 overhead numbers — re-measure before quoting them |
 | debug_readset.rb | Dumps a captured read set | Scratch tool, safe to delete |
 
 Order-dependence: none observed across two seeds, BUT all suites share one
@@ -245,15 +288,95 @@ followers — the existing tests restore in `ensure`; keep that discipline.
 
 ---
 
+## 7. Integration surface (read this before wiring Pulse)
+
+What a real app installs, what config exists, and what the gem hooks at
+boot — the seam inventory for the next phase. Everything here exists in
+the prototype today unless marked (gap).
+
+**Boot (railtie territory — `RefreshSync.install!` plus provenance):**
+
+- `Hooks.install!` prepends: `Relation#exec_queries`, `Relation`
+  read doors (`calculate`/`pluck`/`exists?`), `Relation#update_all`/
+  `#delete_all`, `StatementCache#execute`,
+  `Base.instantiate_instance_of` (singleton), `Base#_read_attribute`,
+  includes the `after_commit` write observer, and subscribes to
+  `sql.active_record` twice (raw-write safety net; read-door audit).
+- `Ambient.install!` prepends session/cookie-jar readers and wraps the
+  `CurrentAttributes.attribute` generator.
+- `FragmentCache.install!` prepends the `cache` view helper (on_load
+  :action_view).
+- `Provenance.install!` registers the compile-time visitor on
+  `ReActionView.config.transform_visitors`, swaps the `:erb` template
+  handler for the gating `Provenance::Handler`, and prepends
+  `ActionView::OutputFlow#get`. Requires the reactionview + herb gems.
+- An `around_perform` on ActiveJob suppresses cohort registration in jobs.
+- Persistence: `ActiveRecordStore.setup!` creates the three tables
+  (cohorts — now with `baselines_json`; surfaces — now with a `status`
+  column + `dispatched_at` for the dispatch CAS; claims). A real app ships
+  these as a migration instead.
+
+**Per-app configuration (all on `RefreshSync.` unless noted):**
+
+- `store` / `registry` / `debouncer` — production:
+  `ActiveRecordStore` + `ActiveRecordSurfaceRegistry` + `Debouncer` with
+  `claimer: DbClaimer.new`, window/budget/jitter to taste.
+- `viewer_resolver` (->(request) -> Viewer(id:, role:) | nil) — the
+  authenticated-identity seam; drop-in point for the main codebase's
+  `ViewerIdentity`.
+- `renderer_class` — the scrub renderer; MUST be a bare
+  `ActionController::Base` subclass with the app's view paths and NO app
+  helpers (see §3 note on `respond_to?(:current_user)`).
+- `identity_columns` (default `%w[user_id]`), `require_role_diversity`,
+  `deploy_key` (cache-bust per deploy), `payload_limit`, `ignored_tables`.
+- `Provenance.instrument_paths` / `stamp_paths` — which view roots compile
+  through Herb and which additionally get `data-rs-node` stamps. For Pulse:
+  point both at `app/views`, then narrow if compile cost matters.
+- `Capture.enabled` — global kill switch.
+
+**Per-controller:** `include RefreshSync::Capture` + `refresh_sync`
+(around_action; registers cohorts only for registrable browser HTML GETs).
+**Per-view:** `shared_surface name, partial:, **locals` for Tier S
+candidates (auto-detection deliberately unexplored, §1).
+
+**What the app's client must do (all currently simulated in tests — the
+REAL client is the biggest remaining integration gap):**
+
+- Subscribe each page to its cohort stream (`X-RefreshSync-Stream`) and
+  its surfaces' streams; apply refresh/replace/remove stream actions
+  (Turbo does this natively once subscribed).
+- The ordering contract: track `X-RefreshSync-Generation` from GET
+  responses and `data-rs-gen` from stream tags; never apply a full-page
+  morph older than the newest applied region update — discard + re-fetch
+  instead (delivery_ordering_test's SimViewer is the reference
+  implementation, ~20 lines).
+- Turbo's native request-id discard for GET-boundary writes
+  (`X-Turbo-Request-Id`, §2 last row).
+
+**Known integration gaps (loud, not hidden):** no reconnect-triggered
+refresh (a viewer that misses a delivery on a never-changing region is
+stale until navigation — README phase 5 "Baseline drift"); no cohort/claim
+pruning (§3); the activation handshake seam (§4) is still the
+unauthenticated stand-in; ViewComponent compatibility unprobed
+(spike/FINDINGS §4).
+
+---
+
 ## Realized while writing this (changes a phase-3 conclusion)
 
-> **STATUS (phase 4): CLOSED.** `report_change` schedules the surface KEY
-> and rehydrates through the scheduling process's registry inside the
-> dispatch action; `broadcast!` re-reads status from the store between the
-> scrubbed render and the transport call (`live_tier_s?`). Regression test:
-> `demotion_race_test.rb` (fails against the pre-fix code). Residual: the
-> microseconds between the post-render check and the Turbo call — a
-> store-side lock would close it fully.
+> **STATUS (phase 5): CLOSED as far as it can be.** The post-render check
+> is now an atomic store-side compare-and-set on the surface row's status
+> column (`UPDATE ... WHERE status IN ('shared','region_shared')`); a
+> demotion persisted at any point before the claim always wins, and the
+> narrowed-window regression (`dispatch_interlock` seam) fails against the
+> pre-fix read-then-act ordering. HONEST CORRECTION of the phase-4 note:
+> "a store-side lock would close it fully" was too optimistic — a demotion
+> can still commit while the Turbo transport call is in flight, and strict
+> exclusion would mean holding a DB lock across a network write (SQLite
+> cannot even express FOR UPDATE). The guarantee is claim + converge:
+> demotion always schedules cohort refreshes after its commit, so the
+> at-most-one broadcast that slips into the transport window is
+> immediately superseded.
 
 **Cross-process demotion does NOT cancel the other process's pending Tier S
 broadcast — and the scheduled broadcast closure holds a STALE surface

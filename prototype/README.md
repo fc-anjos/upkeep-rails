@@ -426,6 +426,142 @@ self-heals because both artifacts are DB-current at render.
    bypass `exec_queries`). The fixture covers count-staleness transitively
    (same-table predicates) and via key-rotated fragments; a real gem must
    hook `calculate` — the old upkeep's "Track Active Record calculations"
-   commit exists for exactly this reason.
+   commit exists for exactly this reason. *(Closed in phase 5.)*
 5. **First region delivery baselines every region** (no previous digests),
    so it sends all regions once; steady-state sends only changed ones.
+   *(Closed in phase 5: baselines seed from capture.)*
+
+---
+
+# Phase 5: Row identity, per-cohort baselines, read-door audit, ordering (2026-08-06)
+
+The six diagnosed gaps from the phase-4 review, closed: per-iteration node
+identity, complete read-door coverage with a completeness audit,
+baseline-from-capture, the dispatch-time race, unbroadcastable-region
+detection, and the delivery-ordering invariant as a mechanism.
+
+## Test results (verbatim)
+
+All nineteen suites, one process each:
+
+    81 runs, 550 assertions, 0 failures, 0 errors, 0 skips
+
+(activation_guard 4 / baseline 2 / coercion 5 / delivery_ordering 2 /
+demotion_race 2 / fragment_cache 2 / health 3 / ignore_list 3 / leak 6 /
+origin 3 / payload_limit 2 / persistence 4 / proof 10 / provenance 3 /
+pulse_fixture 7 / read_doors 7 / row_identity 5 / tier 10 /
+unbroadcastable_region 1. Assertion totals vary by a few between runs:
+several tests assert per delivered payload, and payload counts are
+timing-dependent.)
+
+LOC: lib/ 2,207 -> 2,803 (+596); test tree (rb + erb) 2,499 lines.
+
+## What was built
+
+1. **Per-iteration node identity.** A loop-body node is traced — and
+   DOM-stamped, the `data-rs-node` value became a render-time expression —
+   as `address@table:id`: the n-th entry of a child address binds to the
+   n-th record its parent node materialized (the collection load lands on
+   the loop node, in result order, before the first iteration renders).
+   A one-row update travels as ONE row-targeted replace; a removed row as
+   one `remove`; an inserted row falls back to a whole-list-region replace
+   BY DESIGN — digest evidence proves which rows exist, not where a new
+   row sits relative to the viewer's DOM, and a wrong position is
+   corruption while a whole-region replace is merely coarser. Identity
+   fails closed on three runtime signals (attribute reads of a different
+   row inside the instance window; entry counts disagreeing with the
+   loaded id count; instance re-entry): the base collapses to an
+   `__unsound__` digest marker and delivery reverts to whole-region.
+2. **Read doors + completeness audit.** `calculate`, `pluck` (covers
+   `pick`/`ids`) and `exists?` hooked at the Relation level;
+   `StatementCache#execute` hooked with its bind map as the structured
+   predicate — closing the nil-result hole (a cached `find_by` that found
+   nothing now records the predicate, so the row's later INSERT matches).
+   Every door wraps execution in an accounting window; a `sql.active_record`
+   SELECT during capture outside any window is an unhooked read door:
+   attributable ones (AR's "Model Action" name convention) degrade to a
+   loud table-level dependency, unattributable ones REFUSE the capture
+   (no cohort, loud `capture_refused` event) — a read set with a silent
+   hole is a stale-page lie, so no registration is better than a wrong one.
+3. **Baseline-from-capture, per cohort.** Cohorts store a region-digest
+   baseline seeded from their own capture render (digests already existed
+   as evidence), diffed per cohort at each broadcast, advanced per
+   delivery. Identical diffs group into one payload on the shared surface
+   stream; divergent baselines deliver on cohort streams. The first write
+   after registration now sends only the changed row/region.
+4. **Dispatch race closed with a store-side CAS.** Surface status is
+   duplicated into its own column; the final pre-transport check is one
+   atomic `UPDATE ... WHERE status IN ('shared','region_shared')`. A
+   demotion persisted before the claim always wins (regression test drives
+   a demotion into the microsecond window via a dispatch interlock seam and
+   was verified to fail against the pre-fix read-then-act ordering).
+5. **Unbroadcastable-region detection.** Promotion emits
+   `region_unbroadcastable` (reason, node addresses, template file via a
+   compile-time digest→file registry) for byte-shared content with no
+   enclosing stamped element — the bare in-flow cache block case. A signal
+   for operators, never a template-change request: refresh covers it.
+6. **Delivery-ordering invariant as a mechanism.** Capture responses carry
+   `X-RefreshSync-Generation` (per-surface write generation at render
+   time); every Tier S tag carries `data-rs-gen`. Client contract: apply a
+   full-page morph only when its generation >= the newest applied region
+   update; otherwise discard and re-fetch. The interleaving the convention
+   previously survived by luck — a GET rendered pre-write whose morph lands
+   after a newer region update, silently rolling it back with nothing
+   pending — is reproduced with a simulated client (same precedent as
+   origin_test's simulated Turbo discard).
+
+## Baseline drift (what protects correctness)
+
+Server-side, a stale cohort baseline cannot corrupt: payloads are full
+idempotent region/row content, never deltas, so a stale baseline only makes
+the next diff LARGER (asserted: a cohort with a reverted baseline receives
+the cumulative diff on its own stream). Client-side, a viewer that missed a
+delivery converges at the next change to that region — and for a region
+that never changes again, only at its next full GET. The refresh path that
+gets the viewer there: any uncovered write to the page schedules one, and
+the generation mechanism forces a re-fetch whenever a stale morph meets a
+newer applied update. A missed delivery on a page that never changes again
+and never re-navigates stays stale — that residual is documented, not
+hidden (production should add reconnect-triggered refresh; Action Cable
+reports disconnects to the client).
+
+## Where reality pushed back (phase 5)
+
+1. **A store-side CAS narrows, but does not eliminate, the demotion race —
+   and cannot.** The claim makes check-and-act one atomic statement, so a
+   demotion persisted before it always wins. But a demotion can still
+   commit while the transport call is in flight; strict exclusion would
+   mean holding a DB row lock across a network write (and SQLite cannot
+   even express `SELECT ... FOR UPDATE`). The HANDOFF's "a store-side lock
+   would close it fully" was too optimistic. What actually guarantees
+   correctness is claim + converge: every demotion schedules cohort
+   refreshes after its commit, so the at-most-one broadcast that slips
+   into the transport window is immediately superseded.
+2. **Iteration identity is knowable at enter time only because relations
+   load before the first yield.** `items.each` materializes the whole
+   result (recorded on the loop node) before the first iteration renders —
+   that ordering is what lets the open tag stamp the instance address.
+   `find_each`/batching would break it (batch N's ids arrive late);
+   unsoundness detection would catch the mismatch and fail closed, but a
+   real gem should verify batched iteration explicitly.
+3. **The unsound-marker trick preserves cross-viewer evidence.** Soundness
+   is a structural property of the render, so both viewers produce the
+   identical `__unsound__` marker — divergence is never manufactured. An
+   asymmetric case (sound for one viewer, unsound for the other) would
+   localize as an island; not observed in any fixture.
+4. **`find_by` predicates were silently unrecorded before the
+   statement-cache door.** The pre-existing suites never noticed because
+   every fixture page also held a broader relation read that masked it.
+   The audit is what exposed the gap class; the nil-result case
+   (`find_by` returning nothing records NOTHING via instantiation) was
+   fully invisible until now.
+5. **RefreshSync's own store reads must not become page dependencies.**
+   Once statement-cache and pluck doors existed, cohort-table lookups on
+   GET-boundary writes started recording `refresh_sync_cohorts` into page
+   read sets — a feedback loop. Own tables are now excluded from read-set
+   recording (distinct from the user-facing ignore list, whose tables ARE
+   recorded so the misuse warning can fire).
+6. **One phase-4 assertion was abolished by design**: pulse_fixture's
+   "first delivery baselines every region exactly once" asserts the exact
+   behavior item 3 removes. Its assertions were updated (only that test);
+   everything else passed unmodified.
