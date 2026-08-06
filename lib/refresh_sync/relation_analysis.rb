@@ -14,29 +14,48 @@ module RefreshSync
     def apply_to(recording)
       read_set = recording.read_set
       node = recording.prov_address
-      predicate, fallback_reason = extract_predicate
+      joined = joined_tables
+      predicates, fallback_reason = extract_predicates(joined)
       if fallback_reason
         read_set.record_table(@table, fallback_reason, node: node)
       else
-        read_set.record_predicate(@table, predicate, node: node)
+        own = predicates.fetch(@table, {})
+        read_set.record_predicate(@table, own, node: node)
         # A predicate binding an identity-scoped column marks the whole
         # capture identity-bound: its surfaces stay Tier P.
-        recording.identity_bound! if (predicate.keys & RefreshSync.identity_columns).any?
+        recording.identity_bound! if (own.keys & RefreshSync.identity_columns).any?
       end
-      joined_tables.each { |t| read_set.record_table(t, :joined_table, node: node) }
+      joined.each do |t|
+        # A joined table whose OWN columns are constrained by simple
+        # conditions gets those as its predicate (a row can only enter or
+        # leave the join result by satisfying them before or after the
+        # write — predicate_hit? checks both sides). No conditions, or any
+        # analysis fallback: the whole joined table stays a dependency.
+        pred = fallback_reason ? nil : predicates[t]
+        if pred&.any?
+          read_set.record_predicate(t, pred, node: node)
+          recording.identity_bound! if (pred.keys & RefreshSync.identity_columns).any?
+        else
+          read_set.record_table(t, :joined_table, node: node)
+        end
+      end
     end
 
     private
 
-    def extract_predicate
-      predicate = {}
+    # {table_name => predicate} for the relation's own table and any joined
+    # tables; a condition on any OTHER table (aliases, subqueries) means
+    # the analysis can't vouch for the mapping and everything degrades.
+    def extract_predicates(joined)
+      allowed = [@table] + joined
+      predicates = {}
       nodes = flatten(@relation.where_clause.ast)
       nodes.each do |node|
-        attr, values = simple_condition(node)
+        table, attr, values = simple_condition(node, allowed)
         return [nil, :"unanalyzable_#{node.class.name.demodulize.underscore}"] unless attr
-        (predicate[attr] ||= []).concat(values)
+        ((predicates[table] ||= {})[attr] ||= []).concat(values)
       end
-      [predicate, nil]
+      [predicates, nil]
     rescue => e
       [nil, :"analysis_error_#{e.class.name.demodulize.underscore}"]
     end
@@ -49,28 +68,33 @@ module RefreshSync
       end
     end
 
-    # Returns [attr_name, values] for supported nodes, nil otherwise.
-    def simple_condition(node)
+    # Returns [table, attr_name, values] for supported nodes, nil otherwise.
+    def simple_condition(node, allowed)
       case node
       when Arel::Nodes::Equality
-        attr = own_attribute(node.left) or return nil
+        table, attr = attribute_of(node.left, allowed)
+        return nil unless attr
         value = literal_value(node.right)
-        value == :opaque ? nil : [attr, [value]]
+        value == :opaque ? nil : [table, attr, [value]]
       when Arel::Nodes::HomogeneousIn
         return nil unless node.type == :in
-        attr = own_attribute(node.attribute) or return nil
-        [attr, node.casted_values]
+        table, attr = attribute_of(node.attribute, allowed)
+        return nil unless attr
+        [table, attr, node.casted_values]
       when Arel::Nodes::In
-        attr = own_attribute(node.left) or return nil
+        table, attr = attribute_of(node.left, allowed)
+        return nil unless attr
         values = Array(node.right).map { |v| literal_value(v) }
-        values.include?(:opaque) ? nil : [attr, values]
+        values.include?(:opaque) ? nil : [table, attr, values]
       end
     end
 
-    def own_attribute(node)
+    def attribute_of(node, allowed)
       return nil unless node.is_a?(Arel::Attributes::Attribute)
-      return nil unless node.relation.respond_to?(:name) && node.relation.name == @table
-      node.name.to_s
+      return nil unless node.relation.respond_to?(:name)
+      table = node.relation.name
+      return nil unless allowed.include?(table)
+      [table, node.name.to_s]
     end
 
     def literal_value(node)

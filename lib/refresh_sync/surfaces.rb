@@ -38,7 +38,13 @@ module RefreshSync
   # generation bumps. Identity fails closed; freshness fails open.
   Descriptor = Struct.new(:name, :partial, :locals, keyword_init: true) do
     def tables
-      locals.values.grep(ActiveRecord::Relation).map { |r| r.klass.table_name }
+      locals.values.filter_map do |v|
+        if v.is_a?(ActiveRecord::Relation)
+          v.klass.table_name
+        elsif record_array?(v)
+          v.first.class.table_name
+        end
+      end
     end
 
     def refreshable?
@@ -47,11 +53,23 @@ module RefreshSync
           # Persistable+re-runnable only when the where clause is a faithful
           # simple hash (rebuildable as klass.where(hash) in any process).
           v.where_clause.ast.nil? || simple_relation?(v)
+        elsif v.is_a?(Array)
+          # A homogeneous array of persisted records (pagy hands templates
+          # plain Arrays) is rebuildable as an ordered id fetch. The page
+          # COMPOSITION is frozen at capture — a row entering the page shows
+          # up as scrub-render divergence and converges via refresh, so
+          # freshness still fails open.
+          record_array?(v)
         else
           v.is_a?(Numeric) || v.is_a?(String) || v.is_a?(Symbol) ||
             v == true || v == false || v.nil?
         end
       end
+    end
+
+    def record_array?(v)
+      v.is_a?(Array) && v.any? &&
+        v.all? { |r| r.is_a?(ActiveRecord::Base) && r.class == v.first.class && r.persisted? }
     end
 
     def simple_relation?(rel)
@@ -63,6 +81,8 @@ module RefreshSync
       serialized = locals.transform_values do |v|
         if v.is_a?(ActiveRecord::Relation)
           { "__relation__" => v.klass.name, "where" => v.where_values_hash }
+        elsif record_array?(v)
+          { "__records__" => v.first.class.name, "ids" => v.map(&:id) }
         else
           v
         end
@@ -75,6 +95,10 @@ module RefreshSync
         value =
           if v.is_a?(Hash) && v["__relation__"]
             v["__relation__"].constantize.where(v.fetch("where", {}))
+          elsif v.is_a?(Hash) && v["__records__"]
+            klass = v["__records__"].constantize
+            ids = v.fetch("ids", [])
+            klass.where(id: ids).in_order_of(:id, ids).to_a
           else
             v
           end

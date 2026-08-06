@@ -103,3 +103,61 @@ class ReadDoorsTest < ActionDispatch::IntegrationTest
     end
   end
 end
+
+# G-batch precision: joined-table predicates, find_each identity, datetime
+# coercion round-trips.
+class PrecisionDebtsTest < ActiveSupport::TestCase
+  include ProofHelpers
+
+  def capture
+    recording = RefreshSync::Recording.start
+    yield
+    recording
+  ensure
+    RefreshSync::Recording.finish
+  end
+
+  def test_joined_table_conditions_become_that_tables_predicate
+    recording = capture do
+      Board.joins(:cards).where(cards: { status: "open" }).to_a
+    end
+    deps = recording.read_set.tables["cards"]
+    assert deps, "joined table stays a dependency"
+    assert_empty deps.table_reasons, "conditions on the joined table's own columns analyze"
+    assert(deps.predicates.any? { |p| p["status"] == ["open"] })
+
+    hit = RefreshSync::Change.new(table: "cards", id: 999, kind: :update,
+                                  new_attrs: { "id" => 999, "status" => "open" })
+    miss = RefreshSync::Change.new(table: "cards", id: 999, kind: :update,
+                                   new_attrs: { "id" => 999, "status" => "archived" },
+                                   old_attrs: { "id" => 999, "status" => "archived" })
+    assert recording.read_set.matches?(hit)
+    refute recording.read_set.matches?(miss),
+      "a row never satisfying the join condition cannot affect the join result"
+  end
+
+  def test_unconstrained_joins_stay_table_level
+    recording = capture { Board.joins(:cards).to_a }
+    assert_includes recording.read_set.tables["cards"].table_reasons, :joined_table
+  end
+
+  def test_find_each_records_every_batchs_ids
+    cards = 5.times.map { |i| Card.create!(board: @board1, title: "Batch #{i}", status: "open") }
+    recording = capture do
+      Card.where(status: "open").find_each(batch_size: 2) { |c| c.title }
+    end
+    deps = recording.read_set.tables["cards"]
+    cards.each { |c| assert_includes deps.ids, c.id }
+  end
+
+  def test_datetime_predicates_survive_json_round_trips
+    due = Date.new(2026, 8, 6)
+    Card.create!(board: @board1, title: "Dated", status: "open", due_on: due)
+    recording = capture { Card.where(due_on: due).to_a }
+    revived = RefreshSync::ReadSet.from_h(JSON.parse(JSON.generate(recording.read_set.to_h)))
+    change = RefreshSync::Change.new(table: "cards", id: 999, kind: :update,
+                                     new_attrs: { "id" => 999, "due_on" => due })
+    assert revived.matches?(change),
+      "a JSON-reloaded date predicate must still match a live Date write"
+  end
+end

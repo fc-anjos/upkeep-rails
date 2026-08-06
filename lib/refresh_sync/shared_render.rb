@@ -48,7 +48,18 @@ module RefreshSync
         ActiveSupport::CurrentAttributes.clear_all
         begin
           locals = descriptor.locals.transform_values do |value|
-            value.is_a?(ActiveRecord::Relation) ? value.reset : value
+            if value.is_a?(ActiveRecord::Relation)
+              value.reset
+            elsif descriptor.record_array?(value)
+              # Captured record objects hold captured attribute values; the
+              # scrub render must see current data — refetch by id, order
+              # preserved (page composition stays as captured).
+              klass = value.first.class
+              ids = value.map(&:id)
+              klass.where(id: ids).in_order_of(:id, ids).to_a
+            else
+              value
+            end
           end
           recording = Recording.start
           html = renderer.render(partial: descriptor.partial, locals: locals)

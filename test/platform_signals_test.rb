@@ -125,3 +125,38 @@ class PlatformSignalsTest < ActionDispatch::IntegrationTest
     assert_includes columns, "title"
   end
 end
+
+# Pagy-style Array locals: templates receive plain Arrays of records, not
+# relations. They are now rebuildable (ordered id fetch), so such surfaces
+# can promote and their scrub renders see CURRENT data.
+class ArrayLocalsTest < ActiveSupport::TestCase
+  include ProofHelpers
+
+  def descriptor(cards)
+    RefreshSync::Descriptor.new(name: "page", partial: "surfaces/cards", locals: { cards: cards })
+  end
+
+  def test_record_arrays_are_refreshable_and_round_trip
+    cards = Card.where(status: "open").order(:id).to_a
+    d = descriptor(cards)
+    assert d.refreshable?, "a homogeneous persisted-record array is rebuildable"
+    assert_equal ["cards"], d.tables
+
+    revived = RefreshSync::Descriptor.from_h(JSON.parse(JSON.generate(d.to_h)))
+    assert_equal cards.map(&:id), revived.locals[:cards].map(&:id)
+  end
+
+  def test_scrub_render_refetches_array_records
+    cards = Card.where(id: @card1.id).to_a
+    d = descriptor(cards)
+    @card1.update!(title: "Freshened")
+    result = RefreshSync::SharedRender.call(d)
+    assert_includes result.html, "Freshened",
+      "scrub render must see current data, not captured record objects"
+  end
+
+  def test_mixed_or_unpersisted_arrays_stay_unrefreshable
+    refute descriptor([Card.new(title: "ghost")]).refreshable?
+    refute descriptor([@card1, @board1]).refreshable?
+  end
+end
