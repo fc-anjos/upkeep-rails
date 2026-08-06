@@ -189,8 +189,17 @@ module RefreshSync
       # known, attrs are not — id matching is precise, predicate matching
       # stays conservative (the changed row may have entered the set).
       if change.kind == :bulk_rows
-        return true if deps.predicates.any?
-        return change.ids.any? { |cid| deps.ids.any? { |i| Coercion.same?(change.table, "id", i, cid) } }
+        return true if change.ids.any? { |cid| deps.ids.any? { |i| Coercion.same?(change.table, "id", i, cid) } }
+        # Predicates can't be evaluated without attrs — conservative match —
+        # EXCEPT pure primary-key predicates (a find/find_by page), which
+        # the known ids answer exactly.
+        return deps.predicates.any? do |pred|
+          if pred.keys == ["id"]
+            pred["id"].any? { |v| change.ids.any? { |cid| Coercion.same?(change.table, "id", v, cid) } }
+          else
+            true
+          end
+        end
       end
       return true if change.kind == :table && (deps.ids.any? || deps.predicates.any?)
       if change.id && deps.ids.any? { |i| Coercion.same?(change.table, "id", i, change.id) }
