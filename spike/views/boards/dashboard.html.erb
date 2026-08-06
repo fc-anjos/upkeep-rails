@@ -1,0 +1,9 @@
+<h1>Dashboard</h1>
+<% if @viewer.admin %>
+<div class="admin-badge">ADMIN TOOLS for <%= @viewer.name %></div>
+<% end %>
+<ul>
+<% @cards.each do |card| %>
+<li><%= card.title %></li>
+<% end %>
+</ul>
