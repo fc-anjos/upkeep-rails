@@ -1,0 +1,8 @@
+<%# Adversarial: personalization smuggled through Thread.current, invisible
+    to every ambient choke point. %>
+<% if Thread.current[:banner] %><div id="banner"><%= Thread.current[:banner] %></div><% end %>
+<ul id="cards">
+  <% cards.each do |card| %>
+    <li><%= card.title %></li>
+  <% end %>
+</ul>

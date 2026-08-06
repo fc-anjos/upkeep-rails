@@ -1,8 +1,6 @@
 module RefreshSync
   # Controller integration: capture successful HTML GETs, register a cohort,
-  # and expose its stream so the page can subscribe with turbo_stream_from.
-  # (The real gem injects the stream tag and signs it; a response header is
-  # enough for the proof harness.)
+  # observe surface promotion evidence, and expose the cohort stream.
   module Capture
     extend ActiveSupport::Concern
 
@@ -12,6 +10,7 @@ module RefreshSync
     class_methods do
       def refresh_sync(**options)
         around_action :_refresh_sync_capture, **options
+        helper SurfaceHelper if respond_to?(:helper)
       end
     end
 
@@ -29,8 +28,33 @@ module RefreshSync
 
       return unless response.successful? && response.media_type == "text/html"
 
-      cohort = RefreshSync.store.register(read_set: recording.read_set)
+      cohort = RefreshSync.store.register(
+        read_set: recording.read_set,
+        surfaces: recording.surfaces.map { |o| o.descriptor.name }
+      )
+      viewer = Ambient.unobserved { RefreshSync.viewer_resolver&.call(request) }
+      recording.surfaces.each do |observation|
+        surface = RefreshSync.registry.upsert(observation.descriptor.name)
+        surface.observe(
+          observation,
+          viewer: viewer,
+          cohort_stream: cohort.stream,
+          ambient: recording.ambient,
+          identity_bound: recording.identity_bound?
+        )
+      end
       response.set_header("X-RefreshSync-Stream", cohort.stream)
+    end
+  end
+
+  # View-side declaration of a shareable region. Explicit by design in this
+  # prototype (the real gem could hook partial rendering instead): it renders
+  # the partial normally for this viewer and records the surface evidence.
+  module SurfaceHelper
+    def shared_surface(name, partial:, **locals)
+      html = render(partial: partial, locals: locals)
+      Recording.current&.record_surface(name: name, partial: partial, locals: locals, html: html)
+      html
     end
   end
 end

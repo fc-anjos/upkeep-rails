@@ -73,6 +73,7 @@ module RefreshSync
       @installed = true
 
       ActiveRecord::Relation.prepend(RelationObserver)
+      # (Ambient choke points are installed separately via Ambient.install!)
       ActiveRecord::Relation.prepend(BulkWriteObserver)
       ActiveRecord::Base.singleton_class.prepend(InstantiateObserver)
       ActiveRecord::Base.include(WriteObserver)

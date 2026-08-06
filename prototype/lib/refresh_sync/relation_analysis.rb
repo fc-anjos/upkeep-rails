@@ -11,12 +11,16 @@ module RefreshSync
       @table = @klass.table_name
     end
 
-    def apply_to(read_set)
+    def apply_to(recording)
+      read_set = recording.read_set
       predicate, fallback_reason = extract_predicate
       if fallback_reason
         read_set.record_table(@table, fallback_reason)
       else
         read_set.record_predicate(@table, predicate)
+        # A predicate binding an identity-scoped column marks the whole
+        # capture identity-bound: its surfaces stay Tier P.
+        recording.identity_bound! if (predicate.keys & RefreshSync.identity_columns).any?
       end
       joined_tables.each { |t| read_set.record_table(t, :joined_table) }
     end

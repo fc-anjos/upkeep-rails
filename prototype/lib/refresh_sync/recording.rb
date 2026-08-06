@@ -1,3 +1,5 @@
+require "digest"
+
 module RefreshSync
   # Thread-local capture window. All observation hooks are gated on
   # Recording.current being non-nil, so an app with no captured request in
@@ -15,11 +17,24 @@ module RefreshSync
       Thread.current[KEY] = nil
     end
 
-    attr_reader :read_set
+    attr_reader :read_set, :ambient, :surfaces
 
     def initialize
       @read_set = ReadSet.new
+      @ambient = Set.new         # reasons: :session_read, :cookie_read, ...
+      @identity_bound = false
+      @surfaces = []
     end
+
+    def ambient!(reason)
+      @ambient << reason
+    end
+
+    def identity_bound!
+      @identity_bound = true
+    end
+
+    def identity_bound? = @identity_bound
 
     # Every AR record materialized from the database.
     def record_instance(record)
@@ -30,7 +45,16 @@ module RefreshSync
     # degrade to table-level with a reason when analysis can't be exact.
     def record_relation(relation)
       RefreshSync.stats[:relations_analyzed] += 1
-      RelationAnalysis.new(relation).apply_to(@read_set)
+      RelationAnalysis.new(relation).apply_to(self)
+    end
+
+    # A shared_surface region rendered during this capture.
+    def record_surface(name:, partial:, locals:, html:)
+      descriptor = Descriptor.new(name: name, partial: partial, locals: locals)
+      @surfaces << SurfaceObservation.new(
+        descriptor: descriptor,
+        digest: Digest::SHA256.hexdigest(html)
+      )
     end
   end
 end
