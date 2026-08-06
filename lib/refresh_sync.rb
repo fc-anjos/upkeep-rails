@@ -34,6 +34,7 @@ module RefreshSync
   autoload :FragmentCache,    "refresh_sync/fragment_cache"
   autoload :Streams,          "refresh_sync/streams"
   autoload :RowIdentity,      "refresh_sync/row_identity"
+  autoload :AutoSurfaces,     "refresh_sync/auto_surfaces"
 
   Change = Struct.new(:table, :id, :kind, :old_attrs, :new_attrs, :columns, :ids, keyword_init: true)
   # kind: :insert, :update, :delete       - one row, attrs known
@@ -229,6 +230,7 @@ module RefreshSync
       @installed = true
       Hooks.install!
       Ambient.install!
+      AutoSurfaces.install!
       FragmentCache.install!
       Streams.attach! if defined?(::Turbo)
       # Anything executed by an Active Job is job context: suppress cohort

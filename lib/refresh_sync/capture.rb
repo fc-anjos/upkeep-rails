@@ -126,7 +126,7 @@ module RefreshSync
     def shared_surface(name, partial:, **locals)
       recording = Recording.current
       marker = recording&.prov&.segment_marker
-      html = render(partial: partial, locals: locals)
+      html = AutoSurfaces.suppress { render(partial: partial, locals: locals) }
       if recording
         node_digests = recording.prov.node_digests_since(marker || {})
         node_texts = node_digests.keys.to_h { |a| [a, recording.prov.text_for(a)] }

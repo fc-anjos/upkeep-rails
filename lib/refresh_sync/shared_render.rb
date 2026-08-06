@@ -57,6 +57,8 @@ module RefreshSync
               klass = value.first.class
               ids = value.map(&:id)
               klass.where(id: ids).in_order_of(:id, ids).to_a
+            elsif value.is_a?(ActiveRecord::Base) && value.persisted?
+              value.class.find(value.id) # current data, never a captured object
             else
               value
             end

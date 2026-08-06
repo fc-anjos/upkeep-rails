@@ -160,3 +160,52 @@ class ArrayLocalsTest < ActiveSupport::TestCase
     refute descriptor([@card1, @board1]).refreshable?
   end
 end
+
+# F3: automatic surface detection — top-level partials rendered during a
+# capture become candidates with no declaration; the evidence machinery
+# decides everything else.
+class AutoSurfacesTest < ActionDispatch::IntegrationTest
+  include ProofHelpers
+
+  def render_page(locals)
+    recording = RefreshSync::Recording.start
+    html = ScrubbedController.render(partial: "surfaces/cards", locals: locals)
+    [recording, html]
+  ensure
+    RefreshSync::Recording.finish
+  end
+
+  def test_top_level_partial_renders_become_candidates
+    recording, = render_page(cards: Card.where(status: "open"))
+    candidate = recording.surfaces.find { |o| o.descriptor.name == "auto:surfaces/_cards" }
+    assert candidate, "an undeclared partial render must produce a surface candidate"
+    assert_equal ["cards"], candidate.descriptor.tables
+    assert candidate.digest
+  end
+
+  def test_unrebuildable_locals_never_become_candidates
+    recording, = render_page(cards: [Card.new(title: "ghost")])
+    assert_empty recording.surfaces, "nothing to scrub-render later: no candidate"
+  end
+
+  def test_auto_candidates_promote_through_the_normal_evidence_bar
+    RefreshSync.registry = RefreshSync::SurfaceRegistry.new
+    recording, = render_page(cards: Card.where(status: "open"))
+    observation = recording.surfaces.first
+    surface = RefreshSync.registry.upsert(observation.descriptor.name)
+    surface.observe(observation, viewer: RefreshSync::Viewer.new(id: 1, role: "user"),
+                    cohort_stream: "s1", ambient: Set.new, identity_bound: false)
+    surface.observe(observation, viewer: RefreshSync::Viewer.new(id: 2, role: "admin"),
+                    cohort_stream: "s2", ambient: Set.new, identity_bound: false)
+    assert surface.tier_s?, "role-diverse identical evidence promotes an auto candidate"
+  end
+
+  def test_declared_shared_surfaces_suppress_double_observation
+    a = session_for(@alice)
+    a.get "/shared_board"
+    names = RefreshSync::Capture.last_recording.surfaces.map { |o| o.descriptor.name }
+    assert_includes names, "open_cards"
+    refute names.any? { |n| n.start_with?("auto:") && n.include?("_cards") },
+      "the declared surface's own partial must not double-register as auto"
+  end
+end

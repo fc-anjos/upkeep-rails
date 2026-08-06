@@ -43,6 +43,8 @@ module RefreshSync
           v.klass.table_name
         elsif record_array?(v)
           v.first.class.table_name
+        elsif v.is_a?(ActiveRecord::Base)
+          v.class.table_name
         end
       end
     end
@@ -60,6 +62,8 @@ module RefreshSync
           # up as scrub-render divergence and converges via refresh, so
           # freshness still fails open.
           record_array?(v)
+        elsif v.is_a?(ActiveRecord::Base)
+          v.persisted? # rebuildable as a pk fetch
         else
           v.is_a?(Numeric) || v.is_a?(String) || v.is_a?(Symbol) ||
             v == true || v == false || v.nil?
@@ -83,6 +87,8 @@ module RefreshSync
           { "__relation__" => v.klass.name, "where" => v.where_values_hash }
         elsif record_array?(v)
           { "__records__" => v.first.class.name, "ids" => v.map(&:id) }
+        elsif v.is_a?(ActiveRecord::Base) && v.persisted?
+          { "__record__" => v.class.name, "id" => v.id }
         else
           v
         end
@@ -99,6 +105,8 @@ module RefreshSync
             klass = v["__records__"].constantize
             ids = v.fetch("ids", [])
             klass.where(id: ids).in_order_of(:id, ids).to_a
+          elsif v.is_a?(Hash) && v["__record__"]
+            v["__record__"].constantize.find(v["id"])
           else
             v
           end
