@@ -1,0 +1,5 @@
+# Herb engine options for ReActionView. prism_nodes lets compile-time
+# visitors read template source off AST nodes (RefreshSync provenance).
+engine:
+  parser_options:
+    prism_nodes: true

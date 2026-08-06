@@ -1,0 +1,7 @@
+<div id="bare-viewer"><%= respond_to?(:current_user) && current_user ? current_user.name : nil %></div>
+<% cache ["bare-total", Item.unscoped.maximum(:position)] do %>Top: <%= Item.order(:position).first&.title %><% end %>
+<ul id="bare-items">
+  <% items.each do |item| %>
+    <li><%= item.title %></li>
+  <% end %>
+</ul>

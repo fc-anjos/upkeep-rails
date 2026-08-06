@@ -1,0 +1,8 @@
+<h1>Cached board</h1>
+<% cache ["board-cards", @board_id] do %>
+  <ul id="cached-cards">
+    <% Card.where(board_id: @board_id).each do |card| %>
+      <li><%= card.title %></li>
+    <% end %>
+  </ul>
+<% end %>

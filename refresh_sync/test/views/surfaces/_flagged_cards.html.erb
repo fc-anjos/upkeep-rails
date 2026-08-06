@@ -1,0 +1,8 @@
+<%# Adversarial: content depends on an ENV feature flag that can differ
+    between deploys. %>
+<% if ENV["PROTO_FLAG"] == "on" %><div id="flag">NEW LOOK</div><% end %>
+<ul id="cards">
+  <% cards.each do |card| %>
+    <li><%= card.title %></li>
+  <% end %>
+</ul>
