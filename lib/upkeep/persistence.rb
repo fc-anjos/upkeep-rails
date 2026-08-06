@@ -115,6 +115,7 @@ module Upkeep
       @watch_cache_at = 0.0
       @mutex = Mutex.new
       @last_sweep_at = 0.0
+      @predicate_columns_cache = {}
     end
 
     def register(read_set:, surfaces: [], baselines: {}, identity: nil)
@@ -127,13 +128,16 @@ module Upkeep
         read_set_json: JSON.generate(read_set.to_h),
         surfaces_json: JSON.generate(surfaces),
         baselines_json: JSON.generate(baselines),
-        heartbeat_at: Time.now
+        heartbeat_at: Upkeep.now
       )
       tables = read_set.tables.keys
       if tables.any?
         CohortTableRow.insert_all!(tables.map { |t| { cohort_id: row.id, table_name: t } })
       end
-      @mutex.synchronize { @watch_cache = nil }
+      @mutex.synchronize do
+        @watch_cache = nil
+        tables.each { |t| @predicate_columns_cache.delete(t) }
+      end
       sweep_opportunistically
       MemoryStore::Cohort.new(id: id, stream: stream, read_set: read_set,
                               surfaces: surfaces, identity: identity,
@@ -142,7 +146,7 @@ module Upkeep
 
     # Deletes what no browser is behind anymore. Cheap indexed deletes;
     # safe to run from any process at any time.
-    def sweep!(now: Time.now)
+    def sweep!(now: Upkeep.now)
       dead = CohortRow.where(activated_at: nil)
                       .where(heartbeat_at: ...now - UNACTIVATED_TTL).pluck(:id)
       dead += CohortRow.where.not(activated_at: nil)
@@ -150,7 +154,10 @@ module Upkeep
       if dead.any?
         CohortRow.where(id: dead).delete_all
         CohortTableRow.where(cohort_id: dead).delete_all
-        @mutex.synchronize { @watch_cache = nil }
+        @mutex.synchronize do
+          @watch_cache = nil
+          @predicate_columns_cache.clear
+        end
       end
       claims = ClaimRow.where(created_at: ...now - CLAIM_TTL).delete_all
       Upkeep.stats[:cohorts_swept] += dead.size
@@ -161,7 +168,7 @@ module Upkeep
     # A live subscription's periodic touch (the channel pings it on
     # subscribe): keeps the cohort out of the sweeper's reach.
     def heartbeat(stream)
-      CohortRow.where(stream: stream).update_all(heartbeat_at: Time.now)
+      CohortRow.where(stream: stream).update_all(heartbeat_at: Upkeep.now)
     end
 
     # Cached table watch-set with a short TTL; a miss re-checks the DB once
@@ -184,15 +191,25 @@ module Upkeep
 
     # Columns appearing in registered cohort predicates for `table` — the
     # RETURNING projection candidates (derived from stored evidence).
+    # Cached per table: re-parsing every cohort's read-set JSON on each bulk
+    # write is wasted work. Registration in THIS process invalidates
+    # directly; other processes' registrations are covered by the TTL. A
+    # stale entry only under-projects the RETURNING columns — the verdict
+    # for the missing column falls back to conservative refresh (fails open
+    # on freshness, never on identity), so a short TTL is sound.
+    PREDICATE_COLUMNS_TTL = 30 # seconds
+
     def predicate_columns(table)
-      ids = CohortTableRow.where(table_name: table).select(:cohort_id)
-      CohortRow.where(id: ids).pluck(:read_set_json).each_with_object(Set.new) do |json, columns|
-        deps = JSON.parse(json)[table]
-        next unless deps
-        (deps.fetch("predicates", []) + deps.fetch("membership_predicates", [])).each do |pred|
-          columns.merge(pred.keys)
-        end
-      end.to_a
+      @mutex.synchronize do
+        cached = @predicate_columns_cache[table]
+        return cached[:columns] if cached && cached[:expires_at] > Upkeep.now
+      end
+      columns = compute_predicate_columns(table)
+      @mutex.synchronize do
+        @predicate_columns_cache[table] =
+          { columns: columns, expires_at: Upkeep.now + PREDICATE_COLUMNS_TTL }
+      end
+      columns
     end
 
     def cohorts_for_surface(name)
@@ -205,7 +222,7 @@ module Upkeep
     # reconnects. Atomic conditional UPDATE so two racing subscribes can't
     # both claim :first.
     def mark_subscribed(stream)
-      now = Time.now
+      now = Upkeep.now
       claimed = CohortRow.where(stream: stream, activated_at: nil)
                          .update_all(activated_at: now, heartbeat_at: now) == 1
       return :first if claimed
@@ -225,10 +242,24 @@ module Upkeep
 
     def reset!
       self.class.wipe!
-      @mutex.synchronize { @watch_cache = nil }
+      @mutex.synchronize do
+        @watch_cache = nil
+        @predicate_columns_cache = {}
+      end
     end
 
     private
+
+    def compute_predicate_columns(table)
+      ids = CohortTableRow.where(table_name: table).select(:cohort_id)
+      CohortRow.where(id: ids).pluck(:read_set_json).each_with_object(Set.new) do |json, columns|
+        deps = JSON.parse(json)[table]
+        next unless deps
+        (deps.fetch("predicates", []) + deps.fetch("membership_predicates", [])).each do |pred|
+          columns.merge(pred.keys)
+        end
+      end.to_a
+    end
 
     def sweep_opportunistically
       now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -266,7 +297,7 @@ module Upkeep
   # that inserts first broadcasts, the loser drops its duplicate.
   class DbClaimer
     def call(key, window_id)
-      ActiveRecordStore::ClaimRow.create!(claim_key: "#{key}:#{window_id}", created_at: Time.now)
+      ActiveRecordStore::ClaimRow.create!(claim_key: "#{key}:#{window_id}", created_at: Upkeep.now)
       true
     rescue ActiveRecord::RecordNotUnique
       false
@@ -315,7 +346,7 @@ module Upkeep
       def claim_dispatch!
         ActiveRecordStore::SurfaceRow
           .where(id: row.id, status: TIER_S_STATUSES)
-          .update_all(dispatched_at: Time.now) == 1
+          .update_all(dispatched_at: Upkeep.now) == 1
       end
     end
 

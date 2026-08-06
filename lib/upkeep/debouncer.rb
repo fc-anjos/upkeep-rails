@@ -42,7 +42,7 @@ module Upkeep
       @mutex.synchronize do
         entry = @due[key]
         unless entry
-          claim_window = ((Time.now.to_f + @window) / @window).floor
+          claim_window = ((Upkeep.now.to_f + @window) / @window).floor
           entry = @due[key] = Entry.new(now + @window, kind, action, request_id, claim_window, {}, false)
         else
           entry.request_id = nil if entry.request_id != request_id

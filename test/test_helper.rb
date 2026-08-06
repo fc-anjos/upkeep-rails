@@ -384,6 +384,7 @@ module ProofHelpers
     Upkeep.payload_limit = nil
     Upkeep.ignored_tables = nil
     Upkeep.dispatch_interlock = nil
+    Upkeep.clock = nil
     Rails.cache.clear
     Upkeep.reset_stats!
     Upkeep::Coercion.reset!

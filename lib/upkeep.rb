@@ -133,6 +133,13 @@ module Upkeep
     def stats = @stats ||= Hash.new(0)
     def reset_stats! = @stats = Hash.new(0)
 
+    # Injectable wall-clock source (callable returning Time). Everything
+    # window- or TTL-shaped (claim windows, sweeps, heartbeats, caches)
+    # reads it, so tests can pin a boundary instead of racing one.
+    attr_writer :clock
+    def clock = @clock ||= -> { Time.now }
+    def now = clock.call
+
     # Emergency kill switch (ops escape hatch, normally never set): forces
     # refresh-only delivery even for promoted surfaces, for the case where
     # the demotion machinery itself is buggy. NOT a configuration surface —
