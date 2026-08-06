@@ -426,7 +426,10 @@ module RefreshSync
       def call(template, source)
         identifier = template.respond_to?(:identifier) ? template.identifier.to_s : ""
         if template.format == :html && Provenance.instrument_path?(identifier)
-          file = identifier.sub(%r{\A.*/test/views/}, "")
+          file = identifier
+          Provenance.instrument_paths.each do |p|
+            file = file.delete_prefix(p).delete_prefix("/") if file.start_with?(p)
+          end
           digest = Digest::SHA256.hexdigest(source.to_s)[0, 12]
           Provenance.register_template(digest, file)
           Thread.current[CONTEXT_KEY] = {

@@ -56,6 +56,7 @@ module RefreshSync
         return
       end
 
+      register_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       cohort = RefreshSync.store.register(
         read_set: recording.read_set,
         surfaces: recording.surfaces.map { |o| o.descriptor.name },
@@ -100,6 +101,15 @@ module RefreshSync
       if Streams.auto_subscribe
         Streams.inject_sources(response, [cohort.stream] + surface_streams)
       end
+
+      # Benchmark/ops instrumentation: what registration cost this request.
+      ActiveSupport::Notifications.instrument(
+        "register.refresh_sync",
+        path: request.path,
+        register_ms: ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - register_started) * 1000.0).round(3),
+        tables: recording.read_set.tables.keys.size,
+        surfaces: recording.surfaces.size
+      )
     end
   end
 
