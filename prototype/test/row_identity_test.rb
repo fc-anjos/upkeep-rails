@@ -28,8 +28,9 @@ class RowIdentityTest < ActionDispatch::IntegrationTest
     drain_debounce
   end
 
-  # Promote pulse_items via role-diverse viewers, then run one throwaway
-  # write so the surface holds a full region baseline, and clear the wire.
+  # Promote pulse_items via role-diverse viewers. The cohorts' region
+  # baselines are seeded from their own capture-time renders (no priming
+  # write needed): the very first broadcast already diffs per cohort.
   def promote_and_baseline
     @alice_sess = session_for(@alice)
     @carol_sess = session_for(@carol)
@@ -37,11 +38,6 @@ class RowIdentityTest < ActionDispatch::IntegrationTest
     @carol_sess.get "/pulse/board"
     @served_body = @carol_sess.response.body
     assert_equal :region_shared, surface("pulse_items").status, "precondition: promoted"
-
-    @items[3].update!(title: "Task 4 (baseline)")
-    wait_for_broadcast(surface_stream)
-    assert_operator broadcasts(surface_stream).size, :>=, 1, "baseline delivery must go out"
-    ActionCable.server.pubsub.clear
   end
 
   def test_served_page_carries_per_row_instance_stamps

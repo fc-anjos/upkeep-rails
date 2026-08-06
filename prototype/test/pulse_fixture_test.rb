@@ -71,15 +71,18 @@ class PulseFixtureTest < ActionDispatch::IntegrationTest
     drain_debounce
 
     replaces = region_broadcasts.select { |t| t.include?(%(action="replace")) }
-    regions = surface("pulse_items").region_addresses
-    assert_equal regions.size, replaces.size,
-      "first delivery baselines every region exactly once (got #{replaces.size} for #{regions.size} regions)"
-    list_replaces = replaces.select { |t| t.include?("Task 1 (renamed)") }
-    assert_equal 1, list_replaces.size, "exactly one region replace carries the write"
-    tag = list_replaces.first
-    list_address = regions.find { |a| tag.include?(a) }
-    assert list_address, "replace must target a stamped region address"
-    assert_includes tag, %(targets="[data-rs-node=&#39;#{list_address}&#39;]")
+    # Baseline-from-capture: the cohorts' baselines were seeded from their
+    # own capture-time renders, so even the FIRST write after registration
+    # sends only the changed content — here, one row-targeted replace.
+    # (Until phase 5 this assertion read "first delivery baselines every
+    # region exactly once" — that behavior was removed by design.)
+    assert_equal 1, replaces.size,
+      "only the changed content is sent on the first write (got #{replaces.size})"
+    tag = replaces.first
+    assert_includes tag, "Task 1 (renamed)", "the replace carries the write"
+    target = tag[/targets="\[data-rs-node=&#39;([^&]*)&#39;\]"/, 1]
+    assert target, "replace must target a stamped node address"
+    assert_includes target, "@items:", "a one-row change arrives as a row-targeted replace"
     assert_equal replaces.size, RefreshSync.stats[:region_broadcasts]
 
     # Fully covered by the region: nobody gets a refresh; the one broadcast

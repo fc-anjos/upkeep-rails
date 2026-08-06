@@ -6,7 +6,12 @@ module RefreshSync
   # (The real gem adds durability, TTL leases and the signed activation
   # handshake carried over from the existing design; not needed for the proof.)
   class MemoryStore
-    Cohort = Struct.new(:id, :stream, :read_set, :surfaces, :identity, keyword_init: true)
+    # baselines: {surface_name => {node_address => digest}} — the cohort's
+    # region-digest baseline, seeded from its own capture-time render and
+    # advanced after every region delivery it receives. Region broadcasts
+    # are diffed per cohort against THIS, so the first write after
+    # registration sends only what actually changed for that viewer.
+    Cohort = Struct.new(:id, :stream, :read_set, :surfaces, :identity, :baselines, keyword_init: true)
 
     def initialize
       @mutex = Mutex.new
@@ -14,15 +19,30 @@ module RefreshSync
       @watched_tables = Set.new
     end
 
-    def register(read_set:, surfaces: [], identity: nil)
+    def register(read_set:, surfaces: [], baselines: {}, identity: nil)
       id = SecureRandom.hex(8)
       cohort = Cohort.new(id: id, stream: "refresh_sync:cohort:#{id}",
-                          read_set: read_set, surfaces: surfaces, identity: identity)
+                          read_set: read_set, surfaces: surfaces,
+                          identity: identity, baselines: baselines)
       @mutex.synchronize do
         @cohorts[id] = cohort
         @watched_tables.merge(read_set.tables.keys)
       end
       cohort
+    end
+
+    def cohorts_for_surface(name)
+      @mutex.synchronize do
+        @cohorts.values.select { |c| c.surfaces.include?(name) }
+      end
+    end
+
+    def update_baseline(stream, surface_name, digests)
+      @mutex.synchronize do
+        cohort = @cohorts.values.find { |c| c.stream == stream }
+        next unless cohort
+        (cohort.baselines ||= {})[surface_name] = digests
+      end
     end
 
     def watching?(table)

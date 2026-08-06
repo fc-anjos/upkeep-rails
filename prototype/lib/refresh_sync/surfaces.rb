@@ -254,45 +254,66 @@ module RefreshSync
     # change, an __unsound__ iteration marker, a missing instance text —
     # falls back to replacing the whole region, which is always correct
     # because the region element itself is a stable stamped DOM target.
+    # Per-cohort delivery: viewers can hold different page generations (a
+    # late registration, a missed delivery), so the scrub render is diffed
+    # against EACH cohort's own baseline, and cohorts whose diffs come out
+    # identical are grouped so the payload is produced once. A single group
+    # — the overwhelmingly common case — is delivered once on the shared
+    # surface stream; divergent groups are delivered on the cohorts' own
+    # streams. Every delivered cohort's baseline advances to this render's
+    # digests. Baseline drift cannot corrupt: a stale baseline only makes
+    # the diff LARGER (region payloads are full idempotent content, never
+    # deltas), and a viewer whose client missed a delivery converges at the
+    # next change to that region or at its next full GET (refresh path).
     def broadcast_regions(result)
-      previous = @last_broadcast&.dig(:nodes) || {}
-      whole, row_replaces, row_removes = region_delivery_plan(result, previous)
+      span = region_span_digests(result.node_digests)
+      cohorts = RefreshSync.store.cohorts_for_surface(@name)
+      groups = cohorts.group_by do |cohort|
+        region_delivery_plan(result, cohort.baselines&.dig(@name) || {})
+      end
+      single_group = groups.size == 1
 
-      # A region whose text is unavailable (its bytes came from a warm
-      # cached fragment in the scrubbed render) cannot be sent — fail open
-      # to a refresh for everyone rather than sending nothing.
-      unrenderable = whole.reject { |address| result.node_texts[address] }
-      if unrenderable.any?
-        instrument("region_unrenderable_degrade", regions: unrenderable)
-        RefreshSync.stats[:region_degrades] += 1
-        @cohort_streams.each { |s| RefreshSync.debouncer.schedule(s) }
-        return
+      delivered = []
+      groups.each do |plan, members|
+        whole, row_replaces, row_removes = plan
+        next if whole.empty? && row_replaces.empty? && row_removes.empty?
+
+        # A region whose text is unavailable (its bytes came from a warm
+        # cached fragment in the scrubbed render) cannot be sent — fail
+        # open to a refresh for these cohorts rather than sending nothing.
+        unrenderable = whole.reject { |address| result.node_texts[address] }
+        if unrenderable.any?
+          instrument("region_unrenderable_degrade", regions: unrenderable)
+          RefreshSync.stats[:region_degrades] += 1
+          members.each { |cohort| RefreshSync.debouncer.schedule(cohort.stream) }
+          next
+        end
+
+        streams = single_group ? [stream] : members.map(&:stream)
+        streams.each do |target_stream|
+          (whole + row_replaces).each do |address|
+            Turbo::StreamsChannel.broadcast_action_to(
+              target_stream,
+              action: :replace,
+              targets: "[data-rs-node='#{address}']",
+              html: result.node_texts[address]
+            )
+            RefreshSync.stats[:region_broadcasts] += 1
+            RefreshSync.stats[:region_row_replaces] += 1 unless whole.include?(address)
+          end
+          row_removes.each do |address|
+            Turbo::StreamsChannel.broadcast_action_to(
+              target_stream, action: :remove, targets: "[data-rs-node='#{address}']"
+            )
+            RefreshSync.stats[:region_row_removes] += 1
+          end
+        end
+        members.each { |cohort| RefreshSync.store.update_baseline(cohort.stream, @name, span) }
+        delivered.concat(whole + row_replaces + row_removes)
       end
 
-      (whole + row_replaces).each do |address|
-        Turbo::StreamsChannel.broadcast_action_to(
-          stream,
-          action: :replace,
-          targets: "[data-rs-node='#{address}']",
-          html: result.node_texts[address]
-        )
-        RefreshSync.stats[:region_broadcasts] += 1
-        RefreshSync.stats[:region_row_replaces] += 1 unless whole.include?(address)
-      end
-      row_removes.each do |address|
-        Turbo::StreamsChannel.broadcast_action_to(
-          stream, action: :remove, targets: "[data-rs-node='#{address}']"
-        )
-        RefreshSync.stats[:region_row_removes] += 1
-      end
-
-      delivered = whole + row_replaces + row_removes
-      instrument("surface_region_broadcast_sent", regions: delivered) if delivered.any?
-      @last_broadcast = {
-        digest: result.digest,
-        generation: @generation,
-        nodes: region_span_digests(result.node_digests)
-      }
+      instrument("surface_region_broadcast_sent", regions: delivered.uniq) if delivered.any?
+      @last_broadcast = { digest: result.digest, generation: @generation, nodes: span }
     end
 
     # [whole_region_replaces, row_replaces, row_removes]

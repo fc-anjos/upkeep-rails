@@ -44,7 +44,12 @@ module RefreshSync
 
       cohort = RefreshSync.store.register(
         read_set: recording.read_set,
-        surfaces: recording.surfaces.map { |o| o.descriptor.name }
+        surfaces: recording.surfaces.map { |o| o.descriptor.name },
+        # Region-digest baseline from THIS capture's render: the digests are
+        # already computed for surface evidence, and they describe exactly
+        # the page state this viewer holds — so the first region broadcast
+        # can diff instead of sending every region.
+        baselines: recording.surfaces.to_h { |o| [o.descriptor.name, o.node_digests || {}] }
       )
       viewer = Ambient.unobserved { RefreshSync.viewer_resolver&.call(request) }
       recording.surfaces.each do |observation|

@@ -32,6 +32,7 @@ module RefreshSync
           t.text :read_set_json, null: false
           t.text :surfaces_json, null: false, default: "[]"
           t.text :tables_json, null: false, default: "[]"
+          t.text :baselines_json, null: false, default: "{}"
           t.datetime :heartbeat_at
         end
       end
@@ -74,7 +75,7 @@ module RefreshSync
       @mutex = Mutex.new
     end
 
-    def register(read_set:, surfaces: [], identity: nil)
+    def register(read_set:, surfaces: [], baselines: {}, identity: nil)
       id = SecureRandom.hex(8)
       stream = "refresh_sync:cohort:#{id}"
       CohortRow.create!(
@@ -83,11 +84,13 @@ module RefreshSync
         read_set_json: JSON.generate(read_set.to_h),
         surfaces_json: JSON.generate(surfaces),
         tables_json: JSON.generate(read_set.tables.keys),
+        baselines_json: JSON.generate(baselines),
         heartbeat_at: Time.now
       )
       @mutex.synchronize { @watch_cache = nil }
       MemoryStore::Cohort.new(id: id, stream: stream, read_set: read_set,
-                              surfaces: surfaces, identity: identity)
+                              surfaces: surfaces, identity: identity,
+                              baselines: baselines)
     end
 
     # Cached table watch-set with a short TTL; a miss re-checks the DB once
@@ -103,9 +106,22 @@ module RefreshSync
       CohortRow.where("tables_json LIKE ?", "%#{("\"" + change.table + "\"")}%").filter_map do |row|
         read_set = ReadSet.from_h(JSON.parse(row.read_set_json))
         next unless read_set.matches?(change)
-        MemoryStore::Cohort.new(id: row.id, stream: row.stream, read_set: read_set,
-                                surfaces: JSON.parse(row.surfaces_json))
+        hydrate_cohort(row, read_set: read_set)
       end
+    end
+
+    def cohorts_for_surface(name)
+      CohortRow.where("surfaces_json LIKE ?", "%#{("\"" + name + "\"")}%").map do |row|
+        hydrate_cohort(row)
+      end
+    end
+
+    def update_baseline(stream, surface_name, digests)
+      row = CohortRow.find_by(stream: stream)
+      return unless row
+      baselines = JSON.parse(row.baselines_json.presence || "{}")
+      baselines[surface_name] = digests
+      row.update!(baselines_json: JSON.generate(baselines))
     end
 
     def reset!
@@ -114,6 +130,15 @@ module RefreshSync
     end
 
     private
+
+    def hydrate_cohort(row, read_set: nil)
+      read_set ||= ReadSet.from_h(JSON.parse(row.read_set_json))
+      MemoryStore::Cohort.new(
+        id: row.id, stream: row.stream, read_set: read_set,
+        surfaces: JSON.parse(row.surfaces_json),
+        baselines: JSON.parse(row.baselines_json.presence || "{}")
+      )
+    end
 
     def watch_set
       @mutex.synchronize do
