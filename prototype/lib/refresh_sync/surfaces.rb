@@ -241,25 +241,35 @@ module RefreshSync
 
     private
 
-    # Region delivery: replace each changed top-level stamped remainder node.
-    # Island content never appears here — the scrub render is anonymous and
-    # islands are excluded from @region_addresses by construction.
+    # Region delivery: for each changed top-level stamped remainder node,
+    # either targeted per-row streams (replace a changed iteration instance,
+    # remove a vanished one) or a whole-region replace. Island content never
+    # appears here — the scrub render is anonymous and islands are excluded
+    # from @region_addresses by construction.
+    #
+    # Per-row targeting engages ONLY when every changed address inside the
+    # region is a sound iteration instance already present in the baseline.
+    # Everything else — an inserted row (its DOM position cannot be derived
+    # from digest evidence, see README), a structural (plain-address)
+    # change, an __unsound__ iteration marker, a missing instance text —
+    # falls back to replacing the whole region, which is always correct
+    # because the region element itself is a stable stamped DOM target.
     def broadcast_regions(result)
-      previous = @last_broadcast && @last_broadcast[:generation] != @generation ? @last_broadcast[:nodes] : @last_broadcast&.dig(:nodes)
-      changed = @region_addresses.select do |address|
-        result.node_digests[address] && result.node_digests[address] != previous&.dig(address)
-      end
-      # A changed region whose text is unavailable (its bytes came from a
-      # warm cached fragment in the scrubbed render) cannot be sent — fail
-      # open to a refresh for everyone rather than sending nothing.
-      unrenderable = changed.reject { |address| result.node_texts[address] }
+      previous = @last_broadcast&.dig(:nodes) || {}
+      whole, row_replaces, row_removes = region_delivery_plan(result, previous)
+
+      # A region whose text is unavailable (its bytes came from a warm
+      # cached fragment in the scrubbed render) cannot be sent — fail open
+      # to a refresh for everyone rather than sending nothing.
+      unrenderable = whole.reject { |address| result.node_texts[address] }
       if unrenderable.any?
         instrument("region_unrenderable_degrade", regions: unrenderable)
         RefreshSync.stats[:region_degrades] += 1
         @cohort_streams.each { |s| RefreshSync.debouncer.schedule(s) }
         return
       end
-      changed.each do |address|
+
+      (whole + row_replaces).each do |address|
         Turbo::StreamsChannel.broadcast_action_to(
           stream,
           action: :replace,
@@ -267,13 +277,76 @@ module RefreshSync
           html: result.node_texts[address]
         )
         RefreshSync.stats[:region_broadcasts] += 1
+        RefreshSync.stats[:region_row_replaces] += 1 unless whole.include?(address)
       end
-      instrument("surface_region_broadcast_sent", regions: changed) if changed.any?
+      row_removes.each do |address|
+        Turbo::StreamsChannel.broadcast_action_to(
+          stream, action: :remove, targets: "[data-rs-node='#{address}']"
+        )
+        RefreshSync.stats[:region_row_removes] += 1
+      end
+
+      delivered = whole + row_replaces + row_removes
+      instrument("surface_region_broadcast_sent", regions: delivered) if delivered.any?
       @last_broadcast = {
         digest: result.digest,
         generation: @generation,
-        nodes: result.node_digests.slice(*@region_addresses)
+        nodes: region_span_digests(result.node_digests)
       }
+    end
+
+    # [whole_region_replaces, row_replaces, row_removes]
+    def region_delivery_plan(result, previous)
+      whole = []
+      row_replaces = []
+      row_removes = []
+      @region_addresses.each do |region|
+        new_span = span_digests(result.node_digests, region)
+        next if new_span.empty?
+        old_span = span_digests(previous, region)
+        next if new_span == old_span
+
+        new_inst, new_plain = new_span.partition { |a, _| Provenance.instance?(a) }.map(&:to_h)
+        old_inst, old_plain = old_span.partition { |a, _| Provenance.instance?(a) }.map(&:to_h)
+
+        inserted = new_inst.keys - old_inst.keys
+        removed = old_inst.keys - new_inst.keys
+        updated = (new_inst.keys & old_inst.keys).select { |a| new_inst[a] != old_inst[a] }
+        row_changes = inserted + removed + updated
+
+        changed_plain = (new_plain.keys | old_plain.keys).select { |a| new_plain[a] != old_plain[a] }
+        structural = changed_plain.select do |plain|
+          new_plain[plain] == Provenance::UNSOUND || old_plain[plain] == Provenance::UNSOUND ||
+            row_changes.none? { |i| ancestor_of_instance?(plain, i) }
+        end
+
+        if inserted.any? || structural.any? || old_span.empty? ||
+           updated.any? { |a| result.node_texts[a].nil? }
+          whole << region
+        else
+          row_replaces.concat(updated)
+          row_removes.concat(removed)
+        end
+      end
+      [whole, row_replaces, row_removes]
+    end
+
+    def span_digests(digests, region)
+      digests.select { |address, _| in_span?(address, region) }
+    end
+
+    def region_span_digests(digests)
+      digests.select { |address, _| @region_addresses.any? { |r| in_span?(address, r) } }
+    end
+
+    def in_span?(address, region)
+      base = Provenance.base_of(address)
+      base == region || base.start_with?("#{region}.")
+    end
+
+    def ancestor_of_instance?(plain, instance)
+      base = Provenance.base_of(instance)
+      base == plain || base.start_with?("#{plain}.")
     end
 
     # Addresses where this observation disagrees with any current-generation
@@ -378,9 +451,14 @@ module RefreshSync
           @status = :shared
           # Stamped nodes make even a fully-shared surface deliverable as
           # targeted region replaces (real DOM targets, no dom_id contract);
-          # unstamped surfaces keep the whole-partial update.
+          # unstamped surfaces keep the whole-partial update. Regions are
+          # always PLAIN addresses — per-iteration instances change with the
+          # data, so they can be targeted inside a region but never anchor
+          # one.
           @region_addresses = top_level(
-            (scrubbed.node_digests || {}).keys.select { |a| stamped?(scrubbed.node_texts[a], a) }
+            (scrubbed.node_digests || {}).keys.select do |a|
+              !Provenance.instance?(a) && stamped?(scrubbed.node_texts[a], a)
+            end
           )
           RefreshSync.stats[:promotions] += 1
           instrument("surface_promoted", viewers: @evidence.size, regions: @region_addresses)
@@ -402,7 +480,9 @@ module RefreshSync
         return
       end
 
-      broadcastable = remainder.select { |a| stamped?(scrubbed.node_texts[a], a) }
+      broadcastable = remainder.select do |a|
+        !Provenance.instance?(a) && stamped?(scrubbed.node_texts[a], a)
+      end
       if broadcastable.any?
         @region_addresses = top_level(broadcastable)
         @status = :region_shared

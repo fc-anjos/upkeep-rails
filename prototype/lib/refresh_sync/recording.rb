@@ -30,7 +30,7 @@ module RefreshSync
     # Render trace for provenance (node addresses); built lazily so captures
     # of uninstrumented pages pay nothing.
     def prov
-      @prov ||= Provenance::Trace.new
+      @prov ||= Provenance::Trace.new(iteration_ids: method(:iteration_ids))
     end
 
     # Current node address without forcing a Trace into existence.
@@ -52,6 +52,25 @@ module RefreshSync
     # provenance-instrumented template node is open) rides along as metadata.
     def record_instance(record)
       @read_set.record_id(record.class.table_name, record.id, node: @prov&.current_address)
+    end
+
+    # The read-set side of per-iteration identity: [table, ordered ids]
+    # materialized under `node_address`, but only when exactly one table
+    # did — ambiguity yields nil and the iteration keeps the plain address.
+    # Ids arrive in relation-result order (Set preserves insertion order).
+    def iteration_ids(node_address)
+      return nil unless node_address
+      candidates = @read_set.tables.filter_map do |table, deps|
+        node = deps.node_reads[node_address]
+        [table, node.ids.to_a] if node && node.ids.any?
+      end
+      candidates.size == 1 ? candidates.first : nil
+    end
+
+    # Attribute-read evidence (loop identity verification). Forwarded to the
+    # trace only when one exists — uninstrumented captures pay nothing.
+    def note_attribute_read(table, id)
+      @prov&.note_attribute_read(table, id)
     end
 
     # A relation that just executed: extract simple membership predicates,

@@ -33,41 +33,93 @@ module RefreshSync
       end
     end
 
+    # Per-render-instance identity: a node inside a loop body is entered once
+    # per iteration; all iterations would otherwise share one address (and a
+    # one-row change would replace the whole list). When the node's PARENT
+    # has materialized records of exactly one table (the loop node owns the
+    # collection load — ids arrive in result order before the first
+    # iteration renders), the n-th entry of a child address is bound to the
+    # n-th loaded id and traced under "address@table:id". Identity is
+    # runtime evidence, never authored, and FAILS CLOSED: any sign the
+    # ordinal<->row correspondence is unsound (attribute reads of a
+    # different row inside the instance window, entry counts that disagree
+    # with the loaded id count, an instance address entered twice) marks the
+    # base address unsound and its digests collapse to an "__unsound__"
+    # marker, which region delivery treats as a structural change
+    # (whole-region replace, never a row-targeted one).
+    UNSOUND = "__unsound__".freeze
+
+    def self.base_of(address)
+      address.split("@", 2).first
+    end
+
+    def self.instance?(address)
+      address.include?("@")
+    end
+
     # Per-Recording render trace.
     class Trace
-      attr_reader :nodes
+      Frame = Struct.new(:record, :buffer_id, :start, :identity, :identity_base,
+                         :child_counts, :iterated)
 
-      def initialize
-        @nodes = {}    # address => NodeRecord
+      attr_reader :nodes, :unsound_bases
+
+      def initialize(iteration_ids: nil)
+        @nodes = {}    # instance address => NodeRecord
         @buffers = {}  # buffer_id => buffer object
         @embeds = {}   # child buffer_id => [host buffer_id, offset]
-        @stack = []    # [NodeRecord, buffer_id, start_offset]
+        @stack = []    # [Frame]
         @injected = [] # [address, digest] — replayed from cached fragments
+        # ->(parent_address) { [table, ordered_ids] | nil } — the read-set
+        # bridge that supplies per-iteration record identity.
+        @iteration_ids = iteration_ids
+        @unsound_bases = Set.new
       end
 
       def enter(address, file, line, buffer)
-        record = (@nodes[address] ||= NodeRecord.new(address, file, line))
+        identity, identity_base, own = instance_identity(address)
+        instance_address = identity ? "#{address}@#{identity}" : address
+        if own && @nodes.key?(instance_address)
+          # The same (address, record) pair rendered twice — nested loops
+          # collapsing onto one identity, duplicate rows: not row-targetable.
+          @unsound_bases << address
+        end
+        record = (@nodes[instance_address] ||= NodeRecord.new(instance_address, file, line))
         buffer_id = buffer.object_id
         unless @buffers.key?(buffer_id)
           @buffers[buffer_id] = buffer
           # A new buffer opening under an open node is a child template
           # (partial) whose output will land at the parent buffer's current
           # length — the explicit render-boundary link.
-          if (top = @stack.last) && top[1] != buffer_id
-            @embeds[buffer_id] = [top[1], buffer_bytesize(@buffers[top[1]])]
+          if (top = @stack.last) && top.buffer_id != buffer_id
+            @embeds[buffer_id] = [top.buffer_id, buffer_bytesize(@buffers[top.buffer_id])]
           end
         end
-        @stack.push([record, buffer_id, buffer_bytesize(buffer)])
+        @stack.push(Frame.new(record, buffer_id, buffer_bytesize(buffer),
+                              identity, identity_base, nil, nil))
       end
 
       def leave(buffer)
-        record, buffer_id, start = @stack.pop
-        return unless record
-        record.segments << Segment.new(buffer_id, start, buffer_bytesize(buffer))
+        frame = @stack.pop
+        return unless frame&.record
+        frame.record.segments << Segment.new(frame.buffer_id, frame.start, buffer_bytesize(buffer))
+        verify_iterations(frame)
       end
 
       def current_address
-        @stack.last&.first&.address
+        @stack.last&.record&.address
+      end
+
+      # Attribute-read verification: reading a row of the identity table
+      # that is NOT the row bound to the innermost identity frame means the
+      # ordinal<->row correspondence broke (conditional skips, reordering).
+      def note_attribute_read(table, id)
+        return if id.nil?
+        frame = @stack.reverse_each.find(&:identity)
+        return unless frame
+        itable, iid = frame.identity.split(":", 2)
+        return unless itable == table
+        @unsound_bases << frame.identity_base if iid != id.to_s
       end
 
       # Layout yield: the page's finished buffer is appended into the layout
@@ -76,8 +128,8 @@ module RefreshSync
         return unless (top = @stack.last)
         child_id = content.object_id
         return unless @buffers.key?(child_id) # only link buffers we traced
-        host_buffer = @buffers[top[1]]
-        @embeds[child_id] ||= [top[1], buffer_bytesize(host_buffer)]
+        host_buffer = @buffers[top.buffer_id]
+        @embeds[child_id] ||= [top.buffer_id, buffer_bytesize(host_buffer)]
       end
 
       def text_for(address)
@@ -96,11 +148,23 @@ module RefreshSync
       end
 
       def node_digests_since(marker)
-        live = @nodes.filter_map do |address, record|
+        live = {}
+        @nodes.each do |address, record|
           fresh = record.segments.drop(marker[address].to_i)
           next if fresh.empty?
-          [address, Digest::SHA256.hexdigest(fresh.map { |seg| slice(seg) }.join)]
-        end.to_h
+          base = Provenance.base_of(address)
+          if @unsound_bases.include?(base)
+            # Unsound iteration mapping: collapse every instance of the base
+            # to one marker entry. Identical for every viewer (soundness is
+            # a structural property of the render, not of the viewer), so it
+            # never manufactures divergence — but it always differs from a
+            # real digest, so region delivery falls back to a whole-region
+            # replace instead of trusting per-row identity.
+            live[base] = UNSOUND
+          else
+            live[address] = Digest::SHA256.hexdigest(fresh.map { |seg| slice(seg) }.join)
+          end
+        end
         @injected.drop(marker["__injected"].to_i).to_h.merge(live)
       end
 
@@ -125,6 +189,47 @@ module RefreshSync
       end
 
       private
+
+      # [identity, identity_base, own?] for a node being entered.
+      # Own identity: the parent frame's node materialized records of exactly
+      # one table before this child rendered, and this is the ordinal-th
+      # entry of this child address under the current parent entry — bind to
+      # the ordinal-th loaded id. Otherwise identity is inherited from the
+      # nearest identified ancestor (nodes inside a row belong to that row).
+      def instance_identity(address)
+        parent = @stack.last
+        return [nil, nil, false] unless parent
+        if @iteration_ids && (loaded = @iteration_ids.call(parent.record.address))
+          table, ids = loaded
+          parent.child_counts ||= Hash.new(0)
+          ordinal = parent.child_counts[address]
+          parent.child_counts[address] += 1
+          if ordinal < ids.size
+            (parent.iterated ||= Hash.new(0))[address] += 1
+            return ["#{table}:#{ids[ordinal]}", address, true]
+          else
+            # More entries than loaded rows: the correspondence is broken
+            # for every instance of this address.
+            @unsound_bases << address
+            return [parent.identity, parent.identity_base, false]
+          end
+        end
+        [parent.identity, parent.identity_base, false]
+      end
+
+      # On leaving a parent that assigned iteration identities: the number
+      # of entries per child address must equal the number of loaded ids —
+      # anything else (conditional `next`, early `break`, mixed plain
+      # entries) voids row identity for that address.
+      def verify_iterations(frame)
+        return unless frame.iterated
+        _table, ids = @iteration_ids.call(frame.record.address)
+        frame.iterated.each do |address, own_count|
+          if ids.nil? || own_count != ids.size || frame.child_counts[address] != own_count
+            @unsound_bases << address
+          end
+        end
+      end
 
       def resolve(buffer_id)
         offset = 0
@@ -165,6 +270,15 @@ module RefreshSync
 
       def self.current_address
         Recording.current&.prov&.current_address
+      end
+
+      # data-rs-node attribute value, resolved at render time: the current
+      # trace frame's INSTANCE address (per-iteration identity included) when
+      # capturing, the compile-time base address otherwise. The enter call is
+      # injected immediately before the element, so during the open tag's
+      # render the top of the stack is this element's own frame.
+      def self.stamp(fallback)
+        Recording.current&.prov&.current_address || fallback
       end
     end
 
@@ -245,11 +359,17 @@ module RefreshSync
         "t:#{@digest}/#{path.join(".")}"
       end
 
+      # The stamp value is a render-time expression, not a literal: inside a
+      # loop each iteration must carry its own instance address so a single
+      # row can be targeted. Outside capture (and for non-iterated nodes)
+      # Runtime.stamp returns the base address — byte-identical to the old
+      # literal stamp.
       def stamp_element(child, address)
         return unless child.class.name&.end_with?("HTMLElementNode")
         open_tag = child.open_tag
         return unless open_tag && open_tag.respond_to?(:children)
-        open_tag.children << attribute_node("data-rs-node", address)
+        code = "::RefreshSync::Provenance::Runtime.stamp(#{address.inspect})"
+        open_tag.children << attribute_node("data-rs-node", output_node(code))
       end
 
       def dummy_location = @dummy_location ||= ::Herb::Location.from(0, 0, 0, 0)
@@ -269,12 +389,27 @@ module RefreshSync
         )
       end
 
+      # An ERB output node (<%= code %>): herb compiles it inside an
+      # attribute value via ::Herb::Engine.attr (probed; whole-attribute ERB
+      # position is rejected by the engine's security check, value position
+      # is supported).
+      def output_node(code)
+        ::Herb::AST::ERBContentNode.new(
+          "ERBContentNode", dummy_location, [],
+          token(:tag_opening, "<%="),
+          token(:content, " #{code} "),
+          token(:tag_closing, "%>"),
+          nil, true, true, nil
+        )
+      end
+
       def attribute_node(name, value)
         name_literal = ::Herb::AST::LiteralNode.new("LiteralNode", dummy_location, [], name.dup)
         name_node = ::Herb::AST::HTMLAttributeNameNode.new("HTMLAttributeNameNode", dummy_location, [], [name_literal])
-        value_literal = ::Herb::AST::LiteralNode.new("LiteralNode", dummy_location, [], value.dup)
+        value_child =
+          value.is_a?(::Herb::AST::Node) ? value : ::Herb::AST::LiteralNode.new("LiteralNode", dummy_location, [], value.dup)
         value_node = ::Herb::AST::HTMLAttributeValueNode.new(
-          "HTMLAttributeValueNode", dummy_location, [], token(:quote, '"'), [value_literal], token(:quote, '"'), true
+          "HTMLAttributeValueNode", dummy_location, [], token(:quote, '"'), [value_child], token(:quote, '"'), true
         )
         ::Herb::AST::HTMLAttributeNode.new(
           "HTMLAttributeNode", dummy_location, [], name_node, token(:equals, "="), value_node

@@ -24,6 +24,24 @@ module RefreshSync
       end
     end
 
+    # Read side: attribute reads during capture, used ONLY to verify
+    # per-iteration node identity (reading a row other than the one bound to
+    # the open loop instance voids row targeting for that node — identity
+    # fails closed). No-ops on a nil thread-local outside capture windows.
+    # `_read_attribute` is the single choke point every generated attribute
+    # reader funnels through — internal API, re-verify per Rails version.
+    module AttributeReadObserver
+      def _read_attribute(attr_name, &block)
+        if (recording = Recording.current)
+          pk = self.class.primary_key
+          if pk.is_a?(String) && attr_name.to_s != pk
+            recording.note_attribute_read(self.class.table_name, super(pk))
+          end
+        end
+        super
+      end
+    end
+
     # Write side: per-row committed changes.
     module WriteObserver
       extend ActiveSupport::Concern
@@ -76,6 +94,7 @@ module RefreshSync
       # (Ambient choke points are installed separately via Ambient.install!)
       ActiveRecord::Relation.prepend(BulkWriteObserver)
       ActiveRecord::Base.singleton_class.prepend(InstantiateObserver)
+      ActiveRecord::Base.prepend(AttributeReadObserver)
       ActiveRecord::Base.include(WriteObserver)
 
       # Raw SQL safety net: writes issued via execute/exec_query carry no
