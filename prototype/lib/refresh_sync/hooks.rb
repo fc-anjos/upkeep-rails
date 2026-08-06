@@ -6,9 +6,74 @@ module RefreshSync
     # Read side: relations that execute while capturing.
     module RelationObserver
       def exec_queries(&block)
-        records = super
-        Recording.current&.record_relation(self)
+        recording = Recording.current
+        return super unless recording
+        records = recording.accounting { super }
+        recording.record_relation(self)
         records
+      end
+    end
+
+    # Read side: the ActiveRecord read doors that never materialize records
+    # and so bypass exec_queries entirely. All hooked at the Relation level
+    # on structured data (the relation's own where clause) — never SQL text.
+    #   calculate  — count/sum/average/minimum/maximum
+    #   pluck      — also covers pick and ids (both delegate to pluck)
+    #   exists?    — including the conditions-argument forms
+    module RelationReadDoors
+      def calculate(operation, column_name)
+        recording = Recording.current
+        return super unless recording
+        result = recording.accounting { super }
+        recording.record_relation(self)
+        result
+      end
+
+      def pluck(*column_names)
+        recording = Recording.current
+        return super unless recording
+        result = recording.accounting { super }
+        recording.record_relation(self)
+        result
+      end
+
+      def exists?(conditions = :none)
+        recording = Recording.current
+        return super unless recording
+        result = recording.accounting { super }
+        relation =
+          case conditions
+          when :none, nil, true then self
+          when Hash then where(conditions)
+          when String, Array then nil # SQL-ish conditions: not analyzable
+          else where(klass.primary_key => conditions)
+          end
+        if relation
+          recording.record_relation(relation)
+        else
+          recording.read_set.record_table(
+            klass.table_name, :exists_with_opaque_conditions, node: recording.prov_address
+          )
+        end
+        result
+      end
+    end
+
+    # Read side: statement-cache executions (Model.find, cached find_by,
+    # association loads) bypass Relation#exec_queries; the bind map carries
+    # the structured predicate. When the cache exposes no klass/bind_map,
+    # the query is deliberately left unaccounted so the audit flags it
+    # instead of silently claiming coverage.
+    module StatementCacheObserver
+      def execute(params, connection, **kwargs, &block)
+        recording = Recording.current
+        return super unless recording
+        model = instance_variable_get(:@model)
+        bind_map = instance_variable_get(:@bind_map)
+        return super unless model && bind_map
+        result = recording.accounting { super }
+        recording.record_statement_cache(model, bind_map.bind(params))
+        result
       end
     end
 
@@ -86,16 +151,68 @@ module RefreshSync
 
     RAW_WRITE_SQL = /\A\s*(insert\s+into|update|delete\s+from)\s+["`']?(\w+)/i
 
+    # Completeness audit: a SELECT that executes during a capture with no
+    # read door accounting for it is a dependency the read set cannot see.
+    # Statement-kind guard only — dependencies are never derived from SQL
+    # text; attribution uses ActiveRecord's structured "Model Action" query
+    # name convention.
+    AUDIT_READ_SQL = /\A\s*(select|with)\b/i
+    AUDIT_IGNORED_NAMES = ["SCHEMA", "EXPLAIN", "TRANSACTION"].freeze
+
+    def self.attributable_table(name)
+      return nil unless name.is_a?(String)
+      first_word = name.split(" ").first
+      return nil unless first_word&.match?(/\A[A-Z]/)
+      klass = first_word.safe_constantize
+      return nil unless klass.is_a?(Class) && klass < ActiveRecord::Base
+      table = klass.table_name
+      Recording::OWN_TABLES.include?(table) ? nil : table
+    end
+
+    def self.audit_unaccounted_read(recording, payload)
+      if (table = attributable_table(payload[:name]))
+        # Conservative degrade: whatever is attributable becomes a
+        # table-level dependency — every write to that table now matches.
+        recording.read_set.record_table(table, :unhooked_read_door,
+                                        node: recording.prov_address)
+        RefreshSync.stats[:unhooked_reads_degraded] += 1
+        ActiveSupport::Notifications.instrument(
+          "capture_incomplete.refresh_sync",
+          mode: :degraded_table_level, table: table, query_name: payload[:name]
+        )
+      else
+        # Unattributable: the capture refuses precision entirely (no cohort
+        # registration). Silent partial liveness would be a stale-page lie.
+        recording.incomplete!(payload[:name] || "unnamed query")
+        ActiveSupport::Notifications.instrument(
+          "capture_incomplete.refresh_sync",
+          mode: :unattributable, query_name: payload[:name]
+        )
+      end
+    end
+
     def self.install!
       return if @installed
       @installed = true
 
       ActiveRecord::Relation.prepend(RelationObserver)
+      ActiveRecord::Relation.prepend(RelationReadDoors)
       # (Ambient choke points are installed separately via Ambient.install!)
       ActiveRecord::Relation.prepend(BulkWriteObserver)
+      ActiveRecord::StatementCache.prepend(StatementCacheObserver)
       ActiveRecord::Base.singleton_class.prepend(InstantiateObserver)
       ActiveRecord::Base.prepend(AttributeReadObserver)
       ActiveRecord::Base.include(WriteObserver)
+
+      ActiveSupport::Notifications.subscribe("sql.active_record") do |event|
+        payload = event.payload
+        recording = Recording.current
+        if recording && !recording.accounting? &&
+           !AUDIT_IGNORED_NAMES.include?(payload[:name]) &&
+           AUDIT_READ_SQL.match?(payload[:sql])
+          audit_unaccounted_read(recording, payload)
+        end
+      end
 
       # Raw SQL safety net: writes issued via execute/exec_query carry no
       # model name; degrade them to a table-level change. Detection is

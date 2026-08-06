@@ -42,6 +42,20 @@ module RefreshSync
 
       return unless response.successful? && response.media_type == "text/html"
 
+      # Completeness audit verdict: an unattributable unhooked read ran
+      # during this capture, so the read set cannot vouch for the page.
+      # Refuse precision — no cohort, no liveness — LOUDLY, rather than
+      # registering a read set with a silent hole in it.
+      if recording.incomplete?
+        RefreshSync.stats[:captures_refused] += 1
+        ActiveSupport::Notifications.instrument(
+          "capture_refused.refresh_sync",
+          reason: :unattributable_read, detail: recording.incomplete_detail,
+          path: request.path
+        )
+        return
+      end
+
       cohort = RefreshSync.store.register(
         read_set: recording.read_set,
         surfaces: recording.surfaces.map { |o| o.descriptor.name },

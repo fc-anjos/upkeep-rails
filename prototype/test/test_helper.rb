@@ -172,6 +172,51 @@ class BoardsController < ActionController::Base
   end
 end
 
+# Read-door fixtures: pages whose ONLY dependency arrives through a
+# non-materializing read door (calculate/pluck/exists?/statement cache), and
+# audit fixtures that read through a deliberately unhooked path.
+class ReadDoorsController < ActionController::Base
+  include RefreshSync::Capture
+  refresh_sync
+
+  def open_count
+    @open = Card.where(status: "open").count
+    render inline: "<p>Open: <%= @open %></p>", layout: false
+  end
+
+  def open_titles
+    @titles = Card.where(status: "open").pluck(:title)
+    render inline: "<p><%= @titles.join(', ') %></p>", layout: false
+  end
+
+  def any_open
+    @any = Card.where(status: "open").exists?
+    render inline: "<p><%= @any ? 'yes' : 'no' %></p>", layout: false
+  end
+
+  def lost_card
+    @card = Card.find_by(uid: "lost-uid") # statement-cache path, nil result
+    render inline: "<p><%= @card ? @card.title : 'missing' %></p>", layout: false
+  end
+
+  # Simulated unhooked read doors for the completeness audit: raw SELECTs
+  # that no door accounts for — one attributable through the "Model Action"
+  # query-name convention, one anonymous.
+  def raw_named
+    @count = ActiveRecord::Base.connection
+                               .select_all("SELECT COUNT(*) AS c FROM cards", "Card Probe")
+                               .first["c"]
+    render inline: "<p>Raw: <%= @count %></p>", layout: false
+  end
+
+  def raw_anonymous
+    @count = ActiveRecord::Base.connection
+                               .select_all("SELECT COUNT(*) AS c FROM cards")
+                               .first["c"]
+    render inline: "<p>Raw: <%= @count %></p>", layout: false
+  end
+end
+
 # Upkeep's write convention: POST + head :no_content. The broadcast is the
 # single source of UI truth for everyone, including the tab that wrote.
 class CardsApiController < ActionController::Base
@@ -299,6 +344,12 @@ Rails.application.routes.draw do
   get "/flagged", to: "surfaces#flagged"
   get "/vip", to: "surfaces#vip"
   get "/audit_log", to: "audit_logs#index"
+  get "/doors/open_count", to: "read_doors#open_count"
+  get "/doors/open_titles", to: "read_doors#open_titles"
+  get "/doors/any_open", to: "read_doors#any_open"
+  get "/doors/lost_card", to: "read_doors#lost_card"
+  get "/doors/raw_named", to: "read_doors#raw_named"
+  get "/doors/raw_anonymous", to: "read_doors#raw_anonymous"
   get "/cached_board/:id", to: "cached_boards#show"
   get "/pulse/board", to: "pulse#board"
   get "/pulse/skip_board", to: "pulse#skip_board"

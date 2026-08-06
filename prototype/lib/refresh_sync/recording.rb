@@ -38,6 +38,36 @@ module RefreshSync
       @prov&.current_address
     end
 
+    # RefreshSync's own bookkeeping tables: reads of these during a capture
+    # (store lookups on a GET-boundary write path) must never become page
+    # dependencies — a page depending on the cohort table is a feedback
+    # loop, not a data dependency. Distinct from the user-facing ignore
+    # list, whose tables ARE recorded so the misuse detector can warn.
+    OWN_TABLES = %w[refresh_sync_cohorts refresh_sync_surfaces refresh_sync_claims].freeze
+
+    # --- read-door accounting (capture-completeness audit) -----------------
+    # Every hooked read door wraps its query execution in `accounting`; the
+    # sql.active_record audit subscriber treats a SELECT executed during
+    # capture OUTSIDE any accounting window as an unhooked read door.
+
+    def accounting
+      @accounting_depth = (@accounting_depth || 0) + 1
+      yield
+    ensure
+      @accounting_depth -= 1
+    end
+
+    def accounting? = (@accounting_depth || 0).positive?
+
+    # An unattributable unaccounted read: the capture cannot vouch for its
+    # own completeness and refuses precision (no cohort is registered).
+    def incomplete!(detail)
+      @incomplete = detail
+    end
+
+    def incomplete? = !!@incomplete
+    def incomplete_detail = @incomplete
+
     def ambient!(reason)
       @ambient << reason
     end
@@ -51,7 +81,9 @@ module RefreshSync
     # Every AR record materialized from the database. Node address (when a
     # provenance-instrumented template node is open) rides along as metadata.
     def record_instance(record)
-      @read_set.record_id(record.class.table_name, record.id, node: @prov&.current_address)
+      table = record.class.table_name
+      return if OWN_TABLES.include?(table)
+      @read_set.record_id(table, record.id, node: @prov&.current_address)
     end
 
     # The read-set side of per-iteration identity: [table, ordered ids]
@@ -76,8 +108,31 @@ module RefreshSync
     # A relation that just executed: extract simple membership predicates,
     # degrade to table-level with a reason when analysis can't be exact.
     def record_relation(relation)
+      return if OWN_TABLES.include?(relation.klass.table_name)
       RefreshSync.stats[:relations_analyzed] += 1
       RelationAnalysis.new(relation).apply_to(self)
+    end
+
+    # A statement-cache execution (Model.find / find_by / association
+    # loads): the cache's bind map IS the structured predicate — each bound
+    # attribute is an equality on the cached query's own table. Bind names
+    # that are not columns (LIMIT/OFFSET) are dropped, which only widens
+    # the predicate (over-match is the safe direction). Closes the
+    # nil-result hole: a find_by that returned nothing still records the
+    # predicate, so the row's later INSERT matches.
+    def record_statement_cache(klass, bound_attributes)
+      table = klass.table_name
+      return if OWN_TABLES.include?(table)
+      RefreshSync.stats[:statement_caches_analyzed] += 1
+      columns = klass.column_names
+      predicate = {}
+      bound_attributes.each do |attr|
+        name = attr.name.to_s
+        next unless columns.include?(name)
+        (predicate[name] ||= []) << attr.value_before_type_cast
+      end
+      @read_set.record_predicate(table, predicate, node: @prov&.current_address)
+      identity_bound! if (predicate.keys & RefreshSync.identity_columns).any?
     end
 
     # A shared_surface region rendered during this capture. Node digests are
