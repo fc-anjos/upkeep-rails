@@ -54,6 +54,17 @@ stream. A committed write that matches schedules one debounced
 Every delivered byte is rendered *as the viewer*, so this path cannot leak,
 and everything else in the gem is allowed to fail toward it.
 
+**What a write means: facts and verdicts.** A committed write becomes a
+*fact* — rows, changed columns, before/after values where knowable (model
+saves always know; bulk writes know their after-values via `RETURNING`, and
+their before-values are honestly `unknown`). Each page evaluates its
+predicate against before and after, yielding one of four verdicts: the row
+**entered** the page, **left** it, changed **in place**, or was
+**irrelevant**. Irrelevant writes cost nothing — no refresh, no render, no
+delivery. Enter-then-leave churn inside one debounce window nets out. An
+unknown before-value can never prove irrelevance, so it degrades to a
+refresh: coarser, never staler.
+
 **Tier S (earned, never configured): render-once shared broadcast.** Surfaces
 — top-level partials, detected automatically — are promoted only by runtime
 evidence: multiple authenticated, role-diverse viewers whose rendered bytes
