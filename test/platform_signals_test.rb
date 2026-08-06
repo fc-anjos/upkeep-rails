@@ -173,6 +173,35 @@ class ArrayLocalsTest < ActiveSupport::TestCase
   end
 end
 
+# Relation locals must survive the durable path as REAL relations: a
+# serialize/deserialize round trip may not degrade them to arrays, or
+# templates using relation semantics (.where, .maximum) would break only
+# in cross-process delivery — the worst place to find out.
+class RelationLocalRoundTripTest < ActiveSupport::TestCase
+  include ProofHelpers
+
+  def test_simple_relation_round_trips_as_a_relation
+    d = Upkeep::Descriptor.new(
+      name: "page", partial: "surfaces/cards",
+      locals: { cards: Card.where(status: "open") }
+    )
+    assert d.refreshable?
+
+    revived = Upkeep::Descriptor.from_h(JSON.parse(JSON.generate(d.to_h)))
+    cards = revived.locals[:cards]
+    assert_kind_of ActiveRecord::Relation, cards
+    assert_equal Card.where(status: "open").count, cards.where(status: "open").count
+    assert_equal Card.where(status: "open").maximum(:id), cards.maximum(:id)
+  end
+
+  def test_complex_relations_stay_unrefreshable
+    refute Upkeep::Descriptor.new(
+      name: "page", partial: "surfaces/cards",
+      locals: { cards: Card.where("title LIKE ?", "%x%") }
+    ).refreshable?, "an opaque where clause is not provably rebuildable"
+  end
+end
+
 # F3: automatic surface detection — top-level partials rendered during a
 # capture become candidates with no declaration; the evidence machinery
 # decides everything else.
