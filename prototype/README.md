@@ -225,3 +225,115 @@ write-time knowledge of every identity-conditional branch (i.e., static
 analysis of views — the road back to the machinery this redesign exists
 to avoid). Ship Tier S behind per-surface opt-in if that window is
 unacceptable for a given page.
+
+---
+
+# Phase 3: Origin model, durability, cross-process, coercion, health (2026-08-06)
+
+Design decision (supersedes the earlier self-refresh note): **the origin tab
+is just another subscriber.** Writes are POST + `head :no_content`; the
+broadcast is the single source of UI truth for everyone including the tab
+that wrote. No conditional suppression. Request-id stamping survives for one
+purpose only: a write committed DURING a GET is stamped with that GET's
+request id so Turbo 8's *native client-side* discard breaks the
+GET -> write -> refresh -> GET loop (view counters, mark-as-read). Redundant
+refresh on a POST origin tab is accepted waste (morph no-op).
+
+## Test results (verbatim)
+
+All seven suites in one process (two seeds):
+
+    41 runs, 223 assertions, 0 failures, 0 errors, 0 skips
+
+LOC: lib/ 885 -> 1,280 (+395: persistence 174, coercion 40, health 38,
+origin/request-id ~20, serialization + evidence-generation rework in
+surfaces/read_set the rest).
+
+## What was built
+
+1. **Origin model + loop guard.** `report_change` reads the active
+   Recording's request id (present only for GET-boundary writes) and the
+   dispatcher stamps it on the refresh tag; two coalesced writes with
+   different origins drop the stamp (suppressing would hide the other
+   write). Client discard is Turbo's native behavior — the test simulates
+   it. The cascade test (write-on-read inbox page, refresh-triggered GETs
+   that also write) reaches a fixed point in <=3 rounds; every viewer
+   accepts <=1 refresh per write generation.
+2. **Durable cohorts + cross-process.** `ActiveRecordStore` (cohorts:
+   stream, read-set JSON, surface names, tables, deploy key, heartbeat),
+   `ActiveRecordSurfaceRegistry` (promotion state rehydrated per lookup,
+   persisted per mutation), `DbClaimer` (unique (key, window) row; the
+   process that inserts first broadcasts). Proven: cohorts survive a
+   simulated restart; a write in process A refreshes a cohort registered by
+   process B; rapid writes in BOTH processes within one window produce
+   exactly 1 refresh (claims_lost >= 1); promotion built from evidence on
+   two processes; divergence seen by A demotes for B.
+3. **Type coercion.** All read-set matching compares through the column's
+   ActiveRecord cast type (`lookup_cast_type(column.sql_type)` — the
+   Rails-8.1 API; `lookup_cast_type_from_column` is gone). "5" == 5 ids,
+   JSON-reloaded "2026-01-01" == Date, UUID strings; false-positive
+   direction asserted (distinct dates/ids/uuids never blur).
+4. **Tier S health.** `ActiveSupport::Notifications` events
+   (`surface_observed/promoted/pinned/demoted/broadcast_sent/
+   scrubbed_render_failed` + reasons) and a `Health` monitor whose
+   `tier_s_dead?` fires when scrubbed renders keep failing and nothing
+   promotes — the exact signature of phase 2's `reset_all` dead-feature
+   incident, now recreated in a test and caught.
+
+## What the cross-process simulation revealed
+
+- **The claim window must be computed at schedule time, not dispatch
+  time.** Two processes dispatch at slightly different wall-clock moments;
+  claiming by dispatch time makes the dedupe window racy at boundaries.
+  Stamping the window id when the entry is created makes both processes
+  agree on which window a write belongs to. Writes that genuinely straddle
+  a window boundary still produce 2 refreshes — accepted (refresh is
+  idempotent), documented.
+- **Promotion-state coherence is trivially correct only because every
+  lookup rehydrates from the row.** Any process-local caching of surface
+  state reintroduces the demote-lag problem (A demotes, B broadcasts from
+  a stale :shared). The prototype's "no cache, read the row every time" is
+  correct but hits the DB per surface lookup per request.
+- **Evidence had to move to viewer-id-keyed, current-generation-only
+  storage.** JSON round-trips turn integer viewer ids into string keys;
+  without normalization, the same viewer re-observing after a reload
+  counts as a second identity and can self-promote a surface. (Caught by
+  reasoning during the rewrite, then covered by the cross-process
+  promotion test.)
+- **What shared-SQLite papers over for production:** (1) there is no push
+  signal between processes — B's dispatcher acts only on writes B itself
+  performs; delivery crosses processes because the *cable* is shared, and
+  a real deployment needs the same guarantee from its Action Cable adapter
+  (Redis/Postgres pub-sub), not from the store; (2) SQLite's file lock
+  serializes what Postgres would interleave — the registry's
+  read-modify-write on surface rows needs `SELECT ... FOR UPDATE` (or
+  optimistic locking) on a real DB, and the claim insert relies on a
+  unique index either way; (3) claim rows are never garbage-collected here
+  (production: TTL sweep); (4) the watch-set cache re-checks the DB on
+  every miss, which is correct but means unmatched hot writes each cost a
+  query — production wants pub/sub cache invalidation or a bloom filter;
+  (5) `heartbeat_at` exists but nothing prunes dead cohorts yet.
+
+## Cracks found in "the origin tab is just another subscriber"
+
+One, minor and structural: when a write commits during a GET, the cohort
+that GET is about to register does not exist yet at match time, so the
+origin's own brand-new cohort receives nothing for its own write — fine
+(its response already reflects the write) — but any OLDER cohort belonging
+to the same browser tab (from its previous page) does receive a stamped
+refresh addressed to a page the tab already left. Turbo discards it only
+if the tab's last request id matches — it does, since the stamp came from
+that tab's own GET. So the model holds, but only because the stamp is
+per-tab-request, not per-write: the request-id mechanism is load-bearing
+for exactly this edge. Coalescing weakens it deliberately: mixed-origin
+writes in one window drop the stamp and the origin tab eats one redundant
+morph no-op — accepted waste, asserted in tests.
+
+## Verdict (phase 3)
+
+All four features landed without disturbing the phase-1/2 suites (41/41
+across two seeds). The origin model is simpler than suppression logic and
+survived its adversarial cascade; durability and cross-process coalescing
+work over a plain relational store with one unique index doing the heavy
+lifting; coercion closes the serialization under-invalidation hole both
+ways; and fail-closed is now observable instead of silent.

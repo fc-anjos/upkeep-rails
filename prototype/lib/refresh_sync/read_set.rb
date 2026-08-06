@@ -7,6 +7,10 @@ module RefreshSync
   #                clauses; used to catch rows *entering* the set (inserts /
   #                updates moving a row into view)
   #   table_reasons - reasons this table degraded to table-level dependency
+  #
+  # Serializes to plain JSON (for the ActiveRecord store); all value
+  # comparisons go through Coercion so a JSON-reloaded read set still
+  # matches live writes (Date vs "2026-01-01", 5 vs "5", ...).
   class ReadSet
     TableDeps = Struct.new(:ids, :predicates, :table_reasons) do
       def self.empty = new(Set.new, [], [])
@@ -39,9 +43,32 @@ module RefreshSync
       return false unless table_deps
       return true if table_deps.table_reasons.any?
       return true if change.kind == :table # bulk write, unknown rows: fail open
-      return true if change.id && table_deps.ids.include?(change.id)
+      if change.id && table_deps.ids.any? { |i| Coercion.same?(change.table, "id", i, change.id) }
+        return true
+      end
 
       table_deps.predicates.any? { |pred| predicate_hit?(pred, change) }
+    end
+
+    def to_h
+      @tables.to_h do |table, d|
+        [table, {
+          "ids" => d.ids.to_a,
+          "predicates" => d.predicates.map { |p| p.transform_keys(&:to_s) },
+          "table_reasons" => d.table_reasons.map(&:to_s)
+        }]
+      end
+    end
+
+    def self.from_h(h)
+      rs = new
+      h.each do |table, d|
+        deps = rs.deps(table)
+        deps.ids.merge(d.fetch("ids", []))
+        d.fetch("predicates", []).each { |p| deps.predicates << p }
+        d.fetch("table_reasons", []).each { |r| deps.table_reasons << r.to_sym }
+      end
+      rs
     end
 
     private
@@ -51,7 +78,8 @@ module RefreshSync
     def predicate_hit?(predicate, change)
       [change.new_attrs, change.old_attrs].compact.any? do |attrs|
         predicate.all? do |attr, values|
-          attrs.key?(attr) && values.include?(attrs[attr])
+          attrs.key?(attr.to_s) &&
+            values.any? { |v| Coercion.same?(change.table, attr, v, attrs[attr.to_s]) }
         end
       end
     end

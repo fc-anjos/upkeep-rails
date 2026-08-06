@@ -9,17 +9,18 @@ module RefreshSync
 
     def self.current = Thread.current[KEY]
 
-    def self.start
-      Thread.current[KEY] = new
+    def self.start(request_id: nil)
+      Thread.current[KEY] = new(request_id: request_id)
     end
 
     def self.finish
       Thread.current[KEY] = nil
     end
 
-    attr_reader :read_set, :ambient, :surfaces
+    attr_reader :read_set, :ambient, :surfaces, :request_id
 
-    def initialize
+    def initialize(request_id: nil)
+      @request_id = request_id
       @read_set = ReadSet.new
       @ambient = Set.new         # reasons: :session_read, :cookie_read, ...
       @identity_bound = false

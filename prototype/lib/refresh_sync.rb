@@ -24,6 +24,11 @@ module RefreshSync
   autoload :Viewer,           "refresh_sync/surfaces"
   autoload :Surface,          "refresh_sync/surfaces"
   autoload :SurfaceRegistry,  "refresh_sync/surfaces"
+  autoload :Coercion,         "refresh_sync/coercion"
+  autoload :ActiveRecordStore, "refresh_sync/persistence"
+  autoload :ActiveRecordSurfaceRegistry, "refresh_sync/persistence"
+  autoload :DbClaimer,        "refresh_sync/persistence"
+  autoload :Health,           "refresh_sync/health"
 
   Change = Struct.new(:table, :id, :kind, :old_attrs, :new_attrs, keyword_init: true)
   # kind: :insert, :update, :delete, :table (bulk/raw write, row identity unknown)
@@ -54,6 +59,13 @@ module RefreshSync
       return unless watching?(change.table)
       stats[:writes_analyzed] += 1
 
+      # A write committed during a captured GET carries that GET's request
+      # id; the refresh tag is stamped with it so Turbo's native client-side
+      # guard breaks the GET -> write -> refresh -> GET loop on the origin
+      # tab. Writes from POST boundaries carry nil: the origin tab is just
+      # another subscriber and receives the refresh like everyone else.
+      origin_request_id = Recording.current&.request_id
+
       refresh_streams = Set.new
       touched_surfaces = Set.new
       store.matching_cohorts(change).each do |cohort|
@@ -77,7 +89,7 @@ module RefreshSync
           debouncer.schedule("surface:#{surface.key}", kind: :broadcast) { surface.broadcast! }
         end
       end
-      refresh_streams.each { |stream| debouncer.schedule(stream) }
+      refresh_streams.each { |stream| debouncer.schedule(stream, request_id: origin_request_id) }
     end
 
     def report_bulk(table)

@@ -2,29 +2,42 @@ module RefreshSync
   # Coalesces deliveries: at most one action per key per window. A write
   # storm inside the window collapses to a single refresh/broadcast.
   #
-  # A global refresh budget (with jitter) caps Tier P refresh storms: at most
-  # `refresh_budget` refresh actions dispatch per tick; the excess is
-  # re-scheduled with jittered delay so a table-level write burst spreads
-  # over several windows instead of stampeding the app with N simultaneous
-  # re-GETs.
+  # Refresh entries carry an optional originating request id (write committed
+  # during a captured GET); it is stamped onto the refresh tag so Turbo 8's
+  # native client-side guard discards the refresh on the tab whose GET caused
+  # it. Two writes with different origins coalesce to an UNSTAMPED refresh —
+  # suppressing would hide the other write from the origin tab.
+  #
+  # A global refresh budget (with jitter) caps Tier P refresh storms.
+  #
+  # An optional claimer ->(key, window_id) -> bool provides cross-process
+  # coalescing: the entry is dispatched only if the claim is won (backed by a
+  # unique DB row in the AR store; each process computes the same window id
+  # from the wall clock at schedule time).
   class Debouncer
-    Entry = Struct.new(:due, :kind, :action)
+    Entry = Struct.new(:due, :kind, :action, :request_id, :claim_window)
 
-    def initialize(window: 0.3, broadcaster: nil, refresh_budget: nil, jitter: 0.3)
+    def initialize(window: 0.3, broadcaster: nil, refresh_budget: nil, jitter: 0.3, claimer: nil)
       @window = window
-      @broadcaster = broadcaster || default_broadcaster
+      @broadcaster = broadcaster
       @refresh_budget = refresh_budget
       @jitter = jitter
+      @claimer = claimer
       @mutex = Mutex.new
       @cond = ConditionVariable.new
       @due = {} # key => Entry
       @thread = nil
     end
 
-    def schedule(key, kind: :refresh, &action)
-      action ||= ->() { @broadcaster.call(key) }
+    def schedule(key, kind: :refresh, request_id: nil, &action)
+      action ||= default_action(key)
       @mutex.synchronize do
-        @due[key] ||= Entry.new(now + @window, kind, action)
+        if (entry = @due[key])
+          entry.request_id = nil if entry.request_id != request_id
+        else
+          claim_window = ((Time.now.to_f + @window) / @window).floor
+          @due[key] = Entry.new(now + @window, kind, action, request_id, claim_window)
+        end
         ensure_worker
         @cond.signal
       end
@@ -38,10 +51,15 @@ module RefreshSync
 
     private
 
-    def default_broadcaster
-      ->(stream) do
-        Turbo::StreamsChannel.broadcast_refresh_to(stream)
-        RefreshSync.stats[:refreshes_broadcast] += 1
+    def default_action(key)
+      if @broadcaster
+        proc { |_entry| @broadcaster.call(key) }
+      else
+        proc do |entry|
+          attributes = entry&.request_id ? { request_id: entry.request_id } : {}
+          Turbo::StreamsChannel.broadcast_refresh_to(key, **attributes)
+          RefreshSync.stats[:refreshes_broadcast] += 1
+        end
       end
     end
 
@@ -83,9 +101,13 @@ module RefreshSync
           end
           ready.each { |key, _e| @due.delete(key) }
         end
-        ready.each do |_key, entry|
+        ready.each do |key, entry|
           begin
-            entry.action.call
+            if @claimer && !@claimer.call(key, entry.claim_window)
+              RefreshSync.stats[:claims_lost] += 1
+              next
+            end
+            entry.action.call(entry)
           rescue => e
             warn "RefreshSync dispatch failed: #{e.class}: #{e.message}"
           end

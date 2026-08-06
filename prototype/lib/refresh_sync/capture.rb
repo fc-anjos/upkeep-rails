@@ -19,7 +19,9 @@ module RefreshSync
     def _refresh_sync_capture
       return yield unless Capture.enabled && request.get?
 
-      recording = Recording.start
+      recording = Recording.start(
+        request_id: request.headers["X-Turbo-Request-Id"] || request.request_id
+      )
       begin
         yield
       ensure

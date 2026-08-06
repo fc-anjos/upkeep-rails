@@ -43,6 +43,8 @@ ActiveRecord::Schema.define do
     t.integer :user_id
     t.string :title
     t.string :status, default: "open"
+    t.date :due_on
+    t.string :uid
   end
   create_table :users, force: true do |t|
     t.string :name
@@ -52,6 +54,7 @@ ActiveRecord::Schema.define do
 end
 
 RefreshSync.install!
+RefreshSync::ActiveRecordStore.setup!
 
 class Board < ActiveRecord::Base
   has_many :cards
@@ -110,6 +113,24 @@ class BoardsController < ActionController::Base
     @cards = Card.all.to_a
     render inline: "<ul><% @cards.each do |c| %><li><%= c.title %></li><% end %></ul>", layout: false
   end
+
+  # Write-on-read page (mark-as-read): idempotent, so refresh-triggered
+  # re-GETs converge instead of cascading forever.
+  def inbox
+    unread = Card.find_by(status: "open")
+    unread&.update!(status: "read")
+    @cards = Card.all.to_a
+    render inline: "<ul><% @cards.each do |c| %><li><%= c.title %>:<%= c.status %></li><% end %></ul>", layout: false
+  end
+end
+
+# Upkeep's write convention: POST + head :no_content. The broadcast is the
+# single source of UI truth for everyone, including the tab that wrote.
+class CardsApiController < ActionController::Base
+  def create
+    Card.create!(params.permit(:board_id, :title, :status, :due_on, :uid))
+    head :no_content
+  end
 end
 
 # Adversarial + legitimate shared-surface pages.
@@ -160,8 +181,10 @@ end
 
 Rails.application.routes.draw do
   post "/login", to: "sessions#create"
+  post "/cards_api", to: "cards_api#create"
   get "/boards/:id", to: "boards#show"
   get "/cards", to: "boards#all_cards"
+  get "/inbox", to: "boards#inbox"
   get "/shared_board", to: "surfaces#shared_board"
   get "/dashboard", to: "surfaces#dashboard"
   get "/tz", to: "surfaces#tz"
@@ -181,6 +204,8 @@ module ProofHelpers
     RefreshSync.deploy_key = "deploy-1"
     RefreshSync.require_role_diversity = true
     RefreshSync.reset_stats!
+    RefreshSync::Coercion.reset!
+    RefreshSync::ActiveRecordStore.wipe!
     ActionCable.server.pubsub.clear
     Board.delete_all
     Card.delete_all
@@ -220,6 +245,25 @@ module ProofHelpers
   end
 
   def surface(name) = RefreshSync.registry.lookup(name)
+
+  # Simulate a distinct app process: its own store/registry/debouncer
+  # instances (sharing the DB and the cable, as real processes would).
+  SimProcess = Struct.new(:store, :registry, :debouncer, keyword_init: true)
+
+  def sim_process(window: WINDOW, claimer: RefreshSync::DbClaimer.new)
+    SimProcess.new(
+      store: RefreshSync::ActiveRecordStore.new,
+      registry: RefreshSync::ActiveRecordSurfaceRegistry.new,
+      debouncer: RefreshSync::Debouncer.new(window: window, claimer: claimer)
+    )
+  end
+
+  def in_process(sim)
+    RefreshSync.store = sim.store
+    RefreshSync.registry = sim.registry
+    RefreshSync.debouncer = sim.debouncer
+    yield
+  end
 
   def visit_board(board)
     get "/boards/#{board.id}"
