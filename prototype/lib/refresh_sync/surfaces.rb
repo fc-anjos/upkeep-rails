@@ -197,12 +197,18 @@ module RefreshSync
         persist!
         return nil
       end
-      # Re-check AFTER the render, immediately before the transport call: a
-      # demotion persisted by another process during the render must win.
-      # (Narrows the race to the microseconds between check and broadcast;
-      # closing it fully needs a store-side lock.)
-      unless live_tier_s?
-        instrument("surface_broadcast_dropped", reason: :demoted_during_render)
+      # Dispatch claim, AFTER the render and immediately before transport: a
+      # single atomic store-side compare-and-set on the surface's status
+      # (UPDATE ... WHERE status IN tier_s). A demotion persisted by any
+      # process at any point before the claim wins and the broadcast is
+      # dropped. A demotion that commits after the claim can still land
+      # while the transport call is in flight — that ordering is converged
+      # by the demotion's own cohort refreshes, which are always scheduled
+      # after its commit (strict exclusion would mean holding a DB lock
+      # across a network call; rejected).
+      RefreshSync.dispatch_interlock&.call
+      unless claim_dispatch!
+        instrument("surface_broadcast_dropped", reason: :demoted_at_claim)
         return nil
       end
 
@@ -340,10 +346,11 @@ module RefreshSync
     # Overridden by persistence-backed subclasses.
     def persist! = nil
 
-    # Live status check for the post-render gate. In-memory surfaces are the
-    # single copy, so the in-memory status IS live; persistence-backed
-    # subclasses re-read the row.
-    def live_tier_s? = tier_s?
+    # Dispatch claim for the post-render gate. In-memory surfaces are the
+    # single copy in a single process, so the in-memory status IS the store
+    # status; persistence-backed subclasses perform an atomic
+    # compare-and-set on the surface row.
+    def claim_dispatch! = tier_s?
 
     def instrument(event, **payload)
       ActiveSupport::Notifications.instrument(

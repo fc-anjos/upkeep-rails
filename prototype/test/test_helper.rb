@@ -308,6 +308,7 @@ module ProofHelpers
     RefreshSync.require_role_diversity = true
     RefreshSync.payload_limit = nil
     RefreshSync.ignored_tables = nil
+    RefreshSync.dispatch_interlock = nil
     Rails.cache.clear
     RefreshSync.reset_stats!
     RefreshSync::Coercion.reset!

@@ -55,6 +55,11 @@ module RefreshSync
     attr_writer :payload_limit
     def payload_limit = @payload_limit
 
+    # Test seam: called on the dispatcher thread between the scrubbed render
+    # and the store-side dispatch claim — the narrowed demotion-race window.
+    # Production leaves it nil.
+    attr_accessor :dispatch_interlock
+
     # Infrastructure tables whose writes never become change events: our own
     # tables (a cohort insert must not trigger cohort matching), session
     # storage written on every request, audit/versioning echo writes, Rails

@@ -39,6 +39,14 @@ module RefreshSync
         conn.create_table :refresh_sync_surfaces do |t|
           t.string :name, null: false
           t.string :deploy_key, null: false
+          # Status is duplicated out of state_json into its own column so
+          # the dispatch-time claim can be a single atomic UPDATE ... WHERE
+          # status IN ('shared','region_shared') — the store-side
+          # compare-and-set that closes the demotion race window. SQLite
+          # and Postgres both execute a single-statement conditional
+          # update atomically.
+          t.string :status, null: false, default: "observing"
+          t.datetime :dispatched_at
           t.text :state_json
         end
         conn.add_index :refresh_sync_surfaces, [:name, :deploy_key], unique: true
@@ -135,22 +143,26 @@ module RefreshSync
   # from the row (no process-local caching), every mutation persists.
   class ActiveRecordSurfaceRegistry
     class PersistedSurface < Surface
+      TIER_S_STATUSES = %w[shared region_shared].freeze
+
       attr_accessor :row
 
       def persist!
-        row.update!(state_json: JSON.generate(state_dump))
+        row.update!(status: status.to_s, state_json: JSON.generate(state_dump))
         nil
       end
 
       private
 
-      # Post-render gate: the row is the truth, not this hydrated copy.
-      def live_tier_s?
-        fresh = ActiveRecordStore::SurfaceRow.find_by(id: row.id)
-        return false unless fresh
-        state = fresh.state_json.presence && JSON.parse(fresh.state_json)
-        status = state ? state.fetch("status", "observing") : "observing"
-        %w[shared region_shared].include?(status)
+      # Post-render gate: one atomic conditional UPDATE against the row's
+      # status column. Either this statement observes a tier-S status and
+      # claims the dispatch, or a demotion (which persists status =
+      # 'personal') committed first and the claim fails — the DB serializes
+      # the two writes, so there is no read-then-act window left.
+      def claim_dispatch!
+        ActiveRecordStore::SurfaceRow
+          .where(id: row.id, status: TIER_S_STATUSES)
+          .update_all(dispatched_at: Time.now) == 1
       end
     end
 
