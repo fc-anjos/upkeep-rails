@@ -334,6 +334,12 @@ class SurfacesController < ActionController::Base
   def vip
     render template: "surfaces/vip", layout: false
   end
+
+  # Same surface inside a page with a real <body>, so subscription-tag
+  # injection (and its per-member exclusion) is observable in the response.
+  def vip_page
+    render template: "surfaces/vip", layout: "bare"
+  end
 end
 
 Rails.application.routes.draw do
@@ -349,6 +355,7 @@ Rails.application.routes.draw do
   get "/threadlocal", to: "surfaces#threadlocal"
   get "/flagged", to: "surfaces#flagged"
   get "/vip", to: "surfaces#vip"
+  get "/vip_page", to: "surfaces#vip_page"
   get "/audit_log", to: "audit_logs#index"
   get "/doors/open_count", to: "read_doors#open_count"
   get "/doors/open_titles", to: "read_doors#open_titles"

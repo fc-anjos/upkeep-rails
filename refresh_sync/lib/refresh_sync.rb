@@ -112,25 +112,44 @@ module RefreshSync
 
       refresh_streams = Set.new
       touched_surfaces = Set.new
+      # One hydrated surface object per name for this whole change, so a
+      # member ejection and the generation bump land on the same state (two
+      # hydrations of the same row would overwrite each other on persist).
+      hydrated = Hash.new { |h, name| h[name] = registry.lookup(name) }
       store.matching_cohorts(change).each do |cohort|
-        covering = cohort.surfaces.filter_map do |name|
-          surface = registry.lookup(name)
-          surface if surface && surface.tables.include?(change.table)
-        end
+        surfaces = cohort.surfaces.filter_map { |name| hydrated[name] }
+        covering = surfaces.select { |s| s.tables.include?(change.table) }
         covering.each { |s| touched_surfaces << s }
-        # Tier S only when a promoted surface covers the change. A fully
-        # :shared surface covers any change to its tables. A :region_shared
-        # surface covers the change only when every matched node dependency
-        # of this cohort falls inside its broadcastable regions — otherwise
-        # the cohort still needs a refresh (personal islands and controller
-        # reads converge via Tier P; region updates never substitute for
-        # changes they don't carry).
-        covered =
-          covering.any?(&:shared?) ||
-          covering.any? do |s|
-            s.region_shared? && cohort.read_set &&
-              cohort.read_set.change_covered_by?(change, region_span(s))
+
+        # Per-member divergence: this change matches the member's read set,
+        # but a promoted surface's scrub render never read anything it
+        # touches — so it changed something only this member depends on
+        # (their user row, a role row). Shared delivery is now wrong for
+        # THEM specifically: eject them to personal refresh, leave the
+        # surface (and everyone else) shared.
+        ejected = false
+        if cohort.identity
+          surfaces.each do |s|
+            next unless s.personal_change?(change)
+            s.eject_member!(cohort.identity, reason: :delta_row_write)
+            ejected = true
           end
+        end
+
+        # Tier S only when a promoted surface covers the change FOR THIS
+        # MEMBER. A fully :shared surface covers any change to its tables. A
+        # :region_shared surface covers the change only when every matched
+        # node dependency of this cohort falls inside its broadcastable
+        # regions — otherwise the cohort still needs a refresh (personal
+        # islands and controller reads converge via Tier P; region updates
+        # never substitute for changes they don't carry). An ejected member
+        # is never covered: their delivery is personal until re-admission.
+        covered = !ejected && covering.any? do |s|
+          next false if s.member_diverged?(cohort.identity)
+          s.shared? ||
+            (s.region_shared? && cohort.read_set &&
+              cohort.read_set.change_covered_by?(change, region_span(s)))
+        end
         refresh_streams << cohort.stream unless covered
       end
 

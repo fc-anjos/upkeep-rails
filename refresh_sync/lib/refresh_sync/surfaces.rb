@@ -90,7 +90,8 @@ module RefreshSync
   class Surface
     attr_reader :name, :deploy_key, :status, :pin_reason, :descriptor,
                 :cohort_streams, :generation, :last_broadcast,
-                :personal_nodes, :region_addresses
+                :personal_nodes, :region_addresses, :diverged_viewers,
+                :shared_read_set
 
     def initialize(name:, deploy_key:)
       @name = name
@@ -103,6 +104,9 @@ module RefreshSync
       @last_broadcast = nil # {digest:, generation:, nodes:}
       @personal_nodes = Set.new  # all node addresses known to diverge per-viewer
       @region_addresses = []     # top-level stamped broadcastable remainder nodes
+      @shared_read_set = nil     # what the promoted scrub render itself read
+      @diverged_viewers = Set.new # viewer ids ejected to personal delivery
+      @generation_mismatches = Set.new # viewers that mismatched THIS generation's broadcast
     end
 
     def key = "#{@deploy_key}/#{@name}"
@@ -117,6 +121,44 @@ module RefreshSync
       @personal_nodes.reject do |address|
         @personal_nodes.any? { |other| other != address && other.start_with?("#{address}.") }
       end.sort
+    end
+
+    # --- per-member divergence -----------------------------------------------
+    # The flag-flip fix. A write that matches a MEMBER's read set but not the
+    # scrub render's read set changed something only that member depends on
+    # (their user row, a role row, a membership). That member is ejected to
+    # personal Tier P delivery — the always-correct path — while everyone
+    # else keeps shared delivery; the surface is NOT demoted. Re-admission
+    # happens at the member's next render, when their digest matches the
+    # shared baseline again. Identity fails closed: no comparable baseline
+    # means they stay personal.
+
+    # A change is personal-to-some-member when the promoted scrub render's
+    # own read set cannot explain it. Pure read-set evidence — no catalogs.
+    def personal_change?(change)
+      tier_s? && @shared_read_set && !@shared_read_set.matches?(change)
+    end
+
+    def member_diverged?(viewer_id)
+      viewer_id && @diverged_viewers.include?(viewer_id.to_s)
+    end
+
+    def eject_member!(viewer_id, reason:)
+      key = viewer_id.to_s
+      return if @diverged_viewers.include?(key)
+      @diverged_viewers << key
+      @evidence.delete(key) # their pre-flip evidence no longer describes them
+      RefreshSync.stats[:member_ejections] += 1
+      instrument("member_diverged", viewer: key, reason: reason)
+      persist!
+    end
+
+    def readmit_member!(viewer_id)
+      key = viewer_id.to_s
+      return unless @diverged_viewers.delete?(key)
+      RefreshSync.stats[:member_readmissions] += 1
+      instrument("member_readmitted", viewer: key)
+      persist!
     end
 
     def observe(observation, viewer:, cohort_stream:, ambient:, identity_bound:)
@@ -140,6 +182,18 @@ module RefreshSync
       return persist! unless viewer&.id # unauthenticated views never count
 
       viewer_key = viewer.id.to_s
+
+      # Ejected member's own render: check for re-admission against the
+      # shared baseline (this generation's broadcast, or a peer's evidence).
+      # Match -> re-admitted, and the observation counts normally below.
+      # No match or no comparable baseline -> they stay on personal
+      # delivery; their observation must neither poison the evidence pool
+      # nor demote the surface (their divergence is known and contained).
+      if tier_s? && member_diverged?(viewer_key)
+        return persist! unless readmission_match?(observation)
+        readmit_member!(viewer_key)
+      end
+
       divergent = divergent_addresses(observation, viewer_key)
       fresh_divergence = divergent - @personal_nodes.to_a
 
@@ -159,13 +213,24 @@ module RefreshSync
         end
       end
 
+      # Post-broadcast mismatch: the broadcast digests ARE an asymmetric
+      # authority (the anonymous truth), so a single viewer disagreeing with
+      # them is that VIEWER diverging — eject them, keep the surface shared.
+      # This is the backstop for entitlements with no delta-row write signal
+      # (constants, time, smuggled state). TWO independent identities
+      # disagreeing with the same broadcast is evidence the scrub render
+      # itself is wrong — the promotion bar in reverse — and demotes.
       if tier_s? && @last_broadcast && @last_broadcast[:generation] == @generation
-        if shared? && @last_broadcast[:digest] != observation.digest
-          transition_to_personal(:post_broadcast_divergence)
-          return persist!
-        end
-        if region_shared? && broadcast_remainder_mismatch?(observation)
-          transition_to_personal(:post_broadcast_divergence)
+        mismatch =
+          (shared? && @last_broadcast[:digest] != observation.digest) ||
+          (region_shared? && broadcast_remainder_mismatch?(observation))
+        if mismatch
+          @generation_mismatches << viewer_key
+          if @generation_mismatches.size >= 2
+            transition_to_personal(:post_broadcast_divergence)
+          else
+            eject_member!(viewer_key, reason: :post_broadcast_mismatch)
+          end
           return persist!
         end
       end
@@ -183,6 +248,7 @@ module RefreshSync
     def bump_generation
       @generation += 1
       @evidence = {}
+      @generation_mismatches = Set.new
       persist!
     end
 
@@ -225,6 +291,7 @@ module RefreshSync
         return nil
       end
 
+      @shared_read_set = result.read_set if result.read_set
       if @region_addresses.any?
         broadcast_regions(result)
       else
@@ -236,8 +303,22 @@ module RefreshSync
         instrument("surface_broadcast_sent")
         @last_broadcast = { digest: result.digest, generation: @generation }
       end
+      converge_diverged_members!
       persist!
       result
+    end
+
+    # An ejected member's old page may still hold a live subscription to the
+    # surface stream, so a shared payload can transiently land on it. A
+    # refresh scheduled AFTER the send re-renders them with their own
+    # credentials — refresh is the sole correctness mechanism, and ordering
+    # it after the broadcast closes the corrupt-then-nothing race.
+    def converge_diverged_members!
+      return if @diverged_viewers.empty?
+      RefreshSync.store.cohorts_for_surface(@name).each do |cohort|
+        next unless member_diverged?(cohort.identity)
+        RefreshSync.debouncer.schedule(cohort.stream)
+      end
     end
 
     private
@@ -268,7 +349,12 @@ module RefreshSync
     # next change to that region or at its next full GET (refresh path).
     def broadcast_regions(result)
       span = region_span_digests(result.node_digests)
+      # Ejected members are not part of shared delivery: their cohorts are
+      # excluded from the diff groups (converge_diverged_members! refreshes
+      # them instead) and their baselines deliberately do not advance — a
+      # stale baseline only ever makes a later diff larger, never wrong.
       cohorts = RefreshSync.store.cohorts_for_surface(@name)
+                           .reject { |c| member_diverged?(c.identity) }
       groups = cohorts.group_by do |cohort|
         region_delivery_plan(result, cohort.baselines&.dig(@name) || {})
       end
@@ -413,6 +499,27 @@ module RefreshSync
       end
     end
 
+    # Re-admission authority, strongest first: this generation's broadcast
+    # (anonymous truth), else a current-generation peer's evidence. Digests
+    # across generations are incomparable, so with neither there is no
+    # verdict and the member stays personal (identity fails closed —
+    # correct either way, refresh delivery is never wrong).
+    def readmission_match?(observation)
+      if @last_broadcast && @last_broadcast[:generation] == @generation
+        return shared? ? @last_broadcast[:digest] == observation.digest
+                       : !broadcast_remainder_mismatch?(observation)
+      end
+      return false if @evidence.empty?
+      if shared?
+        @evidence.values.any? { |e| e[:digest] == observation.digest }
+      else
+        remainder = (observation.node_digests || {}).keys - @personal_nodes.to_a
+        @evidence.values.any? do |e|
+          remainder.all? { |a| e[:nodes][a] == observation.node_digests[a] }
+        end
+      end
+    end
+
     def broadcast_remainder_mismatch?(observation)
       nodes = observation.node_digests || {}
       previous = @last_broadcast[:nodes] || {}
@@ -480,6 +587,7 @@ module RefreshSync
       if @personal_nodes.empty?
         if scrubbed.digest == observation.digest
           @status = :shared
+          @shared_read_set = scrubbed.read_set
           # Stamped nodes make even a fully-shared surface deliverable as
           # targeted region replaces (real DOM targets, no dom_id contract);
           # unstamped surfaces keep the whole-partial update. Regions are
@@ -519,6 +627,7 @@ module RefreshSync
         @region_addresses = top_level(broadcastable)
         report_unbroadcastable(remainder)
         @status = :region_shared
+        @shared_read_set = scrubbed.read_set
         RefreshSync.stats[:region_promotions] += 1
         instrument("surface_promoted", viewers: @evidence.size, region: true, islands: islands)
       else
@@ -577,6 +686,9 @@ module RefreshSync
         "descriptor" => @descriptor&.to_h,
         "personal_nodes" => @personal_nodes.to_a.sort,
         "region_addresses" => @region_addresses,
+        "shared_read_set" => @shared_read_set&.to_h,
+        "diverged_viewers" => @diverged_viewers.to_a.sort,
+        "generation_mismatches" => @generation_mismatches.to_a.sort,
         "last_broadcast" => @last_broadcast && {
           "digest" => @last_broadcast[:digest],
           "generation" => @last_broadcast[:generation],
@@ -596,6 +708,9 @@ module RefreshSync
       @descriptor = h["descriptor"] && Descriptor.from_h(h["descriptor"])
       @personal_nodes = Set.new(h.fetch("personal_nodes", []))
       @region_addresses = h.fetch("region_addresses", [])
+      @shared_read_set = h["shared_read_set"] && ReadSet.from_h(h["shared_read_set"])
+      @diverged_viewers = Set.new(h.fetch("diverged_viewers", []))
+      @generation_mismatches = Set.new(h.fetch("generation_mismatches", []))
       lb = h["last_broadcast"]
       @last_broadcast = lb && {
         digest: lb["digest"], generation: lb["generation"], nodes: lb.fetch("nodes", {})

@@ -3,6 +3,9 @@ class CreateRefreshSyncTables < ActiveRecord::Migration[<%= ActiveRecord::Migrat
     create_table :refresh_sync_cohorts do |t|
       t.string :stream, null: false
       t.string :deploy_key, null: false
+      # Viewer identity (nil for unauthenticated pages): the key per-member
+      # divergence ejection and re-admission act on.
+      t.string :identity
       t.text :read_set_json, null: false
       t.text :surfaces_json, null: false, default: "[]"
       t.text :tables_json, null: false, default: "[]"

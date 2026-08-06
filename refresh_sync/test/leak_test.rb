@@ -66,33 +66,40 @@ class LeakTest < ActionDispatch::IntegrationTest
     assert_no_sentinel_broadcast
   end
 
-  # The residual window that runtime evidence CANNOT fully close: all
-  # promotion-time viewers render identically (nobody has the beta flag),
-  # the flag flips for one subscribed viewer afterwards, and the next write
-  # broadcasts content that is wrong for that viewer. The system heals on
-  # that viewer's next GET — but the broadcast in between is the window.
-  def test_per_user_flag_flip_window_exists_then_heals
+  # The former flag-flip window, now closed by per-member divergence: the
+  # flag write matches carol's read set but not the scrub render's, so
+  # carol is ejected to personal refresh the moment the flag flips — before
+  # any broadcast can be wrong for her — and the surface stays shared for
+  # everyone else instead of demoting. (Full walkthrough, including
+  # re-admission, in member_divergence_test.rb.)
+  def test_per_user_flag_flip_ejects_the_member_not_the_surface
     a = session_for(@alice)
     c = session_for(@carol)
     a.get "/vip"
     c.get "/vip"
+    stream_c = c.response.headers["X-RefreshSync-Stream"]
     assert_equal :shared, surface("vip_cards").status,
       "role diversity satisfied (user+admin) and nobody is beta: promotion is evidence-clean"
 
-    @carol.update!(beta: true) # users write; no cards-surface signal fires
+    @carol.update!(beta: true) # write to carol's delta row: ejection signal
+    assert_refreshes(stream_c, 1) # carol converges under her own credentials
+    assert surface("vip_cards").member_diverged?(@carol.id),
+      "the flag write ejects carol from shared delivery"
+    assert_equal :shared, surface("vip_cards").status,
+      "one member's divergence no longer demotes the surface for everyone"
 
     Card.create!(board: @board1, title: "Window write", status: "open")
     drain_debounce
-    assert_equal 1, RefreshSync.stats[:surface_broadcasts],
-      "THE WINDOW: a broadcast happened that is wrong for carol (no VIP lane)"
+    assert_equal 1, RefreshSync.stats[:surface_broadcasts]
     payload = ActiveSupport::JSON.decode(broadcasts(surface("vip_cards").stream).first)
     refute_includes payload, "VIP LANE", "scrubbed render can never emit privileged content"
+    assert_operator broadcasts(stream_c).size, :>=, 2,
+      "the broadcast is chased by a converge refresh for the ejected member"
 
-    c.get "/vip" # carol's next real render diverges from the broadcast
-    assert_equal :personal, surface("vip_cards").status
-    assert_equal :post_broadcast_divergence, surface("vip_cards").pin_reason
-    stream_a = a.response.headers["X-RefreshSync-Stream"]
-    assert_refreshes(stream_a, 1) # demotion converges viewers via refresh
+    c.get "/vip" # carol's own render carries her VIP lane; surface unharmed
+    assert_includes c.response.body, "VIP LANE"
+    assert_equal :shared, surface("vip_cards").status
+    assert surface("vip_cards").member_diverged?(@carol.id), "still personal until digests match"
     assert_no_sentinel_broadcast
   end
 

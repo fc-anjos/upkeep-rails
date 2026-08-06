@@ -57,16 +57,19 @@ module RefreshSync
       end
 
       register_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      viewer = Ambient.unobserved { RefreshSync.viewer_resolver&.call(request) }
       cohort = RefreshSync.store.register(
         read_set: recording.read_set,
         surfaces: recording.surfaces.map { |o| o.descriptor.name },
+        # Viewer identity rides on the cohort so a write to the member's own
+        # delta rows can eject exactly this member from shared delivery.
+        identity: viewer&.id&.to_s,
         # Region-digest baseline from THIS capture's render: the digests are
         # already computed for surface evidence, and they describe exactly
         # the page state this viewer holds — so the first region broadcast
         # can diff instead of sending every region.
         baselines: recording.surfaces.to_h { |o| [o.descriptor.name, o.node_digests || {}] }
       )
-      viewer = Ambient.unobserved { RefreshSync.viewer_resolver&.call(request) }
       recording.surfaces.each do |observation|
         surface = RefreshSync.registry.upsert(observation.descriptor.name)
         surface.observe(
@@ -91,7 +94,10 @@ module RefreshSync
         s = RefreshSync.registry.lookup(o.descriptor.name)
         next unless s
         generations << "#{o.descriptor.name}=#{s.generation}"
-        surface_streams << s.stream
+        # An ejected member's page must not subscribe to the shared surface
+        # stream at all — their delivery is personal Tier P (cohort stream)
+        # until their render matches the shared baseline again.
+        surface_streams << s.stream unless s.member_diverged?(viewer&.id)
       end
       response.set_header("X-RefreshSync-Generation", generations.join(",")) if generations.any?
 

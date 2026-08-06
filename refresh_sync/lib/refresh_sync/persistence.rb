@@ -29,6 +29,9 @@ module RefreshSync
         conn.create_table :refresh_sync_cohorts do |t|
           t.string :stream, null: false
           t.string :deploy_key, null: false
+          # Viewer identity (nil for unauthenticated pages): the key
+          # per-member divergence ejection and re-admission act on.
+          t.string :identity
           t.text :read_set_json, null: false
           t.text :surfaces_json, null: false, default: "[]"
           t.text :tables_json, null: false, default: "[]"
@@ -84,6 +87,7 @@ module RefreshSync
       CohortRow.create!(
         stream: stream,
         deploy_key: RefreshSync.deploy_key,
+        identity: identity,
         read_set_json: JSON.generate(read_set.to_h),
         surfaces_json: JSON.generate(surfaces),
         tables_json: JSON.generate(read_set.tables.keys),
@@ -150,6 +154,7 @@ module RefreshSync
       MemoryStore::Cohort.new(
         id: row.id, stream: row.stream, read_set: read_set,
         surfaces: JSON.parse(row.surfaces_json),
+        identity: row.identity,
         baselines: JSON.parse(row.baselines_json.presence || "{}")
       )
     end
