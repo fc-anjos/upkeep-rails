@@ -50,25 +50,32 @@ module RefreshSync
     end
 
     def refreshable?
-      locals.values.all? do |v|
-        if v.is_a?(ActiveRecord::Relation)
-          # Persistable+re-runnable only when the where clause is a faithful
-          # simple hash (rebuildable as klass.where(hash) in any process).
-          v.where_clause.ast.nil? || simple_relation?(v)
-        elsif v.is_a?(Array)
-          # A homogeneous array of persisted records (pagy hands templates
-          # plain Arrays) is rebuildable as an ordered id fetch. The page
-          # COMPOSITION is frozen at capture — a row entering the page shows
-          # up as scrub-render divergence and converges via refresh, so
-          # freshness still fails open.
-          record_array?(v)
-        elsif v.is_a?(ActiveRecord::Base)
-          v.persisted? # rebuildable as a pk fetch
-        else
-          v.is_a?(Numeric) || v.is_a?(String) || v.is_a?(Symbol) ||
-            v == true || v == false || v.nil?
-        end
+      locals.values.all? { |v| rebuildable_local?(v) }
+    end
+
+    def rebuildable_local?(v)
+      case v
+      when ActiveRecord::Relation
+        # Persistable+re-runnable only when the where clause is a faithful
+        # simple hash (rebuildable as klass.where(hash) in any process).
+        v.where_clause.ast.nil? || simple_relation?(v)
+      when Array
+        # A homogeneous array of persisted records (pagy hands templates
+        # plain Arrays) is rebuildable as an ordered id fetch. The page
+        # COMPOSITION is frozen at capture — a row entering the page shows
+        # up as scrub-render divergence and converges via refresh, so
+        # freshness still fails open.
+        record_array?(v)
+      when ActiveRecord::Base
+        v.persisted? # rebuildable as a pk fetch
+      else
+        scalar_local?(v)
       end
+    end
+
+    def scalar_local?(v)
+      v.is_a?(Numeric) || v.is_a?(String) || v.is_a?(Symbol) ||
+        v == true || v == false || v.nil?
     end
 
     def record_array?(v)
@@ -216,80 +223,7 @@ module RefreshSync
       @cohort_streams << cohort_stream
       @descriptor = observation.descriptor
       instrument("surface_observed", status: @status)
-      return persist! if @status == :personal
-
-      if ambient.any?
-        transition_to_personal(:"ambient_#{ambient.first}")
-        return persist!
-      end
-      if identity_bound
-        transition_to_personal(:identity_predicate)
-        return persist!
-      end
-      unless observation.descriptor.refreshable?
-        transition_to_personal(:unrefreshable_locals)
-        return persist!
-      end
-      return persist! unless viewer&.id # unauthenticated views never count
-
-      viewer_key = viewer.id.to_s
-
-      # Ejected member's own render: check for re-admission against the
-      # shared baseline (this generation's broadcast, or a peer's evidence).
-      # Match -> re-admitted, and the observation counts normally below.
-      # No match or no comparable baseline -> they stay on personal
-      # delivery; their observation must neither poison the evidence pool
-      # nor demote the surface (their divergence is known and contained).
-      if tier_s? && member_diverged?(viewer_key)
-        return persist! unless readmission_match?(observation)
-        readmit_member!(viewer_key)
-      end
-
-      divergent = divergent_addresses(observation, viewer_key)
-      fresh_divergence = divergent - @personal_nodes.to_a
-
-      if fresh_divergence.any? || whole_digest_diverges?(observation, viewer_key, divergent)
-        if localizable?(observation, divergent)
-          # Divergence confined to islands with a byte-shared stamped
-          # remainder: record the personal nodes and keep observing (or, on
-          # a promoted surface, demote only if the REMAINDER moved).
-          if tier_s? && remainder_divergence?(fresh_divergence)
-            transition_to_personal(:remainder_divergence)
-            return persist!
-          end
-          @personal_nodes.merge(fresh_divergence)
-        else
-          transition_to_personal(:digest_divergence)
-          return persist!
-        end
-      end
-
-      # Post-broadcast mismatch: the broadcast digests ARE an asymmetric
-      # authority (the anonymous truth), so a single viewer disagreeing with
-      # them is that VIEWER diverging — eject them, keep the surface shared.
-      # This is the backstop for entitlements with no delta-row write signal
-      # (constants, time, smuggled state). TWO independent identities
-      # disagreeing with the same broadcast is evidence the scrub render
-      # itself is wrong — the promotion bar in reverse — and demotes.
-      if tier_s? && @last_broadcast && @last_broadcast[:generation] == @generation
-        mismatch =
-          (shared? && @last_broadcast[:digest] != observation.digest) ||
-          (region_shared? && broadcast_remainder_mismatch?(observation))
-        if mismatch
-          @generation_mismatches << viewer_key
-          if @generation_mismatches.size >= 2
-            transition_to_personal(:post_broadcast_divergence)
-          else
-            eject_member!(viewer_key, reason: :post_broadcast_mismatch)
-          end
-          return persist!
-        end
-      end
-
-      @evidence[viewer_key] = {
-        digest: observation.digest, role: viewer.role, nodes: observation.node_digests || {}
-      }
-      try_promote(observation) if @status == :observing
+      absorb_observation(observation, viewer, ambient, identity_bound) unless @status == :personal
       persist!
     end
 
@@ -307,11 +241,8 @@ module RefreshSync
     # Runs on the dispatcher thread. Returns nil when nothing was broadcast.
     def broadcast!
       return nil unless tier_s?
-      begin
-        result = SharedRender.call(@descriptor)
-      rescue => e
-        instrument("scrubbed_render_failed", error: e.class.name, at: :broadcast)
-        transition_to_personal(:"scrubbed_render_error_#{e.class.name.demodulize.underscore}")
+      result = scrubbed_render(at: :broadcast)
+      unless result
         persist!
         return nil
       end
@@ -375,6 +306,85 @@ module RefreshSync
 
     private
 
+    # One observation, absorbed step by step; the first step that settles
+    # the surface's fate ends the chain.
+    def absorb_observation(observation, viewer, ambient, identity_bound)
+      if (reason = context_pin_reason(observation, ambient, identity_bound))
+        return transition_to_personal(reason)
+      end
+      return unless viewer&.id # unauthenticated views never count
+      viewer_key = viewer.id.to_s
+      return if diverged_member_stays?(observation, viewer_key)
+      return if divergence_demotes?(observation, viewer_key)
+      return if post_broadcast_backstop?(observation, viewer_key)
+      @evidence[viewer_key] = {
+        digest: observation.digest, role: viewer.role, nodes: observation.node_digests || {}
+      }
+      try_promote(observation) if @status == :observing
+    end
+
+    # Context that disqualifies sharing outright: ambient reads, identity
+    # predicates, locals a scrub render could not rebuild.
+    def context_pin_reason(observation, ambient, identity_bound)
+      return :"ambient_#{ambient.first}" if ambient.any?
+      return :identity_predicate if identity_bound
+      return :unrefreshable_locals unless observation.descriptor.refreshable?
+      nil
+    end
+
+    # Ejected member's own render: check for re-admission against the
+    # shared baseline (this generation's broadcast, or a peer's evidence).
+    # Match -> re-admitted, and the observation counts normally. No match
+    # or no comparable baseline -> they stay on personal delivery; their
+    # observation must neither poison the evidence pool nor demote the
+    # surface (their divergence is known and contained).
+    def diverged_member_stays?(observation, viewer_key)
+      return false unless tier_s? && member_diverged?(viewer_key)
+      return true unless readmission_match?(observation)
+      readmit_member!(viewer_key)
+      false
+    end
+
+    # Cross-viewer divergence: localizable to islands -> record and keep
+    # going; unlocalizable (or moving a promoted remainder) -> demote.
+    def divergence_demotes?(observation, viewer_key)
+      divergent = divergent_addresses(observation, viewer_key)
+      fresh = divergent - @personal_nodes.to_a
+      return false unless fresh.any? || whole_digest_diverges?(observation, viewer_key, divergent)
+      unless localizable?(observation, divergent)
+        transition_to_personal(:digest_divergence)
+        return true
+      end
+      if tier_s? && remainder_divergence?(fresh)
+        transition_to_personal(:remainder_divergence)
+        return true
+      end
+      @personal_nodes.merge(fresh)
+      false
+    end
+
+    # Post-broadcast mismatch: the broadcast digests ARE an asymmetric
+    # authority (the anonymous truth), so a single viewer disagreeing with
+    # them is that VIEWER diverging — eject them, keep the surface shared.
+    # This is the backstop for entitlements with no delta-row write signal
+    # (constants, time, smuggled state). TWO independent identities
+    # disagreeing with the same broadcast is evidence the scrub render
+    # itself is wrong — the promotion bar in reverse — and demotes.
+    def post_broadcast_backstop?(observation, viewer_key)
+      return false unless tier_s? && @last_broadcast && @last_broadcast[:generation] == @generation
+      mismatch =
+        (shared? && @last_broadcast[:digest] != observation.digest) ||
+        (region_shared? && broadcast_remainder_mismatch?(observation))
+      return false unless mismatch
+      @generation_mismatches << viewer_key
+      if @generation_mismatches.size >= 2
+        transition_to_personal(:post_broadcast_divergence)
+      else
+        eject_member!(viewer_key, reason: :post_broadcast_mismatch)
+      end
+      true
+    end
+
     # Region delivery: for each changed top-level stamped remainder node,
     # either targeted per-row streams (replace a changed iteration instance,
     # remove a vanished one) or a whole-region replace. Island content never
@@ -410,51 +420,50 @@ module RefreshSync
       groups = cohorts.group_by do |cohort|
         region_delivery_plan(result, cohort.baselines&.dig(@name) || {})
       end
-      single_group = groups.size == 1
-
-      delivered = []
-      groups.each do |plan, members|
-        whole, row_replaces, row_removes = plan
-        next if whole.empty? && row_replaces.empty? && row_removes.empty?
-
-        # A region whose text is unavailable (its bytes came from a warm
-        # cached fragment in the scrubbed render) cannot be sent — fail
-        # open to a refresh for these cohorts rather than sending nothing.
-        unrenderable = whole.reject { |address| result.node_texts[address] }
-        if unrenderable.any?
-          instrument("region_unrenderable_degrade", regions: unrenderable)
-          RefreshSync.stats[:region_degrades] += 1
-          members.each { |cohort| RefreshSync.debouncer.schedule(cohort.stream) }
-          next
-        end
-
-        streams = single_group ? [stream] : members.map(&:stream)
-        streams.each do |target_stream|
-          (whole + row_replaces).each do |address|
-            Turbo::StreamsChannel.broadcast_action_to(
-              target_stream,
-              action: :replace,
-              targets: "[data-rs-node='#{address}']",
-              html: result.node_texts[address],
-              attributes: generation_stamp
-            )
-            RefreshSync.stats[:region_broadcasts] += 1
-            RefreshSync.stats[:region_row_replaces] += 1 unless whole.include?(address)
-          end
-          row_removes.each do |address|
-            Turbo::StreamsChannel.broadcast_action_to(
-              target_stream, action: :remove, targets: "[data-rs-node='#{address}']",
-              attributes: generation_stamp
-            )
-            RefreshSync.stats[:region_row_removes] += 1
-          end
-        end
-        members.each { |cohort| RefreshSync.store.update_baseline(cohort.stream, @name, span) }
-        delivered.concat(whole + row_replaces + row_removes)
+      delivered = groups.flat_map do |plan, members|
+        deliver_region_group(plan, members, result, span, single: groups.size == 1)
       end
-
       instrument("surface_region_broadcast_sent", regions: delivered.uniq) if delivered.any?
       @last_broadcast = { digest: result.digest, generation: @generation, nodes: span }
+    end
+
+    def deliver_region_group(plan, members, result, span, single:)
+      whole, row_replaces, row_removes = plan
+      return [] if whole.empty? && row_replaces.empty? && row_removes.empty?
+      # A region whose text is unavailable (its bytes came from a warm
+      # cached fragment in the scrubbed render) cannot be sent — fail open
+      # to a refresh for these cohorts rather than sending nothing.
+      unrenderable = whole.reject { |address| result.node_texts[address] }
+      return degrade_unrenderable(members, unrenderable) if unrenderable.any?
+      streams = single ? [stream] : members.map(&:stream)
+      streams.each { |s| send_region_payloads(s, whole, row_replaces, row_removes, result) }
+      members.each { |cohort| RefreshSync.store.update_baseline(cohort.stream, @name, span) }
+      whole + row_replaces + row_removes
+    end
+
+    def degrade_unrenderable(members, unrenderable)
+      instrument("region_unrenderable_degrade", regions: unrenderable)
+      RefreshSync.stats[:region_degrades] += 1
+      members.each { |cohort| RefreshSync.debouncer.schedule(cohort.stream) }
+      []
+    end
+
+    def send_region_payloads(target_stream, whole, row_replaces, row_removes, result)
+      (whole + row_replaces).each do |address|
+        Turbo::StreamsChannel.broadcast_action_to(
+          target_stream, action: :replace, targets: "[data-rs-node='#{address}']",
+          html: result.node_texts[address], attributes: generation_stamp
+        )
+        RefreshSync.stats[:region_broadcasts] += 1
+        RefreshSync.stats[:region_row_replaces] += 1 unless whole.include?(address)
+      end
+      row_removes.each do |address|
+        Turbo::StreamsChannel.broadcast_action_to(
+          target_stream, action: :remove, targets: "[data-rs-node='#{address}']",
+          attributes: generation_stamp
+        )
+        RefreshSync.stats[:region_row_removes] += 1
+      end
     end
 
     # [whole_region_replaces, row_replaces, row_removes]
@@ -463,34 +472,52 @@ module RefreshSync
       row_replaces = []
       row_removes = []
       @region_addresses.each do |region|
-        new_span = span_digests(result.node_digests, region)
-        next if new_span.empty?
-        old_span = span_digests(previous, region)
-        next if new_span == old_span
-
-        new_inst, new_plain = new_span.partition { |a, _| Provenance.instance?(a) }.map(&:to_h)
-        old_inst, old_plain = old_span.partition { |a, _| Provenance.instance?(a) }.map(&:to_h)
-
-        inserted = new_inst.keys - old_inst.keys
-        removed = old_inst.keys - new_inst.keys
-        updated = (new_inst.keys & old_inst.keys).select { |a| new_inst[a] != old_inst[a] }
-        row_changes = inserted + removed + updated
-
-        changed_plain = (new_plain.keys | old_plain.keys).select { |a| new_plain[a] != old_plain[a] }
-        structural = changed_plain.select do |plain|
-          new_plain[plain] == Provenance::UNSOUND || old_plain[plain] == Provenance::UNSOUND ||
-            row_changes.none? { |i| ancestor_of_instance?(plain, i) }
-        end
-
-        if inserted.any? || structural.any? || old_span.empty? ||
-           updated.any? { |a| result.node_texts[a].nil? }
-          whole << region
-        else
-          row_replaces.concat(updated)
-          row_removes.concat(removed)
+        action, replaces, removes = region_plan(region, result, previous)
+        case action
+        when :whole then whole << region
+        when :rows
+          row_replaces.concat(replaces)
+          row_removes.concat(removes)
         end
       end
       [whole, row_replaces, row_removes]
+    end
+
+    # One region's delivery shape against one baseline: nil (unchanged),
+    # [:whole] (replace the region), or [:rows, replaces, removes]
+    # (targeted per-row streams — engages only when every change inside the
+    # region is a sound iteration instance already present in the baseline).
+    def region_plan(region, result, previous)
+      new_span = span_digests(result.node_digests, region)
+      old_span = span_digests(previous, region)
+      return nil if new_span.empty? || new_span == old_span
+      new_inst, new_plain = partition_span(new_span)
+      old_inst, old_plain = partition_span(old_span)
+      inserted = new_inst.keys - old_inst.keys
+      removed = old_inst.keys - new_inst.keys
+      updated = (new_inst.keys & old_inst.keys).select { |a| new_inst[a] != old_inst[a] }
+      structural = structural_plain_changes(new_plain, old_plain, inserted + removed + updated)
+      if inserted.any? || structural.any? || old_span.empty? ||
+         updated.any? { |a| result.node_texts[a].nil? }
+        [:whole]
+      else
+        [:rows, updated, removed]
+      end
+    end
+
+    def partition_span(span)
+      span.partition { |a, _| Provenance.instance?(a) }.map(&:to_h)
+    end
+
+    # Plain-address changes not explained by any row change (or marked
+    # unsound) are structural: the region's shape moved, not just a row.
+    def structural_plain_changes(new_plain, old_plain, row_changes)
+      (new_plain.keys | old_plain.keys)
+        .select { |a| new_plain[a] != old_plain[a] }
+        .select do |plain|
+          new_plain[plain] == Provenance::UNSOUND || old_plain[plain] == Provenance::UNSOUND ||
+            row_changes.none? { |i| ancestor_of_instance?(plain, i) }
+        end
     end
 
     # Every Tier S artifact carries the surface's write generation so the
@@ -558,17 +585,22 @@ module RefreshSync
     # correct either way, refresh delivery is never wrong).
     def readmission_match?(observation)
       if @last_broadcast && @last_broadcast[:generation] == @generation
-        return shared? ? @last_broadcast[:digest] == observation.digest
-                       : !broadcast_remainder_mismatch?(observation)
+        return broadcast_authority_match?(observation)
       end
+      peer_evidence_match?(observation)
+    end
+
+    def broadcast_authority_match?(observation)
+      return @last_broadcast[:digest] == observation.digest if shared?
+      !broadcast_remainder_mismatch?(observation)
+    end
+
+    def peer_evidence_match?(observation)
       return false if @evidence.empty?
-      if shared?
-        @evidence.values.any? { |e| e[:digest] == observation.digest }
-      else
-        remainder = (observation.node_digests || {}).keys - @personal_nodes.to_a
-        @evidence.values.any? do |e|
-          remainder.all? { |a| e[:nodes][a] == observation.node_digests[a] }
-        end
+      return @evidence.values.any? { |e| e[:digest] == observation.digest } if shared?
+      remainder = (observation.node_digests || {}).keys - @personal_nodes.to_a
+      @evidence.values.any? do |e|
+        remainder.all? { |a| e[:nodes][a] == observation.node_digests[a] }
       end
     end
 
@@ -631,69 +663,76 @@ module RefreshSync
     end
 
     def try_promote(observation)
-      return if @evidence.size < 2
-      if RefreshSync.require_role_diversity && @evidence.values.map { |e| e[:role] }.uniq.size < 2
-        return
-      end
-
-      scrubbed =
-        begin
-          SharedRender.call(@descriptor)
-        rescue => e
-          instrument("scrubbed_render_failed", error: e.class.name, at: :promotion)
-          transition_to_personal(:"scrubbed_render_error_#{e.class.name.demodulize.underscore}")
-          return
-        end
-
+      return unless promotion_bar_met?
+      scrubbed = scrubbed_render(at: :promotion) or return
       if @personal_nodes.empty?
-        if scrubbed.digest == observation.digest
-          @status = :shared
-          @shared_read_set = scrubbed.read_set
-          # Stamped nodes make even a fully-shared surface deliverable as
-          # targeted region replaces (real DOM targets, no dom_id contract);
-          # unstamped surfaces keep the whole-partial update. Regions are
-          # always PLAIN addresses — per-iteration instances change with the
-          # data, so they can be targeted inside a region but never anchor
-          # one.
-          @region_addresses = top_level(
-            (scrubbed.node_digests || {}).keys.select do |a|
-              !Provenance.instance?(a) && stamped?(scrubbed.node_texts[a], a)
-            end
-          )
-          report_unbroadcastable((scrubbed.node_digests || {}).keys) if @region_addresses.any?
-          RefreshSync.stats[:promotions] += 1
-          instrument("surface_promoted", viewers: @evidence.size, regions: @region_addresses)
-        else
-          transition_to_personal(:scrubbed_divergence)
-        end
-        return
+        promote_whole(observation, scrubbed)
+      else
+        promote_region(observation, scrubbed)
       end
+    end
 
-      # Region promotion: every remainder node must agree across all
-      # evidence AND with the anonymous scrubbed render.
+    # The evidence bar: at least two authenticated identities (and two
+    # roles when required) with current-generation evidence.
+    def promotion_bar_met?
+      return false if @evidence.size < 2
+      return true unless RefreshSync.require_role_diversity
+      @evidence.values.map { |e| e[:role] }.uniq.size >= 2
+    end
+
+    def scrubbed_render(at:)
+      SharedRender.call(@descriptor)
+    rescue => e
+      instrument("scrubbed_render_failed", error: e.class.name, at: at)
+      transition_to_personal(:"scrubbed_render_error_#{e.class.name.demodulize.underscore}")
+      nil
+    end
+
+    def promote_whole(observation, scrubbed)
+      return transition_to_personal(:scrubbed_divergence) unless scrubbed.digest == observation.digest
+      @status = :shared
+      @shared_read_set = scrubbed.read_set
+      # Stamped nodes make even a fully-shared surface deliverable as
+      # targeted region replaces (real DOM targets, no dom_id contract);
+      # unstamped surfaces keep the whole-partial update. Regions are
+      # always PLAIN addresses — per-iteration instances change with the
+      # data, so they can be targeted inside a region but never anchor one.
+      @region_addresses = top_level(broadcastable_addresses(scrubbed, (scrubbed.node_digests || {}).keys))
+      report_unbroadcastable((scrubbed.node_digests || {}).keys) if @region_addresses.any?
+      RefreshSync.stats[:promotions] += 1
+      instrument("surface_promoted", viewers: @evidence.size, regions: @region_addresses)
+    end
+
+    # Region promotion: every remainder node must agree across all
+    # evidence AND with the anonymous scrubbed render.
+    def promote_region(observation, scrubbed)
       remainder = (observation.node_digests || {}).keys - @personal_nodes.to_a
-      agreed = remainder.all? do |address|
+      return unless remainder_agreed?(observation, remainder)
+      unless remainder.all? { |a| scrubbed.node_digests[a] == observation.node_digests[a] }
+        return transition_to_personal(:scrubbed_divergence)
+      end
+      broadcastable = broadcastable_addresses(scrubbed, remainder)
+      if broadcastable.empty?
+        report_unbroadcastable(remainder)
+        return transition_to_personal(:no_broadcastable_regions)
+      end
+      @region_addresses = top_level(broadcastable)
+      report_unbroadcastable(remainder)
+      @status = :region_shared
+      @shared_read_set = scrubbed.read_set
+      RefreshSync.stats[:region_promotions] += 1
+      instrument("surface_promoted", viewers: @evidence.size, region: true, islands: islands)
+    end
+
+    def remainder_agreed?(observation, remainder)
+      remainder.all? do |address|
         @evidence.values.all? { |e| e[:nodes][address] == observation.node_digests[address] }
       end
-      return unless agreed
-      unless remainder.all? { |a| scrubbed.node_digests[a] == observation.node_digests[a] }
-        transition_to_personal(:scrubbed_divergence)
-        return
-      end
+    end
 
-      broadcastable = remainder.select do |a|
+    def broadcastable_addresses(scrubbed, addresses)
+      addresses.select do |a|
         !Provenance.instance?(a) && stamped?(scrubbed.node_texts[a], a)
-      end
-      if broadcastable.any?
-        @region_addresses = top_level(broadcastable)
-        report_unbroadcastable(remainder)
-        @status = :region_shared
-        @shared_read_set = scrubbed.read_set
-        RefreshSync.stats[:region_promotions] += 1
-        instrument("surface_promoted", viewers: @evidence.size, region: true, islands: islands)
-      else
-        report_unbroadcastable(remainder)
-        transition_to_personal(:no_broadcastable_regions)
       end
     end
 

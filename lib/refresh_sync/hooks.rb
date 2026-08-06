@@ -309,47 +309,54 @@ module RefreshSync
       ActiveRecord::Base.include(WriteObserver)
 
       ActiveSupport::Notifications.subscribe("sql.active_record") do |event|
-        payload = event.payload
-        recording = Recording.current
-        if recording && !recording.accounting? &&
-           !AUDIT_IGNORED_NAMES.include?(payload[:name]) &&
-           AUDIT_READ_SQL.match?(payload[:sql])
-          audit_unaccounted_read(recording, payload)
-        end
+        audit_sql_event(event.payload)
       end
-
-      # Raw SQL safety net: writes issued via execute/exec_query carry no
-      # model name; degrade them to a table-level change (deferred to
-      # commit). Detection is heuristic, but a false positive only costs an
-      # extra page refresh — refresh delivery makes double-detection
-      # harmless. Rails' own read/write classifier (write_query?, the one
-      # that marks transactions dirty) cross-checks the heuristic: a
-      # Rails-classified write our table extraction can't attribute is a
-      # completeness warning, never a silent miss.
       ActiveSupport::Notifications.subscribe("sql.active_record") do |event|
-        payload = event.payload
-        name = payload[:name]
-        next unless name.nil? || name == "SQL"
-        sql = payload[:sql]
-        if (match = RAW_WRITE_SQL.match(sql))
-          table = match[2]
-          if RefreshSync.watching?(table) && !RowIdentity.current_collector
-            RefreshSync.defer_to_commit { RefreshSync.report_bulk(table) }
-          end
-        elsif (connection = payload[:connection]) &&
-              connection.respond_to?(:write_query?, true) &&
-              connection.send(:write_query?, sql)
-          # No verb catalog needed here: Rails instruments transaction
-          # control as "TRANSACTION" and DDL as "SCHEMA", both already
-          # excluded by this subscriber's name gate — what reaches this
-          # branch is an unnamed statement Rails itself classifies as a
-          # write and our table extraction could not attribute.
-          RefreshSync.stats[:unattributed_writes] += 1
-          ActiveSupport::Notifications.instrument(
-            "unattributed_write.refresh_sync", sql_head: sql.to_s[0, 60]
-          )
-        end
+        observe_raw_sql_event(event.payload)
       end
+    end
+
+    def self.audit_sql_event(payload)
+      recording = Recording.current
+      return unless recording && !recording.accounting?
+      return if AUDIT_IGNORED_NAMES.include?(payload[:name])
+      return unless AUDIT_READ_SQL.match?(payload[:sql])
+      audit_unaccounted_read(recording, payload)
+    end
+
+    # Raw SQL safety net: writes issued via execute/exec_query carry no
+    # model name; degrade them to a table-level change (deferred to
+    # commit). Detection is heuristic, but a false positive only costs an
+    # extra page refresh — refresh delivery makes double-detection
+    # harmless. Rails' own read/write classifier (write_query?, the one
+    # that marks transactions dirty) cross-checks the heuristic: a
+    # Rails-classified write our table extraction can't attribute is a
+    # completeness warning, never a silent miss.
+    def self.observe_raw_sql_event(payload)
+      name = payload[:name]
+      return unless name.nil? || name == "SQL"
+      sql = payload[:sql]
+      if (match = RAW_WRITE_SQL.match(sql))
+        table = match[2]
+        if RefreshSync.watching?(table) && !RowIdentity.current_collector
+          RefreshSync.defer_to_commit { RefreshSync.report_bulk(table) }
+        end
+      elsif unattributable_write?(payload[:connection], sql)
+        # No verb catalog needed here: Rails instruments transaction
+        # control as "TRANSACTION" and DDL as "SCHEMA", both already
+        # excluded by this subscriber's name gate — what reaches this
+        # branch is an unnamed statement Rails itself classifies as a
+        # write and our table extraction could not attribute.
+        RefreshSync.stats[:unattributed_writes] += 1
+        ActiveSupport::Notifications.instrument(
+          "unattributed_write.refresh_sync", sql_head: sql.to_s[0, 60]
+        )
+      end
+    end
+
+    def self.unattributable_write?(connection, sql)
+      connection && connection.respond_to?(:write_query?, true) &&
+        connection.send(:write_query?, sql)
     end
   end
 end

@@ -91,32 +91,35 @@ module RefreshSync
     end
 
     # Was the predicate satisfied on this side? true / false / nil(unknown).
-    # :absent (row does not exist on that side) is definite false. Unknown
-    # attrs still answer pure-pk predicates through the synthesized id; an
-    # unknown BEFORE borrows the after answer when the write's SET columns
-    # are provably disjoint from the predicate's attrs (the write could not
-    # have changed the predicate's value).
+    # :absent (row does not exist on that side) is definite false.
     def side(pred, fact, row, which)
       attrs = row[which]
       return false if attrs == :absent
-      if attrs == :unknown
-        if pred.keys == ["id"]
-          return row[:id].nil? ? nil : satisfied?(pred, fact.table, { "id" => row[:id] })
-        end
-        if which == :before && columns_disjoint?(pred, fact.columns)
-          return side(pred, fact, row, :after)
-        end
-        return nil
-      end
+      return unknown_side(pred, fact, row, which) if attrs == :unknown
       known = row[:id].nil? ? attrs : attrs.merge("id" => row[:id])
       answer = satisfied?(pred, fact.table, known)
+      return answer unless answer.nil?
       # Partial attrs (a RETURNING projection) may not cover the predicate;
       # a definite answer stands, an unknown may still borrow across a
       # provably disjoint write.
-      if answer.nil? && which == :before && columns_disjoint?(pred, fact.columns)
-        return side(pred, fact, row, :after)
+      borrow_across_disjoint_write(pred, fact, row, which)
+    end
+
+    # Unknown attrs still answer pure-pk predicates through the row's own
+    # id (identity never changes), else may borrow across a disjoint write.
+    def unknown_side(pred, fact, row, which)
+      if pred.keys == ["id"]
+        return row[:id].nil? ? nil : satisfied?(pred, fact.table, { "id" => row[:id] })
       end
-      answer
+      borrow_across_disjoint_write(pred, fact, row, which)
+    end
+
+    # An unknown BEFORE borrows the after answer when the write's SET
+    # columns are provably disjoint from the predicate's attrs (the write
+    # could not have changed the predicate's value).
+    def borrow_across_disjoint_write(pred, fact, row, which)
+      return nil unless which == :before && columns_disjoint?(pred, fact.columns)
+      side(pred, fact, row, :after)
     end
 
     # Conjunction over the predicate's attrs with partial knowledge: any

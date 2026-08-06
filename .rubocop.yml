@@ -1,0 +1,26 @@
+# Complexity guardrail only. This is not a style config: it exists so the
+# decision-path methods that once grew a clause per feature (report_change
+# hit cyclomatic 26 before the verdict layer) can never quietly regrow.
+# Inline disables require a one-line justification comment; the goal is zero.
+AllCops:
+  DisabledByDefault: true
+  SuggestExtensions: false
+  NewCops: disable
+  TargetRubyVersion: 3.2
+  Include:
+    - "lib/**/*.rb"
+  Exclude:
+    # Generator templates contain ERB, not parseable Ruby.
+    - "lib/generators/**/templates/**/*"
+
+Metrics/CyclomaticComplexity:
+  Enabled: true
+  Max: 10
+
+Metrics/PerceivedComplexity:
+  Enabled: true
+  Max: 10
+
+Metrics/AbcSize:
+  Enabled: true
+  Max: 40

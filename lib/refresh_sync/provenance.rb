@@ -325,30 +325,40 @@ module RefreshSync
       def instrument_children(node, path)
         ARRAY_PROPS.each do |prop|
           next unless node.respond_to?(prop) && node.send(prop).is_a?(Array)
-          array = node.send(prop)
-          rewritten = []
-          array.each_with_index do |child, index|
-            child_path = path + ["#{prop}#{index}"]
-            if instrument?(child)
-              address = address_for(child_path)
-              stamp_element(child, address) if @stamp
-              instrument_children(child, child_path)
-              line = child.location&.start&.line || 0
-              rewritten << code_node("::RefreshSync::Provenance::Runtime.enter(#{address.inspect}, #{@file.inspect}, #{line}, @output_buffer)")
-              rewritten << child
-              rewritten << code_node("::RefreshSync::Provenance::Runtime.leave(@output_buffer)")
-            else
-              instrument_children(child, child_path) if child.respond_to?(:accept)
-              rewritten << child
-            end
-          end
-          array.replace(rewritten)
+          rewrite_children(node.send(prop), prop, path)
         end
 
         NODE_PROPS.each do |prop|
           next unless node.respond_to?(prop) && node.send(prop)
           instrument_children(node.send(prop), path + [prop.to_s])
         end
+      end
+
+      def rewrite_children(array, prop, path)
+        rewritten = []
+        array.each_with_index do |child, index|
+          child_path = path + ["#{prop}#{index}"]
+          if instrument?(child)
+            rewritten.concat(instrumented_nodes(child, child_path))
+          else
+            instrument_children(child, child_path) if child.respond_to?(:accept)
+            rewritten << child
+          end
+        end
+        array.replace(rewritten)
+      end
+
+      # The node wrapped in its enter/leave runtime markers.
+      def instrumented_nodes(child, child_path)
+        address = address_for(child_path)
+        stamp_element(child, address) if @stamp
+        instrument_children(child, child_path)
+        line = child.location&.start&.line || 0
+        [
+          code_node("::RefreshSync::Provenance::Runtime.enter(#{address.inspect}, #{@file.inspect}, #{line}, @output_buffer)"),
+          child,
+          code_node("::RefreshSync::Provenance::Runtime.leave(@output_buffer)")
+        ]
       end
 
       def instrument?(child)
@@ -510,34 +520,31 @@ module RefreshSync
         differing = addresses.select do |address|
           trace_a.text_for(address) != trace_b.text_for(address)
         end
-
-        ranges_a = trace_a.absolute_ranges
-        ranges_b = trace_b.absolute_ranges
-        covers = lambda do |outer, inner, ranges|
-          ro = ranges[outer]
-          ri = ranges[inner]
-          next false unless ro && ri && ri.any? { |_root, s, e| e > s }
-          ri.all? do |root, s, e|
-            ro.any? { |oroot, os, oe| root == oroot && os <= s && e <= oe }
-          end
-        end
-        depth = ->(address) { address.count(".") }
-        # Byte-equal ranges (a control-flow node and its only child) tie-break
-        # by path depth: the deeper node is the inner one.
-        encloses = lambda do |outer, inner|
-          next false unless covers.call(outer, inner, ranges_a) || covers.call(outer, inner, ranges_b)
-          if (covers.call(inner, outer, ranges_a) || covers.call(inner, outer, ranges_b))
-            depth.call(outer) < depth.call(inner)
-          else
-            true
-          end
-        end
-
+        range_maps = [trace_a.absolute_ranges, trace_b.absolute_ranges]
         innermost = differing.reject do |address|
-          differing.any? { |other| other != address && encloses.call(address, other) }
+          differing.any? { |other| other != address && encloses?(address, other, range_maps) }
         end
-
         { differing: differing.sort, innermost: innermost.sort, shared: (addresses - differing).sort }
+      end
+
+      # Byte-equal ranges (a control-flow node and its only child)
+      # tie-break by path depth: the deeper node is the inner one.
+      def encloses?(outer, inner, range_maps)
+        return false unless range_maps.any? { |ranges| covers?(outer, inner, ranges) }
+        if range_maps.any? { |ranges| covers?(inner, outer, ranges) }
+          outer.count(".") < inner.count(".")
+        else
+          true
+        end
+      end
+
+      def covers?(outer, inner, ranges)
+        ro = ranges[outer]
+        ri = ranges[inner]
+        return false unless ro && ri && ri.any? { |_root, s, e| e > s }
+        ri.all? do |root, s, e|
+          ro.any? { |oroot, os, oe| root == oroot && os <= s && e <= oe }
+        end
       end
     end
   end

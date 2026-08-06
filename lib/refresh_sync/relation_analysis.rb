@@ -71,22 +71,30 @@ module RefreshSync
     # Returns [table, attr_name, values] for supported nodes, nil otherwise.
     def simple_condition(node, allowed)
       case node
-      when Arel::Nodes::Equality
-        table, attr = attribute_of(node.left, allowed)
-        return nil unless attr
-        value = literal_value(node.right)
-        value == :opaque ? nil : [table, attr, [value]]
-      when Arel::Nodes::HomogeneousIn
-        return nil unless node.type == :in
-        table, attr = attribute_of(node.attribute, allowed)
-        return nil unless attr
-        [table, attr, node.casted_values]
-      when Arel::Nodes::In
-        table, attr = attribute_of(node.left, allowed)
-        return nil unless attr
-        values = Array(node.right).map { |v| literal_value(v) }
-        values.include?(:opaque) ? nil : [table, attr, values]
+      when Arel::Nodes::Equality then equality_condition(node, allowed)
+      when Arel::Nodes::HomogeneousIn then homogeneous_in_condition(node, allowed)
+      when Arel::Nodes::In then in_condition(node, allowed)
       end
+    end
+
+    def equality_condition(node, allowed)
+      table, attr = attribute_of(node.left, allowed)
+      return nil unless attr
+      value = literal_value(node.right)
+      value == :opaque ? nil : [table, attr, [value]]
+    end
+
+    def homogeneous_in_condition(node, allowed)
+      return nil unless node.type == :in
+      table, attr = attribute_of(node.attribute, allowed)
+      attr && [table, attr, node.casted_values]
+    end
+
+    def in_condition(node, allowed)
+      table, attr = attribute_of(node.left, allowed)
+      return nil unless attr
+      values = Array(node.right).map { |v| literal_value(v) }
+      values.include?(:opaque) ? nil : [table, attr, values]
     end
 
     def attribute_of(node, allowed)

@@ -100,62 +100,68 @@ module RefreshSync
 
     def work
       loop do
-        ready = []
-        netted = []
-        @mutex.synchronize do
-          if @due.empty?
-            @cond.wait(@mutex, 5)
-            next
-          end
-          wake_at = @due.values.map(&:due).min
-          wait_for = wake_at - now
-          if wait_for > 0
-            @cond.wait(@mutex, wait_for)
-            next
-          end
-          current = now
-          ready = @due.select { |_k, e| e.due <= current }.to_a
-          ready, netted = ready.partition { |_k, e| !netted_out?(e) }
-          netted.each { |key, _e| @due.delete(key) }
-
-          # Refresh budget: at most @refresh_budget refreshes per WINDOW
-          # (not per tick — two near-simultaneous ticks in one window must
-          # share the allowance); defer the rest with jitter.
-          if @refresh_budget
-            window_id = (current / @window).floor
-            if @budget_window != window_id
-              @budget_window = window_id
-              @budget_used = 0
-            end
-            allowance = [@refresh_budget - @budget_used, 0].max
-            refreshes = ready.select { |_k, e| e.kind == :refresh }
-            if refreshes.size > allowance
-              refreshes.drop(allowance).each do |key, entry|
-                entry.due = current + @window * (1 + rand * @jitter)
-                ready.delete([key, entry])
-                RefreshSync.stats[:refreshes_deferred] += 1
-              end
-            end
-            @budget_used += [refreshes.size, allowance].min
-          end
-          ready.each { |key, _e| @due.delete(key) }
-        end
+        ready, netted = next_batch
         netted.each do |key, _entry|
           RefreshSync.stats[:refreshes_netted] += 1
           ActiveSupport::Notifications.instrument("refresh_netted.refresh_sync", stream: key)
         end
-        ready.each do |key, entry|
-          begin
-            if @claimer && !@claimer.call(key, entry.claim_window)
-              RefreshSync.stats[:claims_lost] += 1
-              next
-            end
-            entry.action.call(entry)
-          rescue => e
-            warn "RefreshSync dispatch failed: #{e.class}: #{e.message}"
-          end
-        end
+        ready.each { |key, entry| dispatch(key, entry) }
       end
+    end
+
+    # Waits for the next due tick and returns [ready, netted] entries,
+    # both removed from the schedule; [[], []] when the wait was a wake-up
+    # with nothing due yet.
+    def next_batch
+      @mutex.synchronize do
+        if @due.empty?
+          @cond.wait(@mutex, 5)
+          return [[], []]
+        end
+        wait_for = @due.values.map(&:due).min - now
+        if wait_for > 0
+          @cond.wait(@mutex, wait_for)
+          return [[], []]
+        end
+        current = now
+        ready = @due.select { |_k, e| e.due <= current }.to_a
+        ready, netted = ready.partition { |_k, e| !netted_out?(e) }
+        netted.each { |key, _e| @due.delete(key) }
+        apply_refresh_budget(ready, current)
+        ready.each { |key, _e| @due.delete(key) }
+        [ready, netted]
+      end
+    end
+
+    # Refresh budget: at most @refresh_budget refreshes per WINDOW (not per
+    # tick — two near-simultaneous ticks in one window must share the
+    # allowance); defer the rest with jitter. Deferred entries stay in the
+    # schedule.
+    def apply_refresh_budget(ready, current)
+      return unless @refresh_budget
+      window_id = (current / @window).floor
+      if @budget_window != window_id
+        @budget_window = window_id
+        @budget_used = 0
+      end
+      allowance = [@refresh_budget - @budget_used, 0].max
+      refreshes = ready.select { |_k, e| e.kind == :refresh }
+      refreshes.drop(allowance).each do |key, entry|
+        entry.due = current + @window * (1 + rand * @jitter)
+        ready.delete([key, entry])
+        RefreshSync.stats[:refreshes_deferred] += 1
+      end
+      @budget_used += [refreshes.size, allowance].min
+    end
+
+    def dispatch(key, entry)
+      if @claimer && !@claimer.call(key, entry.claim_window)
+        RefreshSync.stats[:claims_lost] += 1
+        return
+      end
+      entry.action.call(entry)
+    rescue => e
+      warn "RefreshSync dispatch failed: #{e.class}: #{e.message}"
     end
   end
 end

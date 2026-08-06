@@ -47,28 +47,7 @@ module RefreshSync
         Thread.current.report_on_exception = false # caller handles via #value
         ActiveSupport::CurrentAttributes.clear_all
         begin
-          locals = descriptor.locals.transform_values do |value|
-            if value.is_a?(ActiveRecord::Relation)
-              value.reset
-            elsif descriptor.record_array?(value)
-              # Captured record objects hold captured attribute values; the
-              # scrub render must see current data — refetch by id, order
-              # preserved (page composition stays as captured).
-              klass = value.first.class
-              ids = value.map(&:id)
-              klass.where(id: ids).in_order_of(:id, ids).to_a
-            elsif value.is_a?(ActiveRecord::Base) && value.persisted?
-              value.class.find(value.id) # current data, never a captured object
-            else
-              value
-            end
-          end
-          recording = Recording.start
-          html = renderer.render(partial: descriptor.partial, locals: locals)
-          trace = recording.prov
-          node_digests = trace.node_digests_since({})
-          node_texts = trace.nodes.keys.to_h { |a| [a, trace.text_for(a)] }
-          [html, node_digests, node_texts, recording.read_set]
+          scrub_render(descriptor)
         ensure
           Recording.finish
           ActiveRecord::Base.connection_pool.release_connection
@@ -79,6 +58,31 @@ module RefreshSync
         html: html, digest: Digest::SHA256.hexdigest(html),
         node_digests: node_digests, node_texts: node_texts, read_set: read_set
       )
+    end
+
+    def self.scrub_render(descriptor)
+      locals = descriptor.locals.transform_values { |v| rebuild_local(descriptor, v) }
+      recording = Recording.start
+      html = renderer.render(partial: descriptor.partial, locals: locals)
+      trace = recording.prov
+      [html, trace.node_digests_since({}),
+       trace.nodes.keys.to_h { |a| [a, trace.text_for(a)] }, recording.read_set]
+    end
+
+    # Captured record objects hold captured attribute values; the scrub
+    # render must see current data — refetch by id, order preserved (page
+    # composition stays as captured).
+    def self.rebuild_local(descriptor, value)
+      if value.is_a?(ActiveRecord::Relation)
+        value.reset
+      elsif descriptor.record_array?(value)
+        ids = value.map(&:id)
+        value.first.class.where(id: ids).in_order_of(:id, ids).to_a
+      elsif value.is_a?(ActiveRecord::Base) && value.persisted?
+        value.class.find(value.id) # current data, never a captured object
+      else
+        value
+      end
     end
   end
 end

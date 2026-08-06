@@ -44,30 +44,32 @@ module RefreshSync
         Thread.current[DEPTH_KEY] = depth + 1
         marker = candidate ? recording.prov&.segment_marker : nil
         result = super
-        if candidate
-          descriptor_locals = locals.except(:template) # internal riders stay out
-          # virtual_path is "surfaces/_cards"; render(partial:) wants
-          # "surfaces/cards".
-          partial_name = template.virtual_path.sub(%r{(^|/)_([^/]+)\z}, '\1\2')
-          descriptor = Descriptor.new(
-            name: "auto:#{template.virtual_path}",
-            partial: partial_name, locals: descriptor_locals
-          )
-          if descriptor.refreshable?
-            html = result.body.to_s
-            node_digests = recording.prov ? recording.prov.node_digests_since(marker || {}) : {}
-            node_texts = node_digests.keys.to_h { |a| [a, recording.prov.text_for(a)] }
-            recording.record_surface(
-              name: descriptor.name, partial: descriptor.partial,
-              locals: descriptor_locals, html: html,
-              node_digests: node_digests, node_texts: node_texts
-            )
-            RefreshSync.stats[:auto_surface_candidates] += 1
-          end
-        end
+        _refresh_sync_record_candidate(recording, locals, template, marker, result) if candidate
         result
       ensure
         Thread.current[DEPTH_KEY] = depth
+      end
+
+      private
+
+      def _refresh_sync_record_candidate(recording, locals, template, marker, result)
+        descriptor_locals = locals.except(:template) # internal riders stay out
+        # virtual_path is "surfaces/_cards"; render(partial:) wants
+        # "surfaces/cards".
+        partial_name = template.virtual_path.sub(%r{(^|/)_([^/]+)\z}, '\1\2')
+        descriptor = Descriptor.new(
+          name: "auto:#{template.virtual_path}",
+          partial: partial_name, locals: descriptor_locals
+        )
+        return unless descriptor.refreshable?
+        node_digests = recording.prov ? recording.prov.node_digests_since(marker || {}) : {}
+        recording.record_surface(
+          name: descriptor.name, partial: descriptor.partial,
+          locals: descriptor_locals, html: result.body.to_s,
+          node_digests: node_digests,
+          node_texts: node_digests.keys.to_h { |a| [a, recording.prov.text_for(a)] }
+        )
+        RefreshSync.stats[:auto_surface_candidates] += 1
       end
     end
   end

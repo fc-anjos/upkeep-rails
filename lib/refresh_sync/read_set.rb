@@ -191,17 +191,28 @@ module RefreshSync
 
     def absorb_table(table, d)
       absorbed = Deps.empty
-      d.fetch("node_reads", {}).each do |address, nd|
-        nd.fetch("ids", []).each { |id| record_id(table, id, node: address); absorbed.ids << id }
-        nd.fetch("predicates", []).each { |p| record_predicate(table, p, node: address); absorbed.predicates << p }
-        nd.fetch("membership_predicates", []).each { |p| record_predicate(table, p, node: address, membership_only: true); absorbed.membership_predicates << p }
-        nd.fetch("table_reasons", []).each { |r| record_table(table, r.to_sym, node: address); absorbed.table_reasons << r.to_sym }
-      end
+      d.fetch("node_reads", {}).each { |address, nd| absorb_node(table, address, nd, absorbed) }
       d.fetch("columns", []).each { |c| record_column(table, c) }
       (d.fetch("ids", []) - absorbed.ids.to_a).each { |id| record_id(table, id) }
-      subtract_multiset(d.fetch("predicates", []), absorbed.predicates).each { |p| record_predicate(table, p) }
-      subtract_multiset(d.fetch("membership_predicates", []), absorbed.membership_predicates).each { |p| record_predicate(table, p, membership_only: true) }
-      subtract_multiset(d.fetch("table_reasons", []).map(&:to_sym), absorbed.table_reasons).each { |r| record_table(table, r) }
+      subtract_multiset(d.fetch("predicates", []), absorbed.predicates)
+        .each { |p| record_predicate(table, p) }
+      subtract_multiset(d.fetch("membership_predicates", []), absorbed.membership_predicates)
+        .each { |p| record_predicate(table, p, membership_only: true) }
+      subtract_multiset(d.fetch("table_reasons", []).map(&:to_sym), absorbed.table_reasons)
+        .each { |r| record_table(table, r) }
+    end
+
+    # Node-attributed dependencies replay through the record_* calls (so
+    # open slices receive them too); `absorbed` collects what was recorded
+    # so the page-level remainder is not double-absorbed.
+    def absorb_node(table, address, nd, absorbed)
+      nd.fetch("ids", []).each { |id| record_id(table, id, node: address); absorbed.ids << id }
+      nd.fetch("predicates", []).each { |p| record_predicate(table, p, node: address); absorbed.predicates << p }
+      nd.fetch("membership_predicates", []).each do |p|
+        record_predicate(table, p, node: address, membership_only: true)
+        absorbed.membership_predicates << p
+      end
+      nd.fetch("table_reasons", []).each { |r| record_table(table, r.to_sym, node: address); absorbed.table_reasons << r.to_sym }
     end
 
     # The page-level dependencies minus everything that was recorded under
