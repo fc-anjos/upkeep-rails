@@ -56,6 +56,13 @@ end
 RefreshSync.install!
 RefreshSync::ActiveRecordStore.setup!
 
+# Provenance: templates under test/views compile through Herb with the
+# node-bracketing visitor (byte-identical output); Pulse fixture views under
+# test/views/pulse additionally get data-rs-node stamps for region delivery.
+RefreshSync::Provenance.instrument_paths = [File.join(PROTO_ROOT, "test", "views")]
+RefreshSync::Provenance.stamp_paths = [File.join(PROTO_ROOT, "test", "views", "pulse")]
+RefreshSync::Provenance.install!
+
 class Board < ActiveRecord::Base
   has_many :cards
 end

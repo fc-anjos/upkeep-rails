@@ -27,6 +27,17 @@ module RefreshSync
       @surfaces = []
     end
 
+    # Render trace for provenance (node addresses); built lazily so captures
+    # of uninstrumented pages pay nothing.
+    def prov
+      @prov ||= Provenance::Trace.new
+    end
+
+    # Current node address without forcing a Trace into existence.
+    def prov_address
+      @prov&.current_address
+    end
+
     def ambient!(reason)
       @ambient << reason
     end
@@ -37,9 +48,10 @@ module RefreshSync
 
     def identity_bound? = @identity_bound
 
-    # Every AR record materialized from the database.
+    # Every AR record materialized from the database. Node address (when a
+    # provenance-instrumented template node is open) rides along as metadata.
     def record_instance(record)
-      @read_set.record_id(record.class.table_name, record.id)
+      @read_set.record_id(record.class.table_name, record.id, node: @prov&.current_address)
     end
 
     # A relation that just executed: extract simple membership predicates,

@@ -13,16 +13,17 @@ module RefreshSync
 
     def apply_to(recording)
       read_set = recording.read_set
+      node = recording.prov_address
       predicate, fallback_reason = extract_predicate
       if fallback_reason
-        read_set.record_table(@table, fallback_reason)
+        read_set.record_table(@table, fallback_reason, node: node)
       else
-        read_set.record_predicate(@table, predicate)
+        read_set.record_predicate(@table, predicate, node: node)
         # A predicate binding an identity-scoped column marks the whole
         # capture identity-bound: its surfaces stay Tier P.
         recording.identity_bound! if (predicate.keys & RefreshSync.identity_columns).any?
       end
-      joined_tables.each { |t| read_set.record_table(t, :joined_table) }
+      joined_tables.each { |t| read_set.record_table(t, :joined_table, node: node) }
     end
 
     private

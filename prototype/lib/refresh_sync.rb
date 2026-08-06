@@ -29,6 +29,7 @@ module RefreshSync
   autoload :ActiveRecordSurfaceRegistry, "refresh_sync/persistence"
   autoload :DbClaimer,        "refresh_sync/persistence"
   autoload :Health,           "refresh_sync/health"
+  autoload :Provenance,       "refresh_sync/provenance"
 
   Change = Struct.new(:table, :id, :kind, :old_attrs, :new_attrs, keyword_init: true)
   # kind: :insert, :update, :delete, :table (bulk/raw write, row identity unknown)

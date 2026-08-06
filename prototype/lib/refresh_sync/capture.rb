@@ -5,6 +5,7 @@ module RefreshSync
     extend ActiveSupport::Concern
 
     singleton_class.attr_accessor :enabled
+    singleton_class.attr_accessor :last_recording # test/introspection hook
     self.enabled = true
 
     class_methods do
@@ -26,6 +27,7 @@ module RefreshSync
         yield
       ensure
         Recording.finish
+        Capture.last_recording = recording
       end
 
       return unless response.successful? && response.media_type == "text/html"
