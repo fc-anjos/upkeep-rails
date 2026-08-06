@@ -210,6 +210,7 @@ module ProofHelpers
     RefreshSync.registry = RefreshSync::SurfaceRegistry.new
     RefreshSync.deploy_key = "deploy-1"
     RefreshSync.require_role_diversity = true
+    RefreshSync.payload_limit = nil
     RefreshSync.reset_stats!
     RefreshSync::Coercion.reset!
     RefreshSync::ActiveRecordStore.wipe!

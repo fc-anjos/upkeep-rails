@@ -145,11 +145,12 @@ module RefreshSync
       private
 
       # Post-render gate: the row is the truth, not this hydrated copy.
-      def live_shared?
+      def live_tier_s?
         fresh = ActiveRecordStore::SurfaceRow.find_by(id: row.id)
         return false unless fresh
         state = fresh.state_json.presence && JSON.parse(fresh.state_json)
-        (state ? state.fetch("status", "observing") : "observing") == "shared"
+        status = state ? state.fetch("status", "observing") : "observing"
+        %w[shared region_shared].include?(status)
       end
     end
 

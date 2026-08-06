@@ -69,16 +69,20 @@ module RefreshSync
       table_deps.node_reads.select { |_addr, deps| deps_match?(deps, change) }.keys
     end
 
-    # True when every node-attributed dependency matching this change is in
-    # `covered` — i.e. region delivery fully explains the change for this
-    # read set. False when the change also matches page-level dependencies
-    # recorded outside any node (controller reads).
-    def change_covered_by?(change, covered)
+    # True when every node-attributed dependency matching this change lies
+    # inside one of the `regions` (address match or descendant) — i.e.
+    # region delivery fully explains the change for this read set. False
+    # when the change also matches page-level dependencies recorded outside
+    # any node (controller reads).
+    def change_covered_by?(change, regions)
       table_deps = @tables[change.table]
       return false unless table_deps
       matched = matching_node_addresses(change)
       return false if matched.empty?
-      return false unless (matched - covered).empty?
+      inside = matched.all? do |address|
+        regions.any? { |region| address == region || address.start_with?("#{region}.") }
+      end
+      return false unless inside
       controller_deps = controller_only_deps(table_deps)
       !deps_match?(controller_deps, change)
     end

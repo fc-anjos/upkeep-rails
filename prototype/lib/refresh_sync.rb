@@ -48,6 +48,12 @@ module RefreshSync
     def require_role_diversity = @require_role_diversity.nil? ? true : @require_role_diversity
     def renderer_class = @renderer_class ||= ActionController::Base
 
+    # Tier S transport payload limit in bytes (nil = unlimited). Real cable
+    # adapters have hard caps — Postgres LISTEN/NOTIFY tops out at 8KB — so
+    # an oversized shared payload degrades THAT delivery to a refresh, loudly.
+    attr_writer :payload_limit
+    def payload_limit = @payload_limit
+
     def stats = @stats ||= Hash.new(0)
     def reset_stats! = @stats = Hash.new(0)
 
@@ -75,9 +81,20 @@ module RefreshSync
           surface if surface && surface.tables.include?(change.table)
         end
         covering.each { |s| touched_surfaces << s }
-        # Tier S only when a promoted surface covers the change; otherwise
-        # this cohort falls back to a Tier P refresh.
-        refresh_streams << cohort.stream unless covering.any?(&:shared?)
+        # Tier S only when a promoted surface covers the change. A fully
+        # :shared surface covers any change to its tables. A :region_shared
+        # surface covers the change only when every matched node dependency
+        # of this cohort falls inside its broadcastable regions — otherwise
+        # the cohort still needs a refresh (personal islands and controller
+        # reads converge via Tier P; region updates never substitute for
+        # changes they don't carry).
+        covered =
+          covering.any?(&:shared?) ||
+          covering.any? do |s|
+            s.region_shared? && cohort.read_set &&
+              cohort.read_set.change_covered_by?(change, region_span(s))
+          end
+        refresh_streams << cohort.stream unless covered
       end
 
       touched_surfaces.each do |surface|
@@ -86,7 +103,7 @@ module RefreshSync
         # change are never compared against each other (that would produce
         # false identity pins whenever a write lands between two viewers).
         surface.bump_generation
-        if surface.shared?
+        if surface.shared? || surface.region_shared?
           # Schedule by KEY, not by hydrated object: the closure rehydrates
           # through this process's registry at dispatch time, so a demotion
           # persisted by any process between schedule and fire is seen.
@@ -106,6 +123,8 @@ module RefreshSync
     def report_bulk(table)
       report_change(Change.new(table: table, kind: :table))
     end
+
+    def region_span(surface) = surface.region_addresses
 
     def install!
       Hooks.install!

@@ -61,12 +61,16 @@ module RefreshSync
       RelationAnalysis.new(relation).apply_to(self)
     end
 
-    # A shared_surface region rendered during this capture.
-    def record_surface(name:, partial:, locals:, html:)
+    # A shared_surface region rendered during this capture. Node digests are
+    # the per-node evidence for region-level promotion; node texts carry the
+    # data-rs-node stamps that mark broadcastable regions.
+    def record_surface(name:, partial:, locals:, html:, node_digests: {}, node_texts: {})
       descriptor = Descriptor.new(name: name, partial: partial, locals: locals)
       @surfaces << SurfaceObservation.new(
         descriptor: descriptor,
-        digest: Digest::SHA256.hexdigest(html)
+        digest: Digest::SHA256.hexdigest(html),
+        node_digests: node_digests,
+        node_texts: node_texts
       )
     end
   end

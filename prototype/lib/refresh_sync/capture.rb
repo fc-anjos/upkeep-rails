@@ -56,8 +56,17 @@ module RefreshSync
   # the partial normally for this viewer and records the surface evidence.
   module SurfaceHelper
     def shared_surface(name, partial:, **locals)
+      recording = Recording.current
+      marker = recording&.prov&.segment_marker
       html = render(partial: partial, locals: locals)
-      Recording.current&.record_surface(name: name, partial: partial, locals: locals, html: html)
+      if recording
+        node_digests = recording.prov.node_digests_since(marker || {})
+        node_texts = node_digests.keys.to_h { |a| [a, recording.prov.text_for(a)] }
+        recording.record_surface(
+          name: name, partial: partial, locals: locals, html: html,
+          node_digests: node_digests, node_texts: node_texts
+        )
+      end
       html
     end
   end
