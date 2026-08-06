@@ -27,8 +27,8 @@ class ReadDoorsTest < ActionDispatch::IntegrationTest
       stream = stream_for("/doors/open_count")
       assert stream, "count-only page must register a cohort"
       deps = RefreshSync::Capture.last_recording.read_set.tables.fetch("cards")
-      assert_includes deps.predicates, { "status" => ["open"] },
-        "the calculate door must record the counted predicate"
+      assert_includes deps.membership_predicates, { "status" => ["open"] },
+        "the calculate door must record the counted predicate as membership-only"
       assert_empty events, "hooked doors must not trip the audit"
 
       Card.create!(board: @board1, title: "Newly open", status: "open")
@@ -43,6 +43,14 @@ class ReadDoorsTest < ActionDispatch::IntegrationTest
     assert_no_refresh(stream)
   end
 
+  # A count sees membership only: an in-place content move inside the
+  # counted set is provably invisible to it and schedules nothing.
+  def test_count_page_ignores_in_place_content_moves
+    stream = stream_for("/doors/open_count")
+    @card1.update!(title: "Renamed, still open")
+    assert_no_refresh(stream)
+  end
+
   def test_pluck_page_depends_on_the_plucked_predicate
     stream = stream_for("/doors/open_titles")
     deps = RefreshSync::Capture.last_recording.read_set.tables.fetch("cards")
@@ -54,7 +62,7 @@ class ReadDoorsTest < ActionDispatch::IntegrationTest
   def test_exists_page_depends_on_the_tested_predicate
     stream = stream_for("/doors/any_open")
     deps = RefreshSync::Capture.last_recording.read_set.tables.fetch("cards")
-    assert_includes deps.predicates, { "status" => ["open"] }
+    assert_includes deps.membership_predicates, { "status" => ["open"] }
     Card.create!(board: @board1, title: "Another open", status: "open")
     assert_refreshes(stream, 1)
   end

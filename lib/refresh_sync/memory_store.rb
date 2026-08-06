@@ -49,6 +49,21 @@ module RefreshSync
       @mutex.synchronize { @watched_tables.include?(table) }
     end
 
+    # Columns appearing in registered cohort predicates for `table` — the
+    # RETURNING projection candidates (derived from evidence, never
+    # configured).
+    def predicate_columns(table)
+      @mutex.synchronize do
+        @cohorts.values.each_with_object(Set.new) do |cohort, columns|
+          deps = cohort.read_set.tables[table]
+          next unless deps
+          (deps.predicates + deps.membership_predicates).each do |pred|
+            columns.merge(pred.keys.map(&:to_s))
+          end
+        end.to_a
+      end
+    end
+
     # Subscription bookkeeping for the channel hook: first verified
     # subscription activates the cohort, later ones are reconnects.
     def mark_subscribed(stream)

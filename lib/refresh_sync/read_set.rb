@@ -17,12 +17,16 @@ module RefreshSync
   # comparisons go through Coercion so a JSON-reloaded read set still
   # matches live writes (Date vs "2026-01-01", 5 vs "5", ...).
   class ReadSet
-    Deps = Struct.new(:ids, :predicates, :table_reasons) do
-      def self.empty = new(Set.new, [], [])
+    # membership_predicates: predicates recorded from doors that see only
+    # set membership (count/exists) — an in-place content move is invisible
+    # to them, so their :in_place verdict downgrades to :irrelevant.
+    Deps = Struct.new(:ids, :predicates, :table_reasons, :membership_predicates) do
+      def self.empty = new(Set.new, [], [], [])
     end
 
-    TableDeps = Struct.new(:ids, :predicates, :table_reasons, :node_reads, :columns) do
-      def self.empty = new(Set.new, [], [], {}, Set.new)
+    TableDeps = Struct.new(:ids, :predicates, :table_reasons, :node_reads,
+                           :columns, :membership_predicates) do
+      def self.empty = new(Set.new, [], [], {}, Set.new, [])
     end
 
     def initialize
@@ -46,10 +50,14 @@ module RefreshSync
 
     # An empty predicate is meaningful: it comes from an unscoped relation
     # (Card.all) and correctly matches every change to the table.
-    def record_predicate(table, predicate, node: nil)
-      deps(table).predicates << predicate
-      node_deps(table, node).predicates << predicate if node
-      slices.each { |s| s.record_predicate(table, predicate, node: node) }
+    # membership_only marks predicates from doors that see set membership
+    # but never row content (count/exists).
+    def record_predicate(table, predicate, node: nil, membership_only: false)
+      predicate_list(deps(table), membership_only) << predicate
+      predicate_list(node_deps(table, node), membership_only) << predicate if node
+      slices.each do |s|
+        s.record_predicate(table, predicate, node: node, membership_only: membership_only)
+      end
     end
 
     def record_table(table, reason, node: nil)
@@ -93,26 +101,17 @@ module RefreshSync
     # slices receive it too. Page-level entries that merely mirror node
     # entries are not double-absorbed.
     def absorb(h)
-      h.each do |table, d|
-        node_ids = []
-        node_predicates = []
-        node_reasons = []
-        d.fetch("node_reads", {}).each do |address, nd|
-          nd.fetch("ids", []).each { |id| record_id(table, id, node: address); node_ids << id }
-          nd.fetch("predicates", []).each { |p| record_predicate(table, p, node: address); node_predicates << p }
-          nd.fetch("table_reasons", []).each { |r| record_table(table, r.to_sym, node: address); node_reasons << r.to_sym }
-        end
-        d.fetch("columns", []).each { |c| record_column(table, c) }
-        (d.fetch("ids", []) - node_ids).each { |id| record_id(table, id) }
-        subtract_multiset(d.fetch("predicates", []), node_predicates).each { |p| record_predicate(table, p) }
-        subtract_multiset(d.fetch("table_reasons", []).map(&:to_sym), node_reasons).each { |r| record_table(table, r) }
-      end
+      h.each { |table, d| absorb_table(table, d) }
     end
 
-    def matches?(change)
+    def matches?(change) = Verdict.relevant?(verdict(change))
+
+    # The page-level verdict of a fact against this read set: what happened
+    # to the page's dependency membership. :irrelevant means no work at all.
+    def verdict(change)
       table_deps = @tables[change.table]
-      return false unless table_deps
-      deps_match?(table_deps, change)
+      return :irrelevant unless table_deps
+      Verdict.of(table_deps, change)
     end
 
     # Node addresses whose own recorded dependencies match this change —
@@ -143,38 +142,30 @@ module RefreshSync
 
     def to_h
       @tables.to_h do |table, d|
-        [table, {
-          "ids" => d.ids.to_a,
-          "predicates" => d.predicates.map { |p| p.transform_keys(&:to_s) },
-          "table_reasons" => d.table_reasons.map(&:to_s),
+        [table, serialize_deps(d).merge(
           "columns" => d.columns.to_a,
-          "node_reads" => d.node_reads.to_h do |addr, nd|
-            [addr, {
-              "ids" => nd.ids.to_a,
-              "predicates" => nd.predicates.map { |p| p.transform_keys(&:to_s) },
-              "table_reasons" => nd.table_reasons.map(&:to_s)
-            }]
-          end
-        }]
+          "node_reads" => d.node_reads.transform_values { |nd| serialize_deps(nd) }
+        )]
       end
     end
 
     def self.from_h(h)
       rs = new
       h.each do |table, d|
-        deps = rs.deps(table)
-        deps.ids.merge(d.fetch("ids", []))
-        d.fetch("predicates", []).each { |p| deps.predicates << p }
-        d.fetch("table_reasons", []).each { |r| deps.table_reasons << r.to_sym }
-        deps.columns.merge(d.fetch("columns", []))
+        load_deps(rs.deps(table), d)
+        rs.deps(table).columns.merge(d.fetch("columns", []))
         d.fetch("node_reads", {}).each do |addr, nd|
-          node = rs.node_deps(table, addr)
-          node.ids.merge(nd.fetch("ids", []))
-          nd.fetch("predicates", []).each { |p| node.predicates << p }
-          nd.fetch("table_reasons", []).each { |r| node.table_reasons << r.to_sym }
+          load_deps(rs.node_deps(table, addr), nd)
         end
       end
       rs
+    end
+
+    def self.load_deps(deps, h)
+      deps.ids.merge(h.fetch("ids", []))
+      h.fetch("predicates", []).each { |p| deps.predicates << p }
+      h.fetch("membership_predicates", []).each { |p| deps.membership_predicates << p }
+      h.fetch("table_reasons", []).each { |r| deps.table_reasons << r.to_sym }
     end
 
     private
@@ -183,29 +174,34 @@ module RefreshSync
       @slices ||= []
     end
 
-    def deps_match?(deps, change)
-      return true if deps.table_reasons.any?
-      # Exact-id bulk write (RETURNING / insert_all result): row identity is
-      # known, attrs are not — id matching is precise, predicate matching
-      # stays conservative (the changed row may have entered the set).
-      if change.kind == :bulk_rows
-        return true if change.ids.any? { |cid| deps.ids.any? { |i| Coercion.same?(change.table, "id", i, cid) } }
-        # Predicates can't be evaluated without attrs — conservative match —
-        # EXCEPT pure primary-key predicates (a find/find_by page), which
-        # the known ids answer exactly.
-        return deps.predicates.any? do |pred|
-          if pred.keys == ["id"]
-            pred["id"].any? { |v| change.ids.any? { |cid| Coercion.same?(change.table, "id", v, cid) } }
-          else
-            true
-          end
-        end
+    def predicate_list(deps, membership_only)
+      membership_only ? deps.membership_predicates : deps.predicates
+    end
+
+    def deps_match?(deps, change) = Verdict.relevant?(Verdict.of(deps, change))
+
+    def serialize_deps(d)
+      {
+        "ids" => d.ids.to_a,
+        "predicates" => d.predicates.map { |p| p.transform_keys(&:to_s) },
+        "membership_predicates" => d.membership_predicates.map { |p| p.transform_keys(&:to_s) },
+        "table_reasons" => d.table_reasons.map(&:to_s)
+      }
+    end
+
+    def absorb_table(table, d)
+      absorbed = Deps.empty
+      d.fetch("node_reads", {}).each do |address, nd|
+        nd.fetch("ids", []).each { |id| record_id(table, id, node: address); absorbed.ids << id }
+        nd.fetch("predicates", []).each { |p| record_predicate(table, p, node: address); absorbed.predicates << p }
+        nd.fetch("membership_predicates", []).each { |p| record_predicate(table, p, node: address, membership_only: true); absorbed.membership_predicates << p }
+        nd.fetch("table_reasons", []).each { |r| record_table(table, r.to_sym, node: address); absorbed.table_reasons << r.to_sym }
       end
-      return true if change.kind == :table && (deps.ids.any? || deps.predicates.any?)
-      if change.id && deps.ids.any? { |i| Coercion.same?(change.table, "id", i, change.id) }
-        return true
-      end
-      deps.predicates.any? { |pred| predicate_hit?(pred, change) }
+      d.fetch("columns", []).each { |c| record_column(table, c) }
+      (d.fetch("ids", []) - absorbed.ids.to_a).each { |id| record_id(table, id) }
+      subtract_multiset(d.fetch("predicates", []), absorbed.predicates).each { |p| record_predicate(table, p) }
+      subtract_multiset(d.fetch("membership_predicates", []), absorbed.membership_predicates).each { |p| record_predicate(table, p, membership_only: true) }
+      subtract_multiset(d.fetch("table_reasons", []).map(&:to_sym), absorbed.table_reasons).each { |r| record_table(table, r) }
     end
 
     # The page-level dependencies minus everything that was recorded under
@@ -213,13 +209,12 @@ module RefreshSync
     # node-level — so subtracting the node-attributed ones leaves controller
     # reads).
     def controller_only_deps(table_deps)
-      node_ids = table_deps.node_reads.values.flat_map { |d| d.ids.to_a }.to_set
-      node_predicates = table_deps.node_reads.values.flat_map(&:predicates)
-      node_reasons = table_deps.node_reads.values.flat_map(&:table_reasons)
+      node = table_deps.node_reads.values
       Deps.new(
-        table_deps.ids - node_ids,
-        subtract_multiset(table_deps.predicates, node_predicates),
-        subtract_multiset(table_deps.table_reasons, node_reasons)
+        table_deps.ids - node.flat_map { |d| d.ids.to_a }.to_set,
+        subtract_multiset(table_deps.predicates, node.flat_map(&:predicates)),
+        subtract_multiset(table_deps.table_reasons, node.flat_map(&:table_reasons)),
+        subtract_multiset(table_deps.membership_predicates, node.flat_map(&:membership_predicates))
       )
     end
 
@@ -230,17 +225,6 @@ module RefreshSync
         remaining.delete_at(index) if index
       end
       remaining
-    end
-
-    # A predicate hits when the row satisfies it after the write (it entered
-    # or lives in the set) or satisfied it before (it left the set).
-    def predicate_hit?(predicate, change)
-      [change.new_attrs, change.old_attrs].compact.any? do |attrs|
-        predicate.all? do |attr, values|
-          attrs.key?(attr.to_s) &&
-            values.any? { |v| Coercion.same?(change.table, attr, v, attrs[attr.to_s]) }
-        end
-      end
     end
   end
 end

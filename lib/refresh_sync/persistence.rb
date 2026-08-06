@@ -182,6 +182,19 @@ module RefreshSync
       end
     end
 
+    # Columns appearing in registered cohort predicates for `table` — the
+    # RETURNING projection candidates (derived from stored evidence).
+    def predicate_columns(table)
+      ids = CohortTableRow.where(table_name: table).select(:cohort_id)
+      CohortRow.where(id: ids).pluck(:read_set_json).each_with_object(Set.new) do |json, columns|
+        deps = JSON.parse(json)[table]
+        next unless deps
+        (deps.fetch("predicates", []) + deps.fetch("membership_predicates", [])).each do |pred|
+          columns.merge(pred.keys)
+        end
+      end.to_a
+    end
+
     def cohorts_for_surface(name)
       CohortRow.where("surfaces_json LIKE ?", "%#{("\"" + name + "\"")}%").map do |row|
         hydrate_cohort(row)

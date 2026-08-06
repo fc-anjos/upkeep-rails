@@ -11,7 +11,7 @@ module RefreshSync
       @table = @klass.table_name
     end
 
-    def apply_to(recording)
+    def apply_to(recording, membership_only: false)
       read_set = recording.read_set
       node = recording.prov_address
       joined = joined_tables
@@ -20,7 +20,7 @@ module RefreshSync
         read_set.record_table(@table, fallback_reason, node: node)
       else
         own = predicates.fetch(@table, {})
-        read_set.record_predicate(@table, own, node: node)
+        read_set.record_predicate(@table, own, node: node, membership_only: membership_only)
         # A predicate binding an identity-scoped column marks the whole
         # capture identity-bound: its surfaces stay Tier P.
         recording.identity_bound! if (own.keys & RefreshSync.identity_columns).any?
@@ -29,11 +29,11 @@ module RefreshSync
         # A joined table whose OWN columns are constrained by simple
         # conditions gets those as its predicate (a row can only enter or
         # leave the join result by satisfying them before or after the
-        # write — predicate_hit? checks both sides). No conditions, or any
-        # analysis fallback: the whole joined table stays a dependency.
+        # write — the verdict layer checks both sides). No conditions, or
+        # any analysis fallback: the whole joined table stays a dependency.
         pred = fallback_reason ? nil : predicates[t]
         if pred&.any?
-          read_set.record_predicate(t, pred, node: node)
+          read_set.record_predicate(t, pred, node: node, membership_only: membership_only)
           recording.identity_bound! if (pred.keys & RefreshSync.identity_columns).any?
         else
           read_set.record_table(t, :joined_table, node: node)

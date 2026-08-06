@@ -15,7 +15,14 @@ module RefreshSync
   module RowIdentity
     COLLECTOR_KEY = :refresh_sync_row_identity_collector
 
-    Collector = Struct.new(:table, :primary_key, :ids)
+    # Beyond the primary key, the RETURNING clause also projects the
+    # columns that appear in registered cohort predicates for the table
+    # (bounded, derived from stored read-set evidence — never configured),
+    # so bulk facts carry per-row after-values and the verdict layer can
+    # prove writes irrelevant instead of conservatively refreshing.
+    MAX_PROJECTED_COLUMNS = 8
+
+    Collector = Struct.new(:table, :primary_key, :ids, :projected, :rows)
 
     @capability = {}
     @hooked = {}
@@ -23,16 +30,17 @@ module RefreshSync
 
     class << self
       # Runs a bulk write with id collection armed for `relation`'s table.
-      # Yields the collector; after the block, collector.ids holds the exact
-      # changed ids when the adapter hook engaged, else stays empty.
+      # After the block: ids holds the exact changed ids when the adapter
+      # hook engaged (else stays empty), rows the projected after-values.
       def collecting(relation)
         klass = relation.klass
         adapter_class = klass.connection_pool.with_connection { |c| arm!(c) }
         prev = Thread.current[COLLECTOR_KEY]
-        collector = Collector.new(klass.table_name, klass.primary_key, [])
+        collector = Collector.new(klass.table_name, klass.primary_key, [],
+                                  projected_columns(klass), {})
         collector = nil unless collector.primary_key.is_a?(String) && capable?(adapter_class)
         Thread.current[COLLECTOR_KEY] = collector
-        [yield, collector&.ids || []]
+        [yield, collector&.ids || [], collector&.rows || {}]
       ensure
         Thread.current[COLLECTOR_KEY] = prev
       end
@@ -47,6 +55,20 @@ module RefreshSync
       end
 
       private
+
+      # Predicate-relevant columns for the table, validated against the
+      # model's real columns (so the extended RETURNING can never produce a
+      # SQL error plain-pk RETURNING would not). Deterministically bounded:
+      # a page whose predicates reference more than the cap keeps id-only
+      # collection — unprojected columns stay unknown, which is the normal
+      # conservative path, not a degradation.
+      def projected_columns(klass)
+        store = RefreshSync.store
+        return [] unless store.respond_to?(:predicate_columns)
+        columns = store.predicate_columns(klass.table_name) - [klass.primary_key]
+        columns.select { |c| klass.column_names.include?(c) }
+               .sort.first(MAX_PROJECTED_COLUMNS)
+      end
 
       # Prepend the hook on the CONCRETE adapter class of the live
       # connection (adapters override exec_update/exec_delete, so the
@@ -116,12 +138,19 @@ module RefreshSync
         return nil if sql.match?(/\breturning\b/i)
         match = TARGET_SQL.match(sql)
         return nil unless match && match[1] == collector.table
-        "#{sql} RETURNING #{quote_column_name(collector.primary_key)}"
+        columns = [collector.primary_key, *collector.projected]
+        "#{sql} RETURNING #{columns.map { |c| quote_column_name(c) }.join(', ')}"
       end
 
       def _refresh_sync_collect(sql, name, binds)
         result = internal_exec_query(sql, name, binds)
-        RowIdentity.current_collector.ids.concat(result.rows.map(&:first))
+        collector = RowIdentity.current_collector
+        result.rows.each do |row|
+          collector.ids << row.first
+          if collector.projected.any?
+            collector.rows[row.first] = collector.projected.zip(row.drop(1)).to_h
+          end
+        end
         result.length
       end
     end

@@ -25,7 +25,13 @@ module RefreshSync
         recording = Recording.current
         return super unless recording
         result = recording.accounting { super }
-        recording.record_relation(self)
+        # A whole-row count sees membership only: an in-place content move
+        # cannot change it. Any other aggregate (sum/min/max/avg, count of
+        # a nullable column) depends on row content and stays a full
+        # predicate dependency.
+        recording.record_relation(
+          self, membership_only: _refresh_sync_membership_count?(operation, column_name)
+        )
         _refresh_sync_record_columns(recording, [column_name])
         result
       end
@@ -51,7 +57,8 @@ module RefreshSync
           else where(klass.primary_key => conditions)
           end
         if relation
-          recording.record_relation(relation)
+          # exists? sees membership only, never row content.
+          recording.record_relation(relation, membership_only: true)
         else
           recording.read_set.record_table(
             klass.table_name, :exists_with_opaque_conditions, node: recording.prov_address
@@ -61,6 +68,12 @@ module RefreshSync
       end
 
       private
+
+      def _refresh_sync_membership_count?(operation, column_name)
+        return false unless operation.to_s == "count"
+        column_name.nil? || column_name == :all ||
+          column_name.to_s == "*" || column_name.to_s == klass.primary_key
+      end
 
       # Plain column names from a pluck/calculate column list; Arel nodes
       # and star are skipped (missing column evidence only widens, never
@@ -168,11 +181,12 @@ module RefreshSync
       def update_all(updates)
         table = klass.table_name
         return super unless RefreshSync.watching?(table)
-        result, ids = RowIdentity.collecting(self) { super }
+        result, ids, rows = RowIdentity.collecting(self) { super }
         return result if result == 0
         columns = _refresh_sync_set_columns(updates)
         RefreshSync.defer_to_commit do
-          RefreshSync.report_bulk(table, ids: ids.presence, columns: columns)
+          RefreshSync.report_bulk(table, ids: ids.presence, columns: columns,
+                                  rows: rows.presence, op: :update)
         end
         result
       end
@@ -180,10 +194,10 @@ module RefreshSync
       def delete_all
         table = klass.table_name
         return super unless RefreshSync.watching?(table)
-        result, ids = RowIdentity.collecting(self) { super }
+        result, ids, = RowIdentity.collecting(self) { super }
         return result if result == 0
         RefreshSync.defer_to_commit do
-          RefreshSync.report_bulk(table, ids: ids.presence)
+          RefreshSync.report_bulk(table, ids: ids.presence, op: :delete)
         end
         result
       end
@@ -221,8 +235,9 @@ module RefreshSync
               consequence: :bulk_writes_match_table_level
             )
           end
+          op = respond_to?(:update_duplicates?, true) && send(:update_duplicates?) ? :upsert : :insert
           RefreshSync.defer_to_commit do
-            RefreshSync.report_bulk(table, ids: ids.presence)
+            RefreshSync.report_bulk(table, ids: ids.presence, op: op)
           end
         end
         result

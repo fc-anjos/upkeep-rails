@@ -108,10 +108,10 @@ module RefreshSync
 
     # A relation that just executed: extract simple membership predicates,
     # degrade to table-level with a reason when analysis can't be exact.
-    def record_relation(relation)
+    def record_relation(relation, membership_only: false)
       return if OWN_TABLES.include?(relation.klass.table_name)
       RefreshSync.stats[:relations_analyzed] += 1
-      RelationAnalysis.new(relation).apply_to(self)
+      RelationAnalysis.new(relation).apply_to(self, membership_only: membership_only)
     end
 
     # A statement-cache execution (Model.find / find_by / association

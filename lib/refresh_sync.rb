@@ -35,13 +35,57 @@ module RefreshSync
   autoload :Streams,          "refresh_sync/streams"
   autoload :RowIdentity,      "refresh_sync/row_identity"
   autoload :AutoSurfaces,     "refresh_sync/auto_surfaces"
+  autoload :Verdict,          "refresh_sync/verdict"
+  autoload :Dispatch,         "refresh_sync/dispatch"
 
-  Change = Struct.new(:table, :id, :kind, :old_attrs, :new_attrs, :columns, :ids, keyword_init: true)
-  # kind: :insert, :update, :delete       - one row, attrs known
-  #       :bulk_rows                      - exact row ids known, attrs unknown
-  #       :table                          - bulk/raw write, row identity unknown
+  # One observed committed write.
+  #   kind: :insert, :update, :delete - one row, full attrs known
+  #         :bulk_rows               - exact row ids known; `op` says which
+  #                                    write (:update/:delete/:insert/:upsert);
+  #                                    `rows` may carry projected after-attrs
+  #                                    ({id => {column => value}}, RETURNING)
+  #         :table                   - bulk/raw write, row identity unknown
   # columns: changed column names when statically known (update_all SET keys,
   # previous_changes); nil means "assume all columns" (safe coarseness).
+  # An unknowable before-state is an honest first-class :unknown that flows
+  # through verdicts conservatively — it never raises and never vanishes.
+  Fact = Struct.new(:table, :id, :kind, :op, :old_attrs, :new_attrs,
+                    :columns, :ids, :rows, keyword_init: true) do
+    def operation
+      op || (kind == :bulk_rows || kind == :table ? nil : kind)
+    end
+
+    def row_ids = ids || (id.nil? ? [] : [id])
+
+    # Uniform row view for verdict evaluation: attrs are a Hash when known,
+    # :unknown when the row exists on that side but its values do not ride
+    # the fact, :absent when the row does not exist on that side. A
+    # row-level fact with no id still describes one row — of unknown
+    # identity — and must flow through conservatively, never vanish.
+    def each_row
+      identities = row_ids.empty? ? [nil] : row_ids
+      identities.map { |rid| { id: rid, before: before_state, after: after_state(rid) } }
+    end
+
+    private
+
+    def before_state
+      case operation
+      when :insert then :absent
+      when :update, :delete then old_attrs || :unknown
+      else :unknown
+      end
+    end
+
+    def after_state(rid)
+      case operation
+      when :delete then :absent
+      when nil then :unknown
+      else new_attrs || rows&.dig(rid) || :unknown
+      end
+    end
+  end
+  Change = Fact
 
   class << self
     attr_writer :store, :debouncer, :registry
@@ -110,101 +154,33 @@ module RefreshSync
 
     def watching?(table) = store.watching?(table)
 
-    # Entry point for every observed committed write. Routes each affected
-    # cohort to Tier S (a shared surface covers the changed table and is
-    # promoted) or Tier P (debounced refresh).
+    # Entry point for every observed committed write. Verdict-driven
+    # routing: each affected cohort goes to Tier S (a promoted surface
+    # covers the change for that member) or Tier P (debounced refresh),
+    # carrying the fact's verdict so provably unnecessary refreshes can be
+    # netted out inside the debounce window.
     def report_change(change)
-      if ignored_table?(change.table)
-        # Misuse detector: an ignored table some ACTIVE cohort depends on
-        # means pages are silently going stale — warn loudly, still skip.
-        if watching?(change.table)
-          stats[:ignored_writes_warned] += 1
-          ActiveSupport::Notifications.instrument(
-            "ignored_table_write_skipped.refresh_sync",
-            table: change.table, watched: true
-          )
-        end
-        return
-      end
+      return report_ignored_write(change) if ignored_table?(change.table)
       return unless watching?(change.table)
       stats[:writes_analyzed] += 1
-
-      # A write committed during a captured GET carries that GET's request
-      # id; the refresh tag is stamped with it so Turbo's native client-side
-      # guard breaks the GET -> write -> refresh -> GET loop on the origin
-      # tab. Writes from POST boundaries carry nil: the origin tab is just
-      # another subscriber and receives the refresh like everyone else.
-      origin_request_id = Recording.current&.request_id
-
-      refresh_streams = Set.new
-      touched_surfaces = Set.new
-      # One hydrated surface object per name for this whole change, so a
-      # member ejection and the generation bump land on the same state (two
-      # hydrations of the same row would overwrite each other on persist).
-      hydrated = Hash.new { |h, name| h[name] = registry.lookup(name) }
-      store.matching_cohorts(change).each do |cohort|
-        surfaces = cohort.surfaces.filter_map { |name| hydrated[name] }
-        covering = surfaces.select { |s| s.tables.include?(change.table) }
-        covering.each { |s| touched_surfaces << s }
-
-        # Per-member divergence: this change matches the member's read set,
-        # but a promoted surface's scrub render never read anything it
-        # touches — so it changed something only this member depends on
-        # (their user row, a role row). Shared delivery is now wrong for
-        # THEM specifically: eject them to personal refresh, leave the
-        # surface (and everyone else) shared.
-        ejected = false
-        if cohort.identity
-          surfaces.each do |s|
-            next unless s.personal_change?(change)
-            s.eject_member!(cohort.identity, reason: :delta_row_write)
-            ejected = true
-          end
-        end
-
-        # Tier S only when a promoted surface covers the change FOR THIS
-        # MEMBER. A fully :shared surface covers any change to its tables. A
-        # :region_shared surface covers the change only when every matched
-        # node dependency of this cohort falls inside its broadcastable
-        # regions — otherwise the cohort still needs a refresh (personal
-        # islands and controller reads converge via Tier P; region updates
-        # never substitute for changes they don't carry). An ejected member
-        # is never covered: their delivery is personal until re-admission.
-        covered = !ejected && !region_broadcast_disabled? && covering.any? do |s|
-          next false if s.member_diverged?(cohort.identity)
-          s.shared? ||
-            (s.region_shared? && cohort.read_set &&
-              cohort.read_set.change_covered_by?(change, region_span(s)))
-        end
-        refresh_streams << cohort.stream unless covered
-      end
-
-      touched_surfaces.each do |surface|
-        # Every covering write advances the surface's evidence generation —
-        # even while :observing — so digests from before and after a data
-        # change are never compared against each other (that would produce
-        # false identity pins whenever a write lands between two viewers).
-        surface.bump_generation
-        if (surface.shared? || surface.region_shared?) && !region_broadcast_disabled?
-          # Schedule by KEY, not by hydrated object: the closure rehydrates
-          # through this process's registry at dispatch time, so a demotion
-          # persisted by any process between schedule and fire is seen.
-          # (A closure-captured surface holds a stale :shared status — the
-          # cross-process demotion race.)
-          scheduling_registry = registry
-          name = surface.name
-          deploy_key = surface.deploy_key
-          debouncer.schedule("surface:#{surface.key}", kind: :broadcast) do
-            scheduling_registry.lookup(name, deploy_key: deploy_key)&.broadcast!
-          end
-        end
-      end
-      refresh_streams.each { |stream| debouncer.schedule(stream, request_id: origin_request_id) }
+      Dispatch.new(change).call
     end
 
-    def report_bulk(table, ids: nil, columns: nil)
+    # Misuse detector: an ignored table some ACTIVE cohort depends on means
+    # pages are silently going stale — warn loudly, still skip.
+    def report_ignored_write(change)
+      return unless watching?(change.table)
+      stats[:ignored_writes_warned] += 1
+      ActiveSupport::Notifications.instrument(
+        "ignored_table_write_skipped.refresh_sync",
+        table: change.table, watched: true
+      )
+    end
+
+    def report_bulk(table, ids: nil, columns: nil, rows: nil, op: nil)
       kind = ids ? :bulk_rows : :table
-      report_change(Change.new(table: table, kind: kind, ids: ids, columns: columns))
+      report_change(Fact.new(table: table, kind: kind, ids: ids,
+                             columns: columns, rows: rows, op: op))
     end
 
     def region_span(surface) = surface.region_addresses

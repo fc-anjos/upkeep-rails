@@ -14,8 +14,16 @@ module RefreshSync
   # coalescing: the entry is dispatched only if the claim is won (backed by a
   # unique DB row in the AR store; each process computes the same window id
   # from the wall clock at schedule time).
+  #
+  # Verdict netting: refresh schedules may carry the (fact, verdict) that
+  # caused them. A single row that ENTERS the page's dependency set and
+  # LEAVES it again inside one window nets to nothing — the page never
+  # showed it, the debounced refresh would repaint an identical page — so
+  # the entry is dropped at fire time. Anything unprovable (bulk facts,
+  # :maybe verdicts, schedules with no fact) marks the entry dirty and
+  # fires normally: netting only ever removes work it can prove away.
   class Debouncer
-    Entry = Struct.new(:due, :kind, :action, :request_id, :claim_window)
+    Entry = Struct.new(:due, :kind, :action, :request_id, :claim_window, :net, :dirty)
 
     def initialize(window: 0.3, broadcaster: nil, refresh_budget: nil, jitter: 0.3, claimer: nil)
       @window = window
@@ -29,15 +37,17 @@ module RefreshSync
       @thread = nil
     end
 
-    def schedule(key, kind: :refresh, request_id: nil, &action)
+    def schedule(key, kind: :refresh, request_id: nil, fact: nil, verdict: nil, &action)
       action ||= default_action(key)
       @mutex.synchronize do
-        if (entry = @due[key])
-          entry.request_id = nil if entry.request_id != request_id
-        else
+        entry = @due[key]
+        unless entry
           claim_window = ((Time.now.to_f + @window) / @window).floor
-          @due[key] = Entry.new(now + @window, kind, action, request_id, claim_window)
+          entry = @due[key] = Entry.new(now + @window, kind, action, request_id, claim_window, {}, false)
+        else
+          entry.request_id = nil if entry.request_id != request_id
         end
+        note_verdict(entry, fact, verdict)
         ensure_worker
         @cond.signal
       end
@@ -65,6 +75,24 @@ module RefreshSync
 
     def now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
+    # Only single-row facts with definite verdicts participate in netting;
+    # everything else marks the entry dirty (it fires normally).
+    def note_verdict(entry, fact, verdict)
+      if fact.nil? || verdict.nil? || verdict == :maybe || fact.row_ids.size != 1
+        entry.dirty = true
+        return
+      end
+      pair = entry.net[[fact.table, fact.row_ids.first]] ||= [verdict, verdict]
+      pair[1] = verdict
+    end
+
+    # A refresh whose every tracked row entered the page's dependency set
+    # and left it again inside this window repaints an identical page.
+    def netted_out?(entry)
+      entry.kind == :refresh && !entry.dirty && entry.net.any? &&
+        entry.net.values.all? { |first, last| first == :enter && last == :leave }
+    end
+
     def ensure_worker
       return if @thread&.alive?
       @thread = Thread.new { work }
@@ -73,6 +101,7 @@ module RefreshSync
     def work
       loop do
         ready = []
+        netted = []
         @mutex.synchronize do
           if @due.empty?
             @cond.wait(@mutex, 5)
@@ -86,6 +115,8 @@ module RefreshSync
           end
           current = now
           ready = @due.select { |_k, e| e.due <= current }.to_a
+          ready, netted = ready.partition { |_k, e| !netted_out?(e) }
+          netted.each { |key, _e| @due.delete(key) }
 
           # Refresh budget: at most @refresh_budget refreshes per WINDOW
           # (not per tick — two near-simultaneous ticks in one window must
@@ -108,6 +139,10 @@ module RefreshSync
             @budget_used += [refreshes.size, allowance].min
           end
           ready.each { |key, _e| @due.delete(key) }
+        end
+        netted.each do |key, _entry|
+          RefreshSync.stats[:refreshes_netted] += 1
+          ActiveSupport::Notifications.instrument("refresh_netted.refresh_sync", stream: key)
         end
         ready.each do |key, entry|
           begin
