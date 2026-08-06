@@ -75,6 +75,7 @@ module RefreshSync
     # skipped write emits a loud warning instead of silently going stale.
     DEFAULT_IGNORED_TABLES = %w[
       refresh_sync_cohorts refresh_sync_surfaces refresh_sync_claims
+      refresh_sync_cohort_tables
       schema_migrations ar_internal_metadata sessions
       active_storage_blobs active_storage_attachments active_storage_variant_records
       audits versions

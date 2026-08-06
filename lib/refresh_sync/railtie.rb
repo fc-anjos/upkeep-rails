@@ -17,6 +17,7 @@ module RefreshSync
     # engine; attach the subscription observer once the app is fully booted.
     config.after_initialize do
       RefreshSync::Streams.attach! if defined?(::Turbo)
+      RefreshSync::Health.check_cable_topology!
     end
   end
 end

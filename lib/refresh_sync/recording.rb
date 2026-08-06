@@ -43,7 +43,8 @@ module RefreshSync
     # dependencies — a page depending on the cohort table is a feedback
     # loop, not a data dependency. Distinct from the user-facing ignore
     # list, whose tables ARE recorded so the misuse detector can warn.
-    OWN_TABLES = %w[refresh_sync_cohorts refresh_sync_surfaces refresh_sync_claims].freeze
+    OWN_TABLES = %w[refresh_sync_cohorts refresh_sync_surfaces refresh_sync_claims
+                    refresh_sync_cohort_tables].freeze
 
     # --- read-door accounting (capture-completeness audit) -----------------
     # Every hooked read door wraps its query execution in `accounting`; the

@@ -74,3 +74,36 @@ class HealthTest < ActionDispatch::IntegrationTest
     end
   end
 end
+
+class CableTopologyTest < ActiveSupport::TestCase
+  def capture_warns
+    logger = Struct.new(:lines) do
+      def warn(msg) = lines << msg
+    end.new([])
+    [logger, yield(logger)]
+  end
+
+  def test_async_adapter_with_multiple_workers_is_broken
+    logger, verdict = capture_warns do |l|
+      RefreshSync::Health.check_cable_topology!(adapter: "async", web_concurrency: "4", logger: l)
+    end
+    assert_equal :broken, verdict
+    assert_match(/WILL be silently lost/, logger.lines.first)
+  end
+
+  def test_async_adapter_single_process_still_warns
+    logger, verdict = capture_warns do |l|
+      RefreshSync::Health.check_cable_topology!(adapter: "async", web_concurrency: nil, logger: l)
+    end
+    assert_equal :single_process_only, verdict
+    assert_match(/per-process/, logger.lines.first)
+  end
+
+  def test_cross_process_adapters_pass_silently
+    logger, verdict = capture_warns do |l|
+      RefreshSync::Health.check_cable_topology!(adapter: "solid_cable", web_concurrency: "4", logger: l)
+    end
+    assert_equal :ok, verdict
+    assert_empty logger.lines
+  end
+end

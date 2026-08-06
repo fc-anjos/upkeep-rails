@@ -161,19 +161,23 @@ module RefreshSync
     def eject_member!(viewer_id, reason:)
       key = viewer_id.to_s
       return if @diverged_viewers.include?(key)
-      @diverged_viewers << key
-      @evidence.delete(key) # their pre-flip evidence no longer describes them
-      RefreshSync.stats[:member_ejections] += 1
-      instrument("member_diverged", viewer: key, reason: reason)
-      persist!
+      mutate do
+        next if @diverged_viewers.include?(key)
+        @diverged_viewers << key
+        @evidence.delete(key) # their pre-flip evidence no longer describes them
+        RefreshSync.stats[:member_ejections] += 1
+        instrument("member_diverged", viewer: key, reason: reason)
+      end
     end
 
     def readmit_member!(viewer_id)
       key = viewer_id.to_s
-      return unless @diverged_viewers.delete?(key)
-      RefreshSync.stats[:member_readmissions] += 1
-      instrument("member_readmitted", viewer: key)
-      persist!
+      return unless @diverged_viewers.include?(key)
+      mutate do
+        next unless @diverged_viewers.delete?(key)
+        RefreshSync.stats[:member_readmissions] += 1
+        instrument("member_readmitted", viewer: key)
+      end
     end
 
     def observe(observation, viewer:, cohort_stream:, ambient:, identity_bound:)
@@ -261,10 +265,11 @@ module RefreshSync
     # evidence — digests across a data change are incomparable. Structural
     # island knowledge survives.
     def bump_generation
-      @generation += 1
-      @evidence = {}
-      @generation_mismatches = Set.new
-      persist!
+      mutate do
+        @generation += 1
+        @evidence = {}
+        @generation_mismatches = Set.new
+      end
     end
 
     # Runs on the dispatcher thread. Returns nil when nothing was broadcast.
@@ -571,6 +576,15 @@ module RefreshSync
 
     # Overridden by persistence-backed subclasses.
     def persist! = nil
+
+    # A small, self-contained state mutation. The block must be
+    # re-appliable: persistence-backed subclasses retry it against freshly
+    # reloaded state when another process persisted concurrently
+    # (optimistic lock), so neither side's update is lost.
+    def mutate
+      yield
+      persist!
+    end
 
     # Dispatch claim for the post-render gate. In-memory surfaces are the
     # single copy in a single process, so the in-memory status IS the store

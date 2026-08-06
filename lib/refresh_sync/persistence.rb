@@ -23,6 +23,13 @@ module RefreshSync
       self.table_name = "refresh_sync_claims"
     end
 
+    # One row per (cohort, table it depends on): the indexed inverse of the
+    # read set's table list, so write matching is an indexed lookup instead
+    # of a tables_json LIKE scan.
+    class CohortTableRow < ActiveRecord::Base
+      self.table_name = "refresh_sync_cohort_tables"
+    end
+
     def self.setup!
       conn = ActiveRecord::Base.connection
       unless conn.table_exists?(:refresh_sync_cohorts)
@@ -34,13 +41,21 @@ module RefreshSync
           t.string :identity
           t.text :read_set_json, null: false
           t.text :surfaces_json, null: false, default: "[]"
-          t.text :tables_json, null: false, default: "[]"
           t.text :baselines_json, null: false, default: "{}"
           t.datetime :heartbeat_at
           # First verified cable subscription stamps this; later
           # subscriptions on the same stream are reconnects (resync refresh).
           t.datetime :activated_at
         end
+        conn.add_index :refresh_sync_cohorts, :stream, unique: true
+      end
+      unless conn.table_exists?(:refresh_sync_cohort_tables)
+        conn.create_table :refresh_sync_cohort_tables do |t|
+          t.bigint :cohort_id, null: false
+          t.string :table_name, null: false
+        end
+        conn.add_index :refresh_sync_cohort_tables, :table_name
+        conn.add_index :refresh_sync_cohort_tables, :cohort_id
       end
       unless conn.table_exists?(:refresh_sync_surfaces)
         conn.create_table :refresh_sync_surfaces do |t|
@@ -54,6 +69,10 @@ module RefreshSync
           # update atomically.
           t.string :status, null: false, default: "observing"
           t.datetime :dispatched_at
+          # Optimistic lock: two processes persisting surface state
+          # concurrently (say, ejecting different members) must not
+          # lose either update — the stale writer reloads and reapplies.
+          t.integer :lock_version, null: false, default: 0
           t.text :state_json
         end
         conn.add_index :refresh_sync_surfaces, [:name, :deploy_key], unique: true
@@ -69,35 +88,80 @@ module RefreshSync
 
     def self.wipe!
       CohortRow.delete_all
+      CohortTableRow.delete_all
       SurfaceRow.delete_all
       ClaimRow.delete_all
     end
 
     WATCH_CACHE_TTL = 0.05
 
+    # Lifecycle bounds: the tables must not grow without limit.
+    #   - a cohort whose page never opened a cable subscription is dead
+    #     weight after UNACTIVATED_TTL (tab closed before connecting,
+    #     crawler with cable blocked, ...)
+    #   - an activated cohort with no heartbeat (no live subscription
+    #     touch) for COHORT_TTL has no browser behind it anymore
+    #   - a claim row outlives its debounce window by definition; anything
+    #     older than CLAIM_TTL is a dead claim
+    # Sweeping is opportunistic: piggybacked on registration at most once
+    # per SWEEP_INTERVAL, so no separate process or scheduler is required.
+    UNACTIVATED_TTL = 10 * 60
+    COHORT_TTL = 6 * 60 * 60
+    CLAIM_TTL = 60 * 60
+    SWEEP_INTERVAL = 60
+
     def initialize
       @watch_cache = nil
       @watch_cache_at = 0.0
       @mutex = Mutex.new
+      @last_sweep_at = 0.0
     end
 
     def register(read_set:, surfaces: [], baselines: {}, identity: nil)
       id = SecureRandom.hex(8)
       stream = "refresh_sync:cohort:#{id}"
-      CohortRow.create!(
+      row = CohortRow.create!(
         stream: stream,
         deploy_key: RefreshSync.deploy_key,
         identity: identity,
         read_set_json: JSON.generate(read_set.to_h),
         surfaces_json: JSON.generate(surfaces),
-        tables_json: JSON.generate(read_set.tables.keys),
         baselines_json: JSON.generate(baselines),
         heartbeat_at: Time.now
       )
+      tables = read_set.tables.keys
+      if tables.any?
+        CohortTableRow.insert_all!(tables.map { |t| { cohort_id: row.id, table_name: t } })
+      end
       @mutex.synchronize { @watch_cache = nil }
+      sweep_opportunistically
       MemoryStore::Cohort.new(id: id, stream: stream, read_set: read_set,
                               surfaces: surfaces, identity: identity,
                               baselines: baselines)
+    end
+
+    # Deletes what no browser is behind anymore. Cheap indexed deletes;
+    # safe to run from any process at any time.
+    def sweep!(now: Time.now)
+      dead = CohortRow.where(activated_at: nil)
+                      .where(heartbeat_at: ...now - UNACTIVATED_TTL).pluck(:id)
+      dead += CohortRow.where.not(activated_at: nil)
+                       .where(heartbeat_at: ...now - COHORT_TTL).pluck(:id)
+      if dead.any?
+        CohortRow.where(id: dead).delete_all
+        CohortTableRow.where(cohort_id: dead).delete_all
+        @mutex.synchronize { @watch_cache = nil }
+      end
+      claims = ClaimRow.where(created_at: ...now - CLAIM_TTL).delete_all
+      RefreshSync.stats[:cohorts_swept] += dead.size
+      RefreshSync.stats[:claims_swept] += claims
+      { cohorts: dead.size, claims: claims }
+    end
+
+    # A live subscription's periodic touch (the channel pings it on
+    # subscribe): keeps the cohort out of the sweeper's reach.
+    def heartbeat(stream)
+      CohortRow.where(stream: stream).update_all(heartbeat_at: Time.now)
     end
 
     # Cached table watch-set with a short TTL; a miss re-checks the DB once
@@ -110,7 +174,8 @@ module RefreshSync
     end
 
     def matching_cohorts(change)
-      CohortRow.where("tables_json LIKE ?", "%#{("\"" + change.table + "\"")}%").filter_map do |row|
+      ids = CohortTableRow.where(table_name: change.table).select(:cohort_id)
+      CohortRow.where(id: ids).filter_map do |row|
         read_set = ReadSet.from_h(JSON.parse(row.read_set_json))
         next unless read_set.matches?(change)
         hydrate_cohort(row, read_set: read_set)
@@ -129,9 +194,12 @@ module RefreshSync
     def mark_subscribed(stream)
       now = Time.now
       claimed = CohortRow.where(stream: stream, activated_at: nil)
-                         .update_all(activated_at: now) == 1
+                         .update_all(activated_at: now, heartbeat_at: now) == 1
       return :first if claimed
-      CohortRow.where(stream: stream).exists? ? :reconnect : nil
+      if CohortRow.where(stream: stream).exists?
+        heartbeat(stream)
+        :reconnect
+      end
     end
 
     def update_baseline(stream, surface_name, digests)
@@ -149,6 +217,16 @@ module RefreshSync
 
     private
 
+    def sweep_opportunistically
+      now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      run = @mutex.synchronize do
+        next false if now - @last_sweep_at < SWEEP_INTERVAL
+        @last_sweep_at = now
+        true
+      end
+      sweep! if run
+    end
+
     def hydrate_cohort(row, read_set: nil)
       read_set ||= ReadSet.from_h(JSON.parse(row.read_set_json))
       MemoryStore::Cohort.new(
@@ -163,8 +241,7 @@ module RefreshSync
       @mutex.synchronize do
         now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         if @watch_cache.nil? || now - @watch_cache_at > WATCH_CACHE_TTL
-          @watch_cache = CohortRow.pluck(:tables_json)
-                                  .flat_map { |j| JSON.parse(j) }.to_set
+          @watch_cache = CohortTableRow.distinct.pluck(:table_name).to_set
           @watch_cache_at = now
         end
         @watch_cache
@@ -194,6 +271,25 @@ module RefreshSync
       def persist!
         row.update!(status: status.to_s, state_json: JSON.generate(state_dump))
         nil
+      end
+
+      # Optimistic-lock retry: when another process persisted between this
+      # object's hydration and its persist (the two-ejections race), reload
+      # the fresh state and re-apply the mutation on top of it — both
+      # updates survive. Bounded; a pathological livelock surfaces loudly
+      # instead of silently dropping state.
+      def mutate(&block)
+        attempts = 0
+        begin
+          block.call
+          persist!
+        rescue ActiveRecord::StaleObjectError
+          attempts += 1
+          raise if attempts > 3
+          fresh = row.reload
+          state_load(JSON.parse(fresh.state_json)) if fresh.state_json.presence
+          retry
+        end
       end
 
       private
