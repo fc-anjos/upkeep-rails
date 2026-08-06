@@ -28,3 +28,15 @@ jobs:
           ruby-version: ${{ matrix.ruby }}
           bundler-cache: true
       - run: bash run_all.sh
+
+  # Complexity guardrail (.rubocop.yml): the decision-path methods must
+  # never quietly regrow past cyclomatic/perceived 10.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+      - run: gem install rubocop --no-document
+      - run: rubocop lib/
