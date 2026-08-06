@@ -11,7 +11,7 @@ module Upkeep
   # (t:<source-digest>/<child-index path>). Expression nodes are NOT
   # bracketed (Herb trims differently there — see spike/FINDINGS.md); they
   # inherit the enclosing node's provenance. Element nodes in templates under
-  # Provenance.stamp_paths additionally get a data-rs-node attribute so
+  # Provenance.stamp_paths additionally get a data-upkeep-node attribute so
   # region broadcasts can target them.
   #
   # Render time: a per-Recording Trace keeps the open-node stack and each
@@ -272,7 +272,7 @@ module Upkeep
         Recording.current&.prov&.current_address
       end
 
-      # data-rs-node attribute value, resolved at render time: the current
+      # data-upkeep-node attribute value, resolved at render time: the current
       # trace frame's INSTANCE address (per-iteration identity included) when
       # capturing, the compile-time base address otherwise. The enter call is
       # injected immediately before the element, so during the open tag's
@@ -292,7 +292,7 @@ module Upkeep
     end
 
     # Compile-time AST visitor: brackets instrumentable nodes, stamps
-    # data-rs-node on element open tags when stamping is on. One shared
+    # data-upkeep-node on element open tags when stamping is on. One shared
     # instance is registered; per-document state is reset in
     # visit_document_node (transform_visitors instances are shared across
     # compiles — the one shared-mutable-state hazard, single-threaded under
@@ -379,7 +379,7 @@ module Upkeep
         open_tag = child.open_tag
         return unless open_tag && open_tag.respond_to?(:children)
         code = "::Upkeep::Provenance::Runtime.stamp(#{address.inspect})"
-        open_tag.children << attribute_node("data-rs-node", output_node(code))
+        open_tag.children << attribute_node("data-upkeep-node", output_node(code))
       end
 
       def dummy_location = @dummy_location ||= ::Herb::Location.from(0, 0, 0, 0)

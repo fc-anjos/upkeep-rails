@@ -49,7 +49,7 @@ Rails.application.config.to_prepare do
   # Upkeep::Streams.auto_subscribe = true
 
   # Provenance: which view roots compile through Herb (byte-identical,
-  # instrumented) and which additionally get data-rs-node stamps for region
+  # instrumented) and which additionally get data-upkeep-node stamps for region
   # broadcast targeting.
   Upkeep::Provenance.instrument_paths = [Rails.root.join("app/views").to_s]
   Upkeep::Provenance.stamp_paths = [Rails.root.join("app/views").to_s]

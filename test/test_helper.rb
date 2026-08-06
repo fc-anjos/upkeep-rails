@@ -86,7 +86,7 @@ Upkeep::ActiveRecordStore.setup!
 
 # Provenance: templates under test/views compile through Herb with the
 # node-bracketing visitor (byte-identical output); Pulse fixture views under
-# test/views/pulse additionally get data-rs-node stamps for region delivery.
+# test/views/pulse additionally get data-upkeep-node stamps for region delivery.
 Upkeep::Provenance.instrument_paths = [File.join(PROTO_ROOT, "test", "views")]
 Upkeep::Provenance.stamp_paths = [File.join(PROTO_ROOT, "test", "views", "pulse")]
 Upkeep::Provenance.install!

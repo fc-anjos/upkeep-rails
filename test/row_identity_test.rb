@@ -100,7 +100,7 @@ class RowIdentityTest < ActionDispatch::IntegrationTest
     tag = replaces.first
     assert_includes tag, "Task 0"
     assert_includes tag, "Task 1", "the whole list region is replaced"
-    region = surface("pulse_items").region_addresses.find { |a| tag.include?("targets=\"[data-rs-node=&#39;#{a}&#39;]\"") }
+    region = surface("pulse_items").region_addresses.find { |a| tag.include?("targets=\"[data-upkeep-node=&#39;#{a}&#39;]\"") }
     assert region, "the replace must target a stable (non-instance) region address"
     refute_includes region, "@"
     assert_equal 0, Upkeep.stats[:region_row_replaces]
@@ -133,7 +133,7 @@ class RowIdentityTest < ActionDispatch::IntegrationTest
     assert_equal 0, Upkeep.stats[:region_row_removes]
     assert replaces.any? { |t| t.include?("Task 1 (skiplist edit)") }
     replaces.each do |t|
-      target = t[/targets="\[data-rs-node=&#39;([^&]*)&#39;\]"/, 1]
+      target = t[/targets="\[data-upkeep-node=&#39;([^&]*)&#39;\]"/, 1]
       assert target, "replace must carry a node target: #{t[0, 120]}"
       refute_includes target, "@", "no instance-targeted replace, got #{target}"
     end

@@ -56,7 +56,7 @@ class PulseFixtureTest < ActionDispatch::IntegrationTest
     assert_includes localization[:shared], list_address, "the list region is byte-shared"
 
     # Structural addressing is stamped into the served page — no dom_id.
-    assert_includes @carol_trace.text_for(list_address), %(data-rs-node="#{list_address}")
+    assert_includes @carol_trace.text_for(list_address), %(data-upkeep-node="#{list_address}")
   end
 
   def test_write_produces_one_scrubbed_render_broadcast_to_all_viewers
@@ -80,7 +80,7 @@ class PulseFixtureTest < ActionDispatch::IntegrationTest
       "only the changed content is sent on the first write (got #{replaces.size})"
     tag = replaces.first
     assert_includes tag, "Task 1 (renamed)", "the replace carries the write"
-    target = tag[/targets="\[data-rs-node=&#39;([^&]*)&#39;\]"/, 1]
+    target = tag[/targets="\[data-upkeep-node=&#39;([^&]*)&#39;\]"/, 1]
     assert target, "replace must target a stamped node address"
     assert_includes target, "@items:", "a one-row change arrives as a row-targeted replace"
     assert_equal replaces.size, Upkeep.stats[:region_broadcasts]

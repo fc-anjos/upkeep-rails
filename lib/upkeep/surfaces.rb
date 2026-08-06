@@ -451,7 +451,7 @@ module Upkeep
     def send_region_payloads(target_stream, whole, row_replaces, row_removes, result)
       (whole + row_replaces).each do |address|
         Turbo::StreamsChannel.broadcast_action_to(
-          target_stream, action: :replace, targets: "[data-rs-node='#{address}']",
+          target_stream, action: :replace, targets: "[data-upkeep-node='#{address}']",
           html: result.node_texts[address], attributes: generation_stamp
         )
         Upkeep.stats[:region_broadcasts] += 1
@@ -459,7 +459,7 @@ module Upkeep
       end
       row_removes.each do |address|
         Turbo::StreamsChannel.broadcast_action_to(
-          target_stream, action: :remove, targets: "[data-rs-node='#{address}']",
+          target_stream, action: :remove, targets: "[data-upkeep-node='#{address}']",
           attributes: generation_stamp
         )
         Upkeep.stats[:region_row_removes] += 1
@@ -613,7 +613,7 @@ module Upkeep
     end
 
     def stamped?(text, address)
-      text.to_s.include?(%(data-rs-node="#{address}"))
+      text.to_s.include?(%(data-upkeep-node="#{address}"))
     end
 
     # Returns the offending byte size when any payload this delivery would

@@ -138,7 +138,7 @@ module Upkeep
 
     # A shared_surface region rendered during this capture. Node digests are
     # the per-node evidence for region-level promotion; node texts carry the
-    # data-rs-node stamps that mark broadcastable regions.
+    # data-upkeep-node stamps that mark broadcastable regions.
     def record_surface(name:, partial:, locals:, html:, node_digests: {}, node_texts: {})
       descriptor = Descriptor.new(name: name, partial: partial, locals: locals)
       @surfaces << SurfaceObservation.new(
