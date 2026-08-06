@@ -92,18 +92,28 @@ module RefreshSync
       (@relation.joins_values + @relation.includes_values + @relation.eager_load_values).each do |join|
         case join
         when Symbol
-          reflection = @klass.reflect_on_association(join)
-          tables << (reflection ? reflection.table_name : "__unknown_join__")
+          tables << reflection_table(@klass.reflect_on_association(join))
         when Hash
           join.each_key do |key|
-            reflection = @klass.reflect_on_association(key)
-            tables << (reflection ? reflection.table_name : "__unknown_join__")
+            tables << reflection_table(@klass.reflect_on_association(key))
           end
         else
           tables << "__unknown_join__"
         end
       end
       tables.uniq
+    end
+
+    # Polymorphic reflections cannot compute a class/table statically
+    # (reflection.table_name raises); rows actually loaded through them are
+    # still recorded by the instantiation hook, so degrade the join itself
+    # to the unknown marker instead of crashing the render.
+    def reflection_table(reflection)
+      return "__unknown_join__" unless reflection
+      return "__unknown_join__" if reflection.polymorphic?
+      reflection.table_name
+    rescue ArgumentError, NameError
+      "__unknown_join__"
     end
   end
 end
