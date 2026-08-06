@@ -426,9 +426,12 @@ module RefreshSync
       def call(template, source)
         identifier = template.respond_to?(:identifier) ? template.identifier.to_s : ""
         if template.format == :html && Provenance.instrument_path?(identifier)
+          file = identifier.sub(%r{\A.*/test/views/}, "")
+          digest = Digest::SHA256.hexdigest(source.to_s)[0, 12]
+          Provenance.register_template(digest, file)
           Thread.current[CONTEXT_KEY] = {
-            file: identifier.sub(%r{\A.*/test/views/}, ""),
-            digest: Digest::SHA256.hexdigest(source.to_s)[0, 12],
+            file: file,
+            digest: digest,
             stamp: Provenance.stamp_path?(identifier)
           }
           ::ReActionView::Template::Handlers::Herb.call(template, source)
@@ -445,6 +448,18 @@ module RefreshSync
 
       def instrument_paths = @instrument_paths ||= []
       def stamp_paths = @stamp_paths ||= []
+
+      # digest prefix (as used in node addresses) => human-readable template
+      # label, filled at compile time; instrumentation events use it to name
+      # the template a node address belongs to.
+      def register_template(digest, file)
+        (@templates ||= {})[digest] = file
+      end
+
+      def template_for(address)
+        digest = address[/\At:(\h+)/, 1]
+        digest && (@templates ||= {})[digest]
+      end
 
       def instrument_path?(identifier)
         instrument_paths.any? { |p| identifier.start_with?(p) }

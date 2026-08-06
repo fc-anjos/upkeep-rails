@@ -491,6 +491,7 @@ module RefreshSync
               !Provenance.instance?(a) && stamped?(scrubbed.node_texts[a], a)
             end
           )
+          report_unbroadcastable((scrubbed.node_digests || {}).keys) if @region_addresses.any?
           RefreshSync.stats[:promotions] += 1
           instrument("surface_promoted", viewers: @evidence.size, regions: @region_addresses)
         else
@@ -516,12 +517,36 @@ module RefreshSync
       end
       if broadcastable.any?
         @region_addresses = top_level(broadcastable)
+        report_unbroadcastable(remainder)
         @status = :region_shared
         RefreshSync.stats[:region_promotions] += 1
         instrument("surface_promoted", viewers: @evidence.size, region: true, islands: islands)
       else
+        report_unbroadcastable(remainder)
         transition_to_personal(:no_broadcastable_regions)
       end
+    end
+
+    # Unbroadcastable-region detection (evidence time): byte-shared content
+    # with no enclosing stamped element — a cache block or control-flow
+    # node directly in flow — cannot be targeted by a region broadcast, so
+    # writes matching only its dependencies always ride the refresh path.
+    # This is an OPERATOR signal explaining why Tier S skips it, never a
+    # correctness problem (refresh covers it) and never a request to change
+    # templates.
+    def report_unbroadcastable(remainder)
+      uncovered = remainder.reject do |address|
+        Provenance.instance?(address) ||
+          @region_addresses.any? { |region| in_span?(address, region) }
+      end
+      regions = top_level(uncovered)
+      return if regions.empty?
+      RefreshSync.stats[:regions_unbroadcastable] += regions.size
+      instrument(
+        "region_unbroadcastable",
+        reason: :no_enclosing_stamped_element,
+        regions: regions.map { |a| { address: a, template: Provenance.template_for(a) } }
+      )
     end
 
     def transition_to_personal(reason)

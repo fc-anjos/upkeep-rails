@@ -263,6 +263,12 @@ class PulseController < ActionController::Base
     render template: "pulse/skip_board"
   end
 
+  # Unbroadcastable-region fixture: a cache block directly in flow with no
+  # enclosing byte-shared element.
+  def bare_board
+    render template: "pulse/bare_board"
+  end
+
   # Same page plus a controller-level read OUTSIDE any template node — the
   # coherence case: writes to the pinned item are NOT covered by region
   # broadcasts and must refresh.
@@ -353,6 +359,7 @@ Rails.application.routes.draw do
   get "/cached_board/:id", to: "cached_boards#show"
   get "/pulse/board", to: "pulse#board"
   get "/pulse/skip_board", to: "pulse#skip_board"
+  get "/pulse/bare_board", to: "pulse#bare_board"
   get "/pulse/board_with_pin", to: "pulse#board_with_pin"
 end
 
