@@ -86,7 +86,17 @@ module RefreshSync
         # false identity pins whenever a write lands between two viewers).
         surface.bump_generation
         if surface.shared?
-          debouncer.schedule("surface:#{surface.key}", kind: :broadcast) { surface.broadcast! }
+          # Schedule by KEY, not by hydrated object: the closure rehydrates
+          # through this process's registry at dispatch time, so a demotion
+          # persisted by any process between schedule and fire is seen.
+          # (A closure-captured surface holds a stale :shared status — the
+          # cross-process demotion race.)
+          scheduling_registry = registry
+          name = surface.name
+          deploy_key = surface.deploy_key
+          debouncer.schedule("surface:#{surface.key}", kind: :broadcast) do
+            scheduling_registry.lookup(name, deploy_key: deploy_key)&.broadcast!
+          end
         end
       end
       refresh_streams.each { |stream| debouncer.schedule(stream, request_id: origin_request_id) }

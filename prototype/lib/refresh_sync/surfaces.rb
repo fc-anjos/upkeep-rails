@@ -149,6 +149,14 @@ module RefreshSync
         persist!
         return nil
       end
+      # Re-check AFTER the render, immediately before the transport call: a
+      # demotion persisted by another process during the render must win.
+      # (Narrows the race to the microseconds between check and broadcast;
+      # closing it fully needs a store-side lock.)
+      unless live_shared?
+        instrument("surface_broadcast_dropped", reason: :demoted_during_render)
+        return nil
+      end
       Turbo::StreamsChannel.broadcast_action_to(
         stream, action: :update, target: @name, html: result.html
       )
@@ -163,6 +171,11 @@ module RefreshSync
 
     # Overridden by persistence-backed subclasses.
     def persist! = nil
+
+    # Live status check for the post-render gate. In-memory surfaces are the
+    # single copy, so the in-memory status IS live; persistence-backed
+    # subclasses re-read the row.
+    def live_shared? = shared?
 
     def instrument(event, **payload)
       ActiveSupport::Notifications.instrument(

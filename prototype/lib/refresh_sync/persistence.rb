@@ -141,6 +141,16 @@ module RefreshSync
         row.update!(state_json: JSON.generate(state_dump))
         nil
       end
+
+      private
+
+      # Post-render gate: the row is the truth, not this hydrated copy.
+      def live_shared?
+        fresh = ActiveRecordStore::SurfaceRow.find_by(id: row.id)
+        return false unless fresh
+        state = fresh.state_json.presence && JSON.parse(fresh.state_json)
+        (state ? state.fetch("status", "observing") : "observing") == "shared"
+      end
     end
 
     def lookup(name, deploy_key: RefreshSync.deploy_key)
