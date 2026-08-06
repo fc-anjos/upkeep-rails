@@ -1,4 +1,0 @@
-/* light color scheme (system contrast) */
-
-@import url("light-normal.css"); /* default */
-@import url("light-high.css") (prefers-contrast: more);

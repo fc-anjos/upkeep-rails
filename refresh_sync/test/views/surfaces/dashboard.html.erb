@@ -1,2 +1,0 @@
-<h1>Welcome <%= current_user.name %></h1>
-<%= shared_surface "my_cards", partial: "surfaces/cards", cards: Card.where(user_id: current_user.id) %>

@@ -1,5 +1,0 @@
-User-agent: *
-Crawl-delay: 1
-Disallow: /search
-Disallow: /page/
-Disallow: /comments/page/

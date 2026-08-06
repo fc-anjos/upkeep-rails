@@ -1,9 +1,0 @@
-<html>
-<body>
-<header id="chrome">
-  <span id="who"><%= current_user&.name %></span>
-  <% if current_user&.admin? %><nav id="admin-nav">Admin tools</nav><% end %>
-</header>
-<main><%= yield %></main>
-</body>
-</html>

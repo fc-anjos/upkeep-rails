@@ -1,8 +1,0 @@
-<h1><%= @board.name %></h1>
-<% if @board.cards.any? %>
-<ul>
-<% @board.cards.each do |card| %>
-<%= render "plain_boards/card", card: card %>
-<% end %>
-</ul>
-<% end %>

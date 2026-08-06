@@ -1,68 +1,28 @@
-# frozen_string_literal: true
-
-require_relative "lib/upkeep/version"
+require_relative "lib/refresh_sync/version"
 
 Gem::Specification.new do |spec|
   spec.name = "upkeep-rails"
-  spec.version = Upkeep::VERSION
-  spec.authors = [ "Felipe dos Anjos" ]
-  spec.email = [ "felipe.cavalheiro.anjos@gmail.com" ]
-  spec.license = "MIT"
-
-  spec.summary = "Dependency-tracked live updates for Rails views"
-  spec.description = "Upkeep records the data and identity dependencies used while Rails renders a view, then updates subscribed frames when matching application data changes."
+  spec.version = RefreshSync::VERSION
+  spec.authors = ["Felipe dos Anjos"]
   spec.homepage = "https://github.com/fc-anjos/upkeep-rails"
-  spec.required_ruby_version = ">= 3.2.0"
-  spec.metadata["homepage_uri"] = spec.homepage
-  spec.metadata["source_code_uri"] = "#{spec.homepage}/tree/v#{spec.version}"
-  spec.metadata["bug_tracker_uri"] = "#{spec.homepage}/issues"
-  spec.metadata["rubygems_mfa_required"] = "true"
+  spec.summary = "Automatic live-updating Rails pages: read sets from execution, Turbo 8 refresh as the sole correctness mechanism, region broadcast as a cost optimization."
+  spec.description = <<~DESC
+    RefreshSync records each page's read set from ActiveRecord execution
+    (no SQL parsing, no view annotations), matches committed writes against
+    it, and delivers debounced Turbo 8 page refreshes per cohort. Byte-shared
+    surfaces earn scrubbed region broadcasts through runtime evidence.
+    Identity fails closed; freshness fails open. Pure Ruby.
+  DESC
+  spec.license = "MIT"
+  spec.required_ruby_version = ">= 3.2"
 
-  excluded_files = Dir[
-    "docs/drafts/**/*",
-    "docs/handoffs/**/*",
-    "lib/upkeep/probes/**/*.rb",
-    "lib/upkeep/proofs/**/*.rb"
-  ] + %w[
-    lib/upkeep/domain.rb
-    lib/upkeep/herb/fallback_analyzer.rb
-    lib/upkeep/herb/performance_gate.rb
-    lib/upkeep/herb/runtime_alignment.rb
-    lib/upkeep/proof_support.rb
-    lib/upkeep/rendering.rb
-    lib/upkeep/templates.rb
-  ]
+  spec.files = Dir["lib/**/*", "README.md"]
+  spec.require_paths = ["lib"]
 
-  native_platform = ENV["UPKEEP_NATIVE_PLATFORM"]
-  spec.files = (Dir[
-    "README.md",
-    "docs/**/*.md",
-    "LICENSE.txt",
-    "upkeep-rails.gemspec",
-    "lib/**/*.rb",
-    "lib/generators/**/templates/**/*"
-  ] - excluded_files).sort
-
-  if native_platform
-    native_libraries = Dir[
-      "lib/upkeep/sqlglot/{lib,}sqlglot_rust.{so,dylib,dll}"
-    ]
-    raise "native library is required for platform gem #{native_platform}" if native_libraries.empty?
-
-    spec.platform = native_platform
-    spec.files.concat(native_libraries)
-  end
-
-  spec.require_paths = [ "lib" ]
-
-  spec.add_dependency "actionview", ">= 7.1", "< 9.0"
-  spec.add_dependency "actionpack", ">= 7.1", "< 9.0"
-  spec.add_dependency "actioncable", ">= 7.1", "< 9.0"
-  spec.add_dependency "activerecord", ">= 7.1", "< 9.0"
-  spec.add_dependency "activesupport", ">= 7.1", "< 9.0"
-  spec.add_dependency "herb", ">= 0.10.1", "< 0.11"
-  spec.add_dependency "ffi", ">= 1.15", "< 2.0"
-  spec.add_dependency "nokogiri", ">= 1.15", "< 2.0"
-  spec.add_dependency "railties", ">= 7.1", "< 9.0"
+  spec.add_dependency "rails", ">= 7.1"
   spec.add_dependency "turbo-rails", ">= 2.0", "< 3.0"
+  # Provenance (region broadcast) render path. Pure-Ruby engine wrapper; herb
+  # ships precompiled platform binaries, not a compile-on-install extension.
+  spec.add_dependency "reactionview", ">= 0.3.0", "< 1.0"
+  spec.add_dependency "herb", ">= 0.10.1", "< 0.11"
 end
