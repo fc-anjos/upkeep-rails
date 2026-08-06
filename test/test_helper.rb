@@ -14,7 +14,9 @@ PROTO_ROOT = File.expand_path("..", __dir__)
 
 class ProofApp < Rails::Application
   config.root = PROTO_ROOT
-  config.load_defaults 8.0
+  # The 7.1 CI leg boots the same harness; load the newest defaults the
+  # running Rails actually knows.
+  config.load_defaults [Rails::VERSION::STRING.to_f, 8.0].min
   config.eager_load = false
   config.hosts.clear
   config.secret_key_base = "upkeep-rails-proof" * 2
@@ -37,7 +39,13 @@ ActionCable.server.config.logger = Logger.new(IO::NULL)
 db_path = File.join(PROTO_ROOT, "tmp", "proof.sqlite3")
 FileUtils.mkdir_p(File.dirname(db_path))
 FileUtils.rm_f(db_path)
-ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: db_path)
+# Version coupling (ledger): before 7.2 a thread leases its connection for
+# its whole life instead of per-query, so the multi-sim-process tests
+# exhaust the default pool of 5 on 7.1. A wide pool + timeout keeps the
+# same tests honest on both legs.
+ActiveRecord::Base.establish_connection(
+  adapter: "sqlite3", database: db_path, pool: 25, timeout: 5000
+)
 
 ActiveRecord::Schema.define do
   self.verbose = false

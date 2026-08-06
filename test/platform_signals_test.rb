@@ -6,21 +6,33 @@ require_relative "test_helper"
 class PlatformSignalsTest < ActionDispatch::IntegrationTest
   include ProofHelpers
 
+  # Version coupling (ledger): commit deferral rides
+  # ActiveRecord.after_all_transactions_commit, which is 7.2+. On 7.1 a
+  # transactional bulk write schedules immediately — a rollback still costs
+  # one spurious refresh (freshness fails open, never identity), and the
+  # commit-time refresh arrives early instead of deferred.
+  DEFERS_TO_COMMIT = ActiveRecord.respond_to?(:after_all_transactions_commit)
+
   def test_rolled_back_bulk_write_refreshes_nobody
     stream = visit_board(@board1)
     Card.transaction do
       Card.where(id: @card1.id).update_all(title: "Rolled back")
       raise ActiveRecord::Rollback
     end
-    assert_no_refresh(stream)
+    if DEFERS_TO_COMMIT
+      assert_no_refresh(stream)
+    else
+      assert_refreshes(stream, 1) # documented 7.1 behavior: spurious, safe
+    end
   end
 
   def test_committed_transactional_bulk_write_refreshes_after_commit
     stream = visit_board(@board1)
     Card.transaction do
       Card.where(id: @card1.id).update_all(title: "Committed")
-      # Inside the transaction nothing has been scheduled yet.
-      assert_equal 0, Upkeep.debouncer.pending_count
+      # Inside the transaction nothing has been scheduled yet (8.x); 7.1
+      # schedules immediately (same delivery, just not commit-gated).
+      assert_equal 0, Upkeep.debouncer.pending_count if DEFERS_TO_COMMIT
     end
     assert_refreshes(stream, 1)
   end
