@@ -10,7 +10,7 @@ class VerdictSavingsTest < ActionDispatch::IntegrationTest
   def stream_for(path)
     get path
     assert_response :success
-    response.headers["X-RefreshSync-Stream"]
+    response.headers["X-Upkeep-Stream"]
   end
 
   # Bulk write to rows provably outside the page's predicate: the RETURNING
@@ -22,10 +22,10 @@ class VerdictSavingsTest < ActionDispatch::IntegrationTest
     done = Card.create!(board: @board2, title: "Done elsewhere", status: "done")
     stream = stream_for("/boards/#{@board1.id}") # cards where board_id=1, status=open
 
-    analyzed_before = RefreshSync.stats[:writes_analyzed]
+    analyzed_before = Upkeep.stats[:writes_analyzed]
     Card.where(status: "done").update_all(title: "Renamed in bulk")
     assert_no_refresh(stream)
-    assert_operator RefreshSync.stats[:writes_analyzed], :>, analyzed_before,
+    assert_operator Upkeep.stats[:writes_analyzed], :>, analyzed_before,
       "the write must have been observed and then PROVEN irrelevant, not missed"
 
     # The same bulk write shape against rows INSIDE the predicate still
@@ -44,7 +44,7 @@ class VerdictSavingsTest < ActionDispatch::IntegrationTest
     churn = Card.create!(board: @board1, title: "Flash", status: "open") # :enter
     churn.update!(status: "done")                                        # :leave
     assert_no_refresh(stream)
-    assert_equal 1, RefreshSync.stats[:refreshes_netted],
+    assert_equal 1, Upkeep.stats[:refreshes_netted],
       "the netted refresh must be counted, not silently absent"
 
     # A lone :enter still refreshes.

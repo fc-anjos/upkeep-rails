@@ -1,4 +1,4 @@
-module RefreshSync
+module Upkeep
   # All runtime instrumentation. Read-side hooks no-op unless a Recording is
   # active on the current thread; write-side hooks no-op unless some cohort
   # watches the written table.
@@ -30,9 +30,9 @@ module RefreshSync
         # a nullable column) depends on row content and stays a full
         # predicate dependency.
         recording.record_relation(
-          self, membership_only: _refresh_sync_membership_count?(operation, column_name)
+          self, membership_only: _upkeep_membership_count?(operation, column_name)
         )
-        _refresh_sync_record_columns(recording, [column_name])
+        _upkeep_record_columns(recording, [column_name])
         result
       end
 
@@ -41,7 +41,7 @@ module RefreshSync
         return super unless recording
         result = recording.accounting { super }
         recording.record_relation(self)
-        _refresh_sync_record_columns(recording, column_names)
+        _upkeep_record_columns(recording, column_names)
         result
       end
 
@@ -69,7 +69,7 @@ module RefreshSync
 
       private
 
-      def _refresh_sync_membership_count?(operation, column_name)
+      def _upkeep_membership_count?(operation, column_name)
         return false unless operation.to_s == "count"
         column_name.nil? || column_name == :all ||
           column_name.to_s == "*" || column_name.to_s == klass.primary_key
@@ -78,7 +78,7 @@ module RefreshSync
       # Plain column names from a pluck/calculate column list; Arel nodes
       # and star are skipped (missing column evidence only widens, never
       # narrows — absence means "assume all columns").
-      def _refresh_sync_record_columns(recording, column_names)
+      def _upkeep_record_columns(recording, column_names)
         table = klass.table_name
         return if Recording::OWN_TABLES.include?(table)
         column_names.each do |column|
@@ -147,14 +147,14 @@ module RefreshSync
       extend ActiveSupport::Concern
 
       included do
-        after_commit :_refresh_sync_report_write, on: [:create, :update, :destroy]
+        after_commit :_upkeep_report_write, on: [:create, :update, :destroy]
       end
 
       private
 
-      def _refresh_sync_report_write
+      def _upkeep_report_write
         table = self.class.table_name
-        return unless RefreshSync.watching?(table)
+        return unless Upkeep.watching?(table)
 
         change =
           if destroyed?
@@ -166,7 +166,7 @@ module RefreshSync
             Change.new(table: table, id: id, kind: :update, old_attrs: old_attrs,
                        new_attrs: attributes, columns: previous_changes.keys)
           end
-        RefreshSync.report_change(change)
+        Upkeep.report_change(change)
       end
     end
 
@@ -180,12 +180,12 @@ module RefreshSync
     module BulkWriteObserver
       def update_all(updates)
         table = klass.table_name
-        return super unless RefreshSync.watching?(table)
+        return super unless Upkeep.watching?(table)
         result, ids, rows = RowIdentity.collecting(self) { super }
         return result if result == 0
-        columns = _refresh_sync_set_columns(updates)
-        RefreshSync.defer_to_commit do
-          RefreshSync.report_bulk(table, ids: ids.presence, columns: columns,
+        columns = _upkeep_set_columns(updates)
+        Upkeep.defer_to_commit do
+          Upkeep.report_bulk(table, ids: ids.presence, columns: columns,
                                   rows: rows.presence, op: :update)
         end
         result
@@ -193,11 +193,11 @@ module RefreshSync
 
       def delete_all
         table = klass.table_name
-        return super unless RefreshSync.watching?(table)
+        return super unless Upkeep.watching?(table)
         result, ids, = RowIdentity.collecting(self) { super }
         return result if result == 0
-        RefreshSync.defer_to_commit do
-          RefreshSync.report_bulk(table, ids: ids.presence, op: :delete)
+        Upkeep.defer_to_commit do
+          Upkeep.report_bulk(table, ids: ids.presence, op: :delete)
         end
         result
       end
@@ -207,7 +207,7 @@ module RefreshSync
       # SET columns are statically visible for hash assignments (plus the
       # auto-added locking column). A raw-string SET is opaque without SQL
       # parsing (banned): nil = assume all columns, the safe coarseness.
-      def _refresh_sync_set_columns(updates)
+      def _upkeep_set_columns(updates)
         return nil unless updates.is_a?(Hash)
         columns = updates.keys.map(&:to_s)
         columns << klass.locking_column if klass.locking_enabled?
@@ -224,20 +224,20 @@ module RefreshSync
       def execute
         result = super
         table = model.table_name
-        if RefreshSync.watching?(table) && !RefreshSync.ignored_table?(table)
+        if Upkeep.watching?(table) && !Upkeep.ignored_table?(table)
           pk = Array(model.primary_key).first
-          ids = _refresh_sync_result_ids(result, pk)
+          ids = _upkeep_result_ids(result, pk)
           if ids.blank?
-            RefreshSync.stats[:insert_all_without_ids] += 1
+            Upkeep.stats[:insert_all_without_ids] += 1
             ActiveSupport::Notifications.instrument(
-              "row_identity_unavailable.refresh_sync",
+              "row_identity_unavailable.upkeep",
               adapter: :insert_returning_unsupported, table: table,
               consequence: :bulk_writes_match_table_level
             )
           end
           op = respond_to?(:update_duplicates?, true) && send(:update_duplicates?) ? :upsert : :insert
-          RefreshSync.defer_to_commit do
-            RefreshSync.report_bulk(table, ids: ids.presence, op: op)
+          Upkeep.defer_to_commit do
+            Upkeep.report_bulk(table, ids: ids.presence, op: op)
           end
         end
         result
@@ -245,7 +245,7 @@ module RefreshSync
 
       private
 
-      def _refresh_sync_result_ids(result, pk)
+      def _upkeep_result_ids(result, pk)
         return nil unless pk && result.is_a?(ActiveRecord::Result)
         index = result.columns.index(pk)
         index && result.rows.map { |row| row[index] }
@@ -278,9 +278,9 @@ module RefreshSync
         # table-level dependency — every write to that table now matches.
         recording.read_set.record_table(table, :unhooked_read_door,
                                         node: recording.prov_address)
-        RefreshSync.stats[:unhooked_reads_degraded] += 1
+        Upkeep.stats[:unhooked_reads_degraded] += 1
         ActiveSupport::Notifications.instrument(
-          "capture_incomplete.refresh_sync",
+          "capture_incomplete.upkeep",
           mode: :degraded_table_level, table: table, query_name: payload[:name]
         )
       else
@@ -288,7 +288,7 @@ module RefreshSync
         # registration). Silent partial liveness would be a stale-page lie.
         recording.incomplete!(payload[:name] || "unnamed query")
         ActiveSupport::Notifications.instrument(
-          "capture_incomplete.refresh_sync",
+          "capture_incomplete.upkeep",
           mode: :unattributable, query_name: payload[:name]
         )
       end
@@ -338,8 +338,8 @@ module RefreshSync
       sql = payload[:sql]
       if (match = RAW_WRITE_SQL.match(sql))
         table = match[2]
-        if RefreshSync.watching?(table) && !RowIdentity.current_collector
-          RefreshSync.defer_to_commit { RefreshSync.report_bulk(table) }
+        if Upkeep.watching?(table) && !RowIdentity.current_collector
+          Upkeep.defer_to_commit { Upkeep.report_bulk(table) }
         end
       elsif unattributable_write?(payload[:connection], sql)
         # No verb catalog needed here: Rails instruments transaction
@@ -347,9 +347,9 @@ module RefreshSync
         # excluded by this subscriber's name gate — what reaches this
         # branch is an unnamed statement Rails itself classifies as a
         # write and our table extraction could not attribute.
-        RefreshSync.stats[:unattributed_writes] += 1
+        Upkeep.stats[:unattributed_writes] += 1
         ActiveSupport::Notifications.instrument(
-          "unattributed_write.refresh_sync", sql_head: sql.to_s[0, 60]
+          "unattributed_write.upkeep", sql_head: sql.to_s[0, 60]
         )
       end
     end

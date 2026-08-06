@@ -22,7 +22,7 @@ class OriginTest < ActionDispatch::IntegrationTest
   def test_post_origin_tab_receives_its_own_refresh
     a = session_for(@alice)
     a.get "/boards/#{@board1.id}"
-    origin_stream = a.response.headers["X-RefreshSync-Stream"]
+    origin_stream = a.response.headers["X-Upkeep-Stream"]
 
     a.post "/cards_api", params: { board_id: @board1.id, title: "Mine", status: "open" }
     assert_equal 204, a.response.status
@@ -42,14 +42,14 @@ class OriginTest < ActionDispatch::IntegrationTest
 
     b = session_for(@bob)
     b.get "/inbox" # marks card1 read; nobody subscribed yet
-    stream_b = b.response.headers["X-RefreshSync-Stream"]
+    stream_b = b.response.headers["X-Upkeep-Stream"]
     drain_debounce
     ActionCable.server.pubsub.clear
 
     a = session_for(@alice)
     a.get "/inbox" # marks card2 read — a write during A's GET
     rid_a = a.response.headers["X-Request-Id"]
-    stream_a = a.response.headers["X-RefreshSync-Stream"]
+    stream_a = a.response.headers["X-Upkeep-Stream"]
 
     assert_refreshes(stream_b, 1)
     assert_equal rid_a, request_id_of(refresh_tags(stream_b).first),
@@ -71,7 +71,7 @@ class OriginTest < ActionDispatch::IntegrationTest
       sess = session_for(user)
       sess.get "/inbox"
       { sess: sess,
-        stream: sess.response.headers["X-RefreshSync-Stream"],
+        stream: sess.response.headers["X-Upkeep-Stream"],
         rid: sess.response.headers["X-Request-Id"],
         seen: 0, refreshes_accepted: 0 }
     end
@@ -95,7 +95,7 @@ class OriginTest < ActionDispatch::IntegrationTest
           activity = true
           client[:refreshes_accepted] += 1
           client[:sess].get "/inbox" # the refresh-triggered GET (may write)
-          client[:stream] = client[:sess].response.headers["X-RefreshSync-Stream"]
+          client[:stream] = client[:sess].response.headers["X-Upkeep-Stream"]
           client[:rid] = client[:sess].response.headers["X-Request-Id"]
           client[:seen] = 0
         end

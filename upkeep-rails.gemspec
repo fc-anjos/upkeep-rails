@@ -1,13 +1,13 @@
-require_relative "lib/refresh_sync/version"
+require_relative "lib/upkeep/version"
 
 Gem::Specification.new do |spec|
   spec.name = "upkeep-rails"
-  spec.version = RefreshSync::VERSION
+  spec.version = Upkeep::VERSION
   spec.authors = ["Felipe dos Anjos"]
   spec.homepage = "https://github.com/fc-anjos/upkeep-rails"
   spec.summary = "Automatic live-updating Rails pages: read sets from execution, Turbo 8 refresh as the sole correctness mechanism, region broadcast as a cost optimization."
   spec.description = <<~DESC
-    RefreshSync records each page's read set from ActiveRecord execution
+    Upkeep records each page's read set from ActiveRecord execution
     (no SQL parsing, no view annotations), matches committed writes against
     it, and delivers debounced Turbo 8 page refreshes per cohort. Byte-shared
     surfaces earn scrubbed region broadcasts through runtime evidence.

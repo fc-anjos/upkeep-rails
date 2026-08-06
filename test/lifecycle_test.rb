@@ -6,18 +6,18 @@ class LifecycleTest < ActiveSupport::TestCase
   include ProofHelpers
 
   def ar_store
-    @ar_store ||= RefreshSync::ActiveRecordStore.new
+    @ar_store ||= Upkeep::ActiveRecordStore.new
   end
 
   def register_cohort
-    rs = RefreshSync::ReadSet.new
+    rs = Upkeep::ReadSet.new
     rs.record_id("cards", @card1.id)
     ar_store.register(read_set: rs)
   end
 
-  def rows = RefreshSync::ActiveRecordStore::CohortRow
-  def table_rows = RefreshSync::ActiveRecordStore::CohortTableRow
-  def claim_rows = RefreshSync::ActiveRecordStore::ClaimRow
+  def rows = Upkeep::ActiveRecordStore::CohortRow
+  def table_rows = Upkeep::ActiveRecordStore::CohortTableRow
+  def claim_rows = Upkeep::ActiveRecordStore::ClaimRow
 
   def test_never_activated_cohorts_are_swept
     cohort = register_cohort
@@ -28,7 +28,7 @@ class LifecycleTest < ActiveSupport::TestCase
     ar_store.sweep!
     assert_equal 1, rows.count
 
-    rows.update_all(heartbeat_at: Time.now - RefreshSync::ActiveRecordStore::UNACTIVATED_TTL - 5)
+    rows.update_all(heartbeat_at: Time.now - Upkeep::ActiveRecordStore::UNACTIVATED_TTL - 5)
     swept = ar_store.sweep!
     assert_equal 1, swept[:cohorts]
     assert_equal 0, rows.count
@@ -41,30 +41,30 @@ class LifecycleTest < ActiveSupport::TestCase
     cohort = register_cohort
     ar_store.mark_subscribed(cohort.stream)
 
-    rows.update_all(heartbeat_at: Time.now - RefreshSync::ActiveRecordStore::COHORT_TTL - 5)
+    rows.update_all(heartbeat_at: Time.now - Upkeep::ActiveRecordStore::COHORT_TTL - 5)
     ar_store.heartbeat(cohort.stream) # a live subscription touches it
     ar_store.sweep!
     assert_equal 1, rows.count, "heartbeat keeps an activated cohort alive"
 
-    rows.update_all(heartbeat_at: Time.now - RefreshSync::ActiveRecordStore::COHORT_TTL - 5)
+    rows.update_all(heartbeat_at: Time.now - Upkeep::ActiveRecordStore::COHORT_TTL - 5)
     ar_store.sweep!
     assert_equal 0, rows.count, "no heartbeat within the TTL: no browser behind it"
   end
 
   def test_dead_claims_are_swept
-    RefreshSync::DbClaimer.new.call("stream-x", 1)
-    claim_rows.update_all(created_at: Time.now - RefreshSync::ActiveRecordStore::CLAIM_TTL - 5)
+    Upkeep::DbClaimer.new.call("stream-x", 1)
+    claim_rows.update_all(created_at: Time.now - Upkeep::ActiveRecordStore::CLAIM_TTL - 5)
     swept = ar_store.sweep!
     assert_equal 1, swept[:claims]
     assert_equal 0, claim_rows.count
   end
 
   def test_concurrent_member_ejections_both_survive
-    registry_a = RefreshSync::ActiveRecordSurfaceRegistry.new
-    registry_b = RefreshSync::ActiveRecordSurfaceRegistry.new
+    registry_a = Upkeep::ActiveRecordSurfaceRegistry.new
+    registry_b = Upkeep::ActiveRecordSurfaceRegistry.new
     seeded = registry_a.upsert("race")
     seeded.instance_variable_set(:@status, :shared)
-    seeded.instance_variable_set(:@shared_read_set, RefreshSync::ReadSet.new)
+    seeded.instance_variable_set(:@shared_read_set, Upkeep::ReadSet.new)
     seeded.persist!
 
     # Two processes hydrate the same row, then each ejects a different
@@ -82,7 +82,7 @@ class LifecycleTest < ActiveSupport::TestCase
 
   def test_registration_sweeps_opportunistically
     register_cohort
-    rows.update_all(heartbeat_at: Time.now - RefreshSync::ActiveRecordStore::UNACTIVATED_TTL - 5)
+    rows.update_all(heartbeat_at: Time.now - Upkeep::ActiveRecordStore::UNACTIVATED_TTL - 5)
     # Force the interval gate open, then a plain registration triggers it.
     ar_store.instance_variable_set(:@last_sweep_at, 0.0)
     register_cohort

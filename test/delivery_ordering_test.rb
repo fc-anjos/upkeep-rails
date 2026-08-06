@@ -1,9 +1,9 @@
 require_relative "test_helper"
 
 # The delivery-ordering invariant (README) as a MECHANISM instead of a
-# convention: every capture response carries X-RefreshSync-Generation
+# convention: every capture response carries X-Upkeep-Generation
 # (per-surface write generation at render time) and every Tier S broadcast
-# tag carries data-rs-gen. The client rule — apply a full-page morph only if
+# tag carries data-upkeep-gen. The client rule — apply a full-page morph only if
 # its generation is >= the newest applied region update, otherwise discard
 # and re-fetch — is what prevents a stale in-flight GET from silently
 # rolling back an applied region update. The client is simulated here, the
@@ -57,13 +57,13 @@ class DeliveryOrderingTest < ActionDispatch::IntegrationTest
   end
 
   def gen_from_header(response)
-    pair = response.headers["X-RefreshSync-Generation"].to_s.split(",")
+    pair = response.headers["X-Upkeep-Generation"].to_s.split(",")
                    .find { |p| p.start_with?("#{SURFACE}=") }
     pair && pair.split("=").last.to_i
   end
 
   def gen_from_tag(tag)
-    tag[/data-rs-gen="(\d+)"/, 1]&.to_i
+    tag[/data-upkeep-gen="(\d+)"/, 1]&.to_i
   end
 
   def subscribe
@@ -85,7 +85,7 @@ class DeliveryOrderingTest < ActionDispatch::IntegrationTest
     assert tags.any?, "the write must produce a broadcast"
     tags.each do |tag|
       tag_gen = gen_from_tag(tag)
-      assert tag_gen, "every Tier S tag carries data-rs-gen: #{tag[0, 120]}"
+      assert tag_gen, "every Tier S tag carries data-upkeep-gen: #{tag[0, 120]}"
       assert_operator tag_gen, :>, page_gen,
         "the update's generation must supersede the pre-write page"
     end

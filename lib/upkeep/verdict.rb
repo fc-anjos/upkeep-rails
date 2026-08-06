@@ -1,4 +1,4 @@
-module RefreshSync
+module Upkeep
   # The verdict of one committed write against one set of recorded
   # dependencies: what happened to each written row's membership in the
   # dependency set.

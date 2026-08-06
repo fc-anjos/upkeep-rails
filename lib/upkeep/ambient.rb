@@ -1,4 +1,4 @@
-module RefreshSync
+module Upkeep
   # Ambient identity choke points. Any observed read of session, cookies, or
   # CurrentAttributes during a capture marks the recording as
   # identity-tainted: its surfaces are permanently Tier P for this deploy.
@@ -8,7 +8,7 @@ module RefreshSync
   # it to smuggle personalization past the choke points is exactly what the
   # digest-divergence and scrubbed-render defenses exist for.
   module Ambient
-    UNOBSERVED_KEY = :refresh_sync_ambient_unobserved
+    UNOBSERVED_KEY = :upkeep_ambient_unobserved
 
     def self.unobserved
       prev = Thread.current[UNOBSERVED_KEY]

@@ -1,4 +1,4 @@
-module RefreshSync
+module Upkeep
   # Automatic surface detection: no declarations, no annotations. Every
   # TOP-LEVEL partial rendered during a captured GET whose locals are
   # rebuildable becomes a surface candidate, named by its template path.
@@ -14,8 +14,8 @@ module RefreshSync
   #   - unrebuildable locals never register a candidate (nothing to scrub-
   #     render later), so noise never reaches the store
   module AutoSurfaces
-    DEPTH_KEY = :refresh_sync_partial_depth
-    SUPPRESS_KEY = :refresh_sync_auto_suppress
+    DEPTH_KEY = :upkeep_partial_depth
+    SUPPRESS_KEY = :upkeep_auto_suppress
 
     class << self
       def suppress
@@ -44,7 +44,7 @@ module RefreshSync
         Thread.current[DEPTH_KEY] = depth + 1
         marker = candidate ? recording.prov&.segment_marker : nil
         result = super
-        _refresh_sync_record_candidate(recording, locals, template, marker, result) if candidate
+        _upkeep_record_candidate(recording, locals, template, marker, result) if candidate
         result
       ensure
         Thread.current[DEPTH_KEY] = depth
@@ -52,7 +52,7 @@ module RefreshSync
 
       private
 
-      def _refresh_sync_record_candidate(recording, locals, template, marker, result)
+      def _upkeep_record_candidate(recording, locals, template, marker, result)
         descriptor_locals = locals.except(:template) # internal riders stay out
         # virtual_path is "surfaces/_cards"; render(partial:) wants
         # "surfaces/cards".
@@ -69,7 +69,7 @@ module RefreshSync
           node_digests: node_digests,
           node_texts: node_digests.keys.to_h { |a| [a, recording.prov.text_for(a)] }
         )
-        RefreshSync.stats[:auto_surface_candidates] += 1
+        Upkeep.stats[:auto_surface_candidates] += 1
       end
     end
   end

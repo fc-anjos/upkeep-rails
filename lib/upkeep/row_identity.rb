@@ -1,4 +1,4 @@
-module RefreshSync
+module Upkeep
   # Exact row identity for bulk writes (update_all / delete_all), database-
   # agnostically. Rails discards the raw result of a bulk statement, so the
   # changed row ids are normally unknowable — the blunt fallback treats the
@@ -13,7 +13,7 @@ module RefreshSync
   # database's own answer (per concrete adapter class) is cached. Probe
   # failure means today's blunt behavior plus a loud degrade warning.
   module RowIdentity
-    COLLECTOR_KEY = :refresh_sync_row_identity_collector
+    COLLECTOR_KEY = :upkeep_row_identity_collector
 
     # Beyond the primary key, the RETURNING clause also projects the
     # columns that appear in registered cohort predicates for the table
@@ -63,7 +63,7 @@ module RefreshSync
       # collection — unprojected columns stay unknown, which is the normal
       # conservative path, not a degradation.
       def projected_columns(klass)
-        store = RefreshSync.store
+        store = Upkeep.store
         return [] unless store.respond_to?(:predicate_columns)
         columns = store.predicate_columns(klass.table_name) - [klass.primary_key]
         columns.select { |c| klass.column_names.include?(c) }
@@ -84,9 +84,9 @@ module RefreshSync
           unless @capability.key?(adapter_class)
             @capability[adapter_class] = probe(connection)
             unless @capability[adapter_class]
-              RefreshSync.stats[:row_identity_unavailable] += 1
+              Upkeep.stats[:row_identity_unavailable] += 1
               ActiveSupport::Notifications.instrument(
-                "row_identity_unavailable.refresh_sync",
+                "row_identity_unavailable.upkeep",
                 adapter: adapter_class.name,
                 consequence: :bulk_writes_match_table_level
               )
@@ -101,9 +101,9 @@ module RefreshSync
       # restrictions, ancient server — means no.
       def probe(connection)
         connection.transaction(requires_new: true) do
-          connection.execute("CREATE TEMPORARY TABLE refresh_sync_probe (id integer)")
-          connection.exec_query("UPDATE refresh_sync_probe SET id = id WHERE 1=0 RETURNING id")
-          connection.exec_query("DELETE FROM refresh_sync_probe WHERE 1=0 RETURNING id")
+          connection.execute("CREATE TEMPORARY TABLE upkeep_probe (id integer)")
+          connection.exec_query("UPDATE upkeep_probe SET id = id WHERE 1=0 RETURNING id")
+          connection.exec_query("DELETE FROM upkeep_probe WHERE 1=0 RETURNING id")
           raise ActiveRecord::Rollback
         end
         true
@@ -119,20 +119,20 @@ module RefreshSync
       TARGET_SQL = /\A\s*(?:update|delete\s+from)\s+["`']?([A-Za-z0-9_]+)/i
 
       def exec_update(sql, name = nil, binds = [])
-        rewritten = _refresh_sync_returning(sql)
+        rewritten = _upkeep_returning(sql)
         return super unless rewritten
-        _refresh_sync_collect(rewritten, name, binds)
+        _upkeep_collect(rewritten, name, binds)
       end
 
       def exec_delete(sql, name = nil, binds = [])
-        rewritten = _refresh_sync_returning(sql)
+        rewritten = _upkeep_returning(sql)
         return super unless rewritten
-        _refresh_sync_collect(rewritten, name, binds)
+        _upkeep_collect(rewritten, name, binds)
       end
 
       private
 
-      def _refresh_sync_returning(sql)
+      def _upkeep_returning(sql)
         collector = RowIdentity.current_collector
         return nil unless collector
         return nil if sql.match?(/\breturning\b/i)
@@ -142,7 +142,7 @@ module RefreshSync
         "#{sql} RETURNING #{columns.map { |c| quote_column_name(c) }.join(', ')}"
       end
 
-      def _refresh_sync_collect(sql, name, binds)
+      def _upkeep_collect(sql, name, binds)
         result = internal_exec_query(sql, name, binds)
         collector = RowIdentity.current_collector
         result.rows.each do |row|

@@ -1,11 +1,11 @@
 require "digest"
 
-module RefreshSync
+module Upkeep
   # Thread-local capture window. All observation hooks are gated on
   # Recording.current being non-nil, so an app with no captured request in
   # flight pays only a thread-local nil check.
   class Recording
-    KEY = :refresh_sync_recording
+    KEY = :upkeep_recording
 
     def self.current = Thread.current[KEY]
 
@@ -38,13 +38,13 @@ module RefreshSync
       @prov&.current_address
     end
 
-    # RefreshSync's own bookkeeping tables: reads of these during a capture
+    # Upkeep's own bookkeeping tables: reads of these during a capture
     # (store lookups on a GET-boundary write path) must never become page
     # dependencies — a page depending on the cohort table is a feedback
     # loop, not a data dependency. Distinct from the user-facing ignore
     # list, whose tables ARE recorded so the misuse detector can warn.
-    OWN_TABLES = %w[refresh_sync_cohorts refresh_sync_surfaces refresh_sync_claims
-                    refresh_sync_cohort_tables].freeze
+    OWN_TABLES = %w[upkeep_cohorts upkeep_surfaces upkeep_claims
+                    upkeep_cohort_tables].freeze
 
     # --- read-door accounting (capture-completeness audit) -----------------
     # Every hooked read door wraps its query execution in `accounting`; the
@@ -110,7 +110,7 @@ module RefreshSync
     # degrade to table-level with a reason when analysis can't be exact.
     def record_relation(relation, membership_only: false)
       return if OWN_TABLES.include?(relation.klass.table_name)
-      RefreshSync.stats[:relations_analyzed] += 1
+      Upkeep.stats[:relations_analyzed] += 1
       RelationAnalysis.new(relation).apply_to(self, membership_only: membership_only)
     end
 
@@ -124,7 +124,7 @@ module RefreshSync
     def record_statement_cache(klass, bound_attributes)
       table = klass.table_name
       return if OWN_TABLES.include?(table)
-      RefreshSync.stats[:statement_caches_analyzed] += 1
+      Upkeep.stats[:statement_caches_analyzed] += 1
       columns = klass.column_names
       predicate = {}
       bound_attributes.each do |attr|
@@ -133,7 +133,7 @@ module RefreshSync
         (predicate[name] ||= []) << attr.value_before_type_cast
       end
       @read_set.record_predicate(table, predicate, node: @prov&.current_address)
-      identity_bound! if (predicate.keys & RefreshSync.identity_columns).any?
+      identity_bound! if (predicate.keys & Upkeep.identity_columns).any?
     end
 
     # A shared_surface region rendered during this capture. Node digests are

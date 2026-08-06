@@ -2,7 +2,7 @@ require "digest"
 require "herb"
 require "reactionview"
 
-module RefreshSync
+module Upkeep
   # Query→node provenance through Herb/ReActionView (ported from the spike).
   #
   # Compile time: templates under Provenance.instrument_paths compile through
@@ -355,9 +355,9 @@ module RefreshSync
         instrument_children(child, child_path)
         line = child.location&.start&.line || 0
         [
-          code_node("::RefreshSync::Provenance::Runtime.enter(#{address.inspect}, #{@file.inspect}, #{line}, @output_buffer)"),
+          code_node("::Upkeep::Provenance::Runtime.enter(#{address.inspect}, #{@file.inspect}, #{line}, @output_buffer)"),
           child,
-          code_node("::RefreshSync::Provenance::Runtime.leave(@output_buffer)")
+          code_node("::Upkeep::Provenance::Runtime.leave(@output_buffer)")
         ]
       end
 
@@ -378,7 +378,7 @@ module RefreshSync
         return unless child.class.name&.end_with?("HTMLElementNode")
         open_tag = child.open_tag
         return unless open_tag && open_tag.respond_to?(:children)
-        code = "::RefreshSync::Provenance::Runtime.stamp(#{address.inspect})"
+        code = "::Upkeep::Provenance::Runtime.stamp(#{address.inspect})"
         open_tag.children << attribute_node("data-rs-node", output_node(code))
       end
 
@@ -431,7 +431,7 @@ module RefreshSync
     # the provenance visitor; everything else (inline templates, other
     # formats, foreign paths) keeps stock ERB byte-for-byte.
     class Handler < ::ActionView::Template::Handlers::ERB
-      CONTEXT_KEY = :refresh_sync_prov_template
+      CONTEXT_KEY = :upkeep_prov_template
 
       def call(template, source)
         identifier = template.respond_to?(:identifier) ? template.identifier.to_s : ""
@@ -462,9 +462,9 @@ module RefreshSync
             # through stock ERB. Its nodes are invisible to provenance, so
             # its pages carry only page-level dependencies (pure Tier P) —
             # capture stays sound, region delivery is simply unavailable.
-            RefreshSync.stats[:provenance_compile_failed] += 1
+            Upkeep.stats[:provenance_compile_failed] += 1
             ActiveSupport::Notifications.instrument(
-              "provenance_compile_failed.refresh_sync",
+              "provenance_compile_failed.upkeep",
               template: identifier, error: e.class.name, message: e.message.to_s[0, 200]
             )
             super

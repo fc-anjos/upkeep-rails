@@ -44,7 +44,7 @@ class DemotionRaceTest < ActionDispatch::IntegrationTest
 
     assert_equal [], broadcasts(surface_stream),
       "a shared broadcast fired AFTER demotion (stale closure surface)"
-    assert_equal 0, RefreshSync.stats[:surface_broadcasts],
+    assert_equal 0, Upkeep.stats[:surface_broadcasts],
       "no Tier S broadcast may fire once the surface is demoted"
     assert_no_sentinel_broadcast
   end
@@ -77,11 +77,11 @@ class DemotionRaceTest < ActionDispatch::IntegrationTest
     # already complete, immediately before the dispatch claim — the
     # microsecond window. Process A demotes exactly there.
     dropped = []
-    drop_sub = ActiveSupport::Notifications.subscribe("surface_broadcast_dropped.refresh_sync") do |*_a, payload|
+    drop_sub = ActiveSupport::Notifications.subscribe("surface_broadcast_dropped.upkeep") do |*_a, payload|
       dropped << payload
     end
     interlock_ran = false
-    RefreshSync.dispatch_interlock = proc do
+    Upkeep.dispatch_interlock = proc do
       next if interlock_ran
       interlock_ran = true
       stale = process_a.registry.lookup("vip_cards")
@@ -94,12 +94,12 @@ class DemotionRaceTest < ActionDispatch::IntegrationTest
     assert interlock_ran, "the dispatch must have reached the pre-transport window"
     assert_equal [], broadcasts(surface_stream),
       "a shared broadcast fired after a demotion inside the dispatch window"
-    assert_equal 0, RefreshSync.stats[:surface_broadcasts]
+    assert_equal 0, Upkeep.stats[:surface_broadcasts]
     assert dropped.any? { |p| p[:reason] == :demoted_at_claim },
       "the drop must be loud: #{dropped.inspect}"
     assert_no_sentinel_broadcast
   ensure
-    RefreshSync.dispatch_interlock = nil
+    Upkeep.dispatch_interlock = nil
     ActiveSupport::Notifications.unsubscribe(drop_sub) if drop_sub
   end
 end

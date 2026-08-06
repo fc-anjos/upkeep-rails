@@ -7,16 +7,16 @@ require_relative "test_helper"
 # match. The composition rule (adopted from hanataba): the verdict of a
 # tree is the most conservative verdict of any node.
 class VerdictTest < ActiveSupport::TestCase
-  V = RefreshSync::Verdict
+  V = Upkeep::Verdict
 
   def deps(ids: [], predicates: [], table_reasons: [], membership: [])
-    RefreshSync::ReadSet::Deps.new(
+    Upkeep::ReadSet::Deps.new(
       Set.new(ids), predicates, table_reasons, membership
     )
   end
 
   def update(id:, old_attrs:, new_attrs:, columns: nil)
-    RefreshSync::Fact.new(table: "cards", id: id, kind: :update,
+    Upkeep::Fact.new(table: "cards", id: id, kind: :update,
                           old_attrs: old_attrs, new_attrs: new_attrs,
                           columns: columns || (new_attrs.keys - ["id"]))
   end
@@ -52,16 +52,16 @@ class VerdictTest < ActiveSupport::TestCase
   # --- inserts and deletes -------------------------------------------------
 
   def test_insert_into_the_set_is_enter_and_outside_is_irrelevant
-    inside = RefreshSync::Fact.new(table: "cards", id: 9, kind: :insert,
+    inside = Upkeep::Fact.new(table: "cards", id: 9, kind: :insert,
                                    new_attrs: { "id" => 9, "status" => "open" })
-    outside = RefreshSync::Fact.new(table: "cards", id: 9, kind: :insert,
+    outside = Upkeep::Fact.new(table: "cards", id: 9, kind: :insert,
                                     new_attrs: { "id" => 9, "status" => "done" })
     assert_equal :enter, V.of(deps(predicates: [OPEN]), inside)
     assert_equal :irrelevant, V.of(deps(predicates: [OPEN]), outside)
   end
 
   def test_delete_of_a_member_is_leave_for_ids_and_predicates
-    fact = RefreshSync::Fact.new(table: "cards", id: 9, kind: :delete,
+    fact = Upkeep::Fact.new(table: "cards", id: 9, kind: :delete,
                                  old_attrs: { "id" => 9, "status" => "open" })
     assert_equal :leave, V.of(deps(ids: [9]), fact)
     assert_equal :leave, V.of(deps(predicates: [OPEN]), fact)
@@ -80,32 +80,32 @@ class VerdictTest < ActiveSupport::TestCase
   # --- bulk facts: honest unknown-before, never a raise, never a vanish ----
 
   def test_bulk_update_overlapping_loaded_ids_is_in_place
-    fact = RefreshSync::Fact.new(table: "cards", kind: :bulk_rows, op: :update,
+    fact = Upkeep::Fact.new(table: "cards", kind: :bulk_rows, op: :update,
                                  ids: [3, 9])
     assert_equal :in_place, V.of(deps(ids: [9]), fact)
   end
 
   def test_bulk_delete_overlapping_loaded_ids_is_leave
-    fact = RefreshSync::Fact.new(table: "cards", kind: :bulk_rows, op: :delete,
+    fact = Upkeep::Fact.new(table: "cards", kind: :bulk_rows, op: :delete,
                                  ids: [9])
     assert_equal :leave, V.of(deps(ids: [9]), fact)
   end
 
   def test_bulk_with_unknown_op_stays_conservative_on_id_overlap
-    fact = RefreshSync::Fact.new(table: "cards", kind: :bulk_rows, ids: [9])
+    fact = Upkeep::Fact.new(table: "cards", kind: :bulk_rows, ids: [9])
     assert_equal :maybe, V.of(deps(ids: [9]), fact)
   end
 
   def test_bulk_update_without_attrs_is_maybe_for_a_non_pk_predicate
-    fact = RefreshSync::Fact.new(table: "cards", kind: :bulk_rows, op: :update,
+    fact = Upkeep::Fact.new(table: "cards", kind: :bulk_rows, op: :update,
                                  ids: [3], columns: ["status"])
     assert_equal :maybe, V.of(deps(predicates: [OPEN]), fact)
   end
 
   def test_bulk_pure_pk_predicate_is_answered_exactly_by_the_known_ids
-    hit = RefreshSync::Fact.new(table: "cards", kind: :bulk_rows, op: :update,
+    hit = Upkeep::Fact.new(table: "cards", kind: :bulk_rows, op: :update,
                                 ids: [5], columns: ["title"])
-    miss = RefreshSync::Fact.new(table: "cards", kind: :bulk_rows, op: :update,
+    miss = Upkeep::Fact.new(table: "cards", kind: :bulk_rows, op: :update,
                                  ids: [6], columns: ["title"])
     pk_pred = { "id" => [5] }
     assert_equal :in_place, V.of(deps(predicates: [pk_pred]), hit)
@@ -113,8 +113,8 @@ class VerdictTest < ActiveSupport::TestCase
   end
 
   def test_bulk_delete_pure_pk_predicate_is_leave_or_irrelevant
-    hit = RefreshSync::Fact.new(table: "cards", kind: :bulk_rows, op: :delete, ids: [5])
-    miss = RefreshSync::Fact.new(table: "cards", kind: :bulk_rows, op: :delete, ids: [6])
+    hit = Upkeep::Fact.new(table: "cards", kind: :bulk_rows, op: :delete, ids: [5])
+    miss = Upkeep::Fact.new(table: "cards", kind: :bulk_rows, op: :delete, ids: [6])
     pk_pred = { "id" => [5] }
     assert_equal :leave, V.of(deps(predicates: [pk_pred]), hit)
     assert_equal :irrelevant, V.of(deps(predicates: [pk_pred]), miss)
@@ -125,7 +125,7 @@ class VerdictTest < ActiveSupport::TestCase
   def test_bulk_after_values_outside_the_set_with_disjoint_set_columns_is_irrelevant
     # SET title: the write provably could not change `status`, and the row's
     # after-state says status != open -> before == after == out. Pure savings.
-    fact = RefreshSync::Fact.new(
+    fact = Upkeep::Fact.new(
       table: "cards", kind: :bulk_rows, op: :update, ids: [9],
       columns: ["title"], rows: { 9 => { "status" => "done" } }
     )
@@ -133,7 +133,7 @@ class VerdictTest < ActiveSupport::TestCase
   end
 
   def test_bulk_after_values_inside_the_set_with_disjoint_set_columns_is_in_place
-    fact = RefreshSync::Fact.new(
+    fact = Upkeep::Fact.new(
       table: "cards", kind: :bulk_rows, op: :update, ids: [9],
       columns: ["title"], rows: { 9 => { "status" => "open" } }
     )
@@ -143,7 +143,7 @@ class VerdictTest < ActiveSupport::TestCase
   def test_bulk_after_values_outside_the_set_with_touching_set_columns_is_maybe
     # SET status: the row is out now but may have been in before -> cannot
     # prove :leave away, cannot prove :irrelevant. Conservative.
-    fact = RefreshSync::Fact.new(
+    fact = Upkeep::Fact.new(
       table: "cards", kind: :bulk_rows, op: :update, ids: [9],
       columns: ["status"], rows: { 9 => { "status" => "done" } }
     )
@@ -151,16 +151,16 @@ class VerdictTest < ActiveSupport::TestCase
   end
 
   def test_bulk_insert_rows_never_before_satisfy_a_predicate
-    inside = RefreshSync::Fact.new(table: "cards", kind: :bulk_rows, op: :insert,
+    inside = Upkeep::Fact.new(table: "cards", kind: :bulk_rows, op: :insert,
                                    ids: [9], rows: { 9 => { "status" => "open" } })
-    outside = RefreshSync::Fact.new(table: "cards", kind: :bulk_rows, op: :insert,
+    outside = Upkeep::Fact.new(table: "cards", kind: :bulk_rows, op: :insert,
                                     ids: [9], rows: { 9 => { "status" => "done" } })
     assert_equal :enter, V.of(deps(predicates: [OPEN]), inside)
     assert_equal :irrelevant, V.of(deps(predicates: [OPEN]), outside)
   end
 
   def test_bulk_upsert_cannot_prove_before_state
-    fact = RefreshSync::Fact.new(table: "cards", kind: :bulk_rows, op: :upsert,
+    fact = Upkeep::Fact.new(table: "cards", kind: :bulk_rows, op: :upsert,
                                  ids: [9], rows: { 9 => { "status" => "done" } })
     # after = out, before unknowable (may have been open) -> conservative.
     assert_equal :maybe, V.of(deps(predicates: [OPEN]), fact)
@@ -169,7 +169,7 @@ class VerdictTest < ActiveSupport::TestCase
   # --- table-level facts and table-level deps ------------------------------
 
   def test_table_level_fact_is_maybe_when_any_dependency_exists
-    fact = RefreshSync::Fact.new(table: "cards", kind: :table)
+    fact = Upkeep::Fact.new(table: "cards", kind: :table)
     assert_equal :maybe, V.of(deps(ids: [1]), fact)
     assert_equal :maybe, V.of(deps(predicates: [OPEN]), fact)
     assert_equal :irrelevant, V.of(deps, fact)
@@ -222,7 +222,7 @@ class VerdictTest < ActiveSupport::TestCase
   # --- ReadSet integration -------------------------------------------------
 
   def test_read_set_page_verdict_and_matches_agree
-    rs = RefreshSync::ReadSet.new
+    rs = Upkeep::ReadSet.new
     rs.record_predicate("cards", OPEN.dup)
     inside = update(id: 9, old_attrs: { "id" => 9, "status" => "open", "title" => "a" },
                     new_attrs: { "id" => 9, "status" => "open", "title" => "b" })
@@ -236,9 +236,9 @@ class VerdictTest < ActiveSupport::TestCase
   end
 
   def test_membership_predicates_survive_serialization
-    rs = RefreshSync::ReadSet.new
+    rs = Upkeep::ReadSet.new
     rs.record_predicate("cards", OPEN.dup, membership_only: true)
-    reloaded = RefreshSync::ReadSet.from_h(rs.to_h)
+    reloaded = Upkeep::ReadSet.from_h(rs.to_h)
     in_place = update(id: 9, old_attrs: { "id" => 9, "status" => "open", "title" => "a" },
                       new_attrs: { "id" => 9, "status" => "open", "title" => "b" })
     flip = update(id: 9, old_attrs: { "id" => 9, "status" => "done" },

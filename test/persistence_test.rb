@@ -8,7 +8,7 @@ class PersistenceTest < ActionDispatch::IntegrationTest
     in_process(sim_process) do
       visit_board(@board1)
     end
-    stream = response.headers["X-RefreshSync-Stream"]
+    stream = response.headers["X-Upkeep-Stream"]
 
     # "Restart": brand-new store/registry/debouncer instances; all previous
     # in-memory state is gone, only the DB rows remain.
@@ -41,7 +41,7 @@ class PersistenceTest < ActionDispatch::IntegrationTest
     sleep 1.2
     assert_equal 1, broadcasts(stream).size,
       "both processes dispatched, the claim let exactly one broadcast"
-    assert_operator RefreshSync.stats[:claims_lost], :>=, 1
+    assert_operator Upkeep.stats[:claims_lost], :>=, 1
   end
 
   def test_promotion_evidence_accumulates_across_processes_and_demotion_propagates
@@ -51,7 +51,7 @@ class PersistenceTest < ActionDispatch::IntegrationTest
     a_sess = session_for(@alice)
     c_sess = session_for(@carol)
     in_process(process_a) { a_sess.get "/vip" }
-    stream_a = a_sess.response.headers["X-RefreshSync-Stream"]
+    stream_a = a_sess.response.headers["X-Upkeep-Stream"]
     in_process(process_b) { c_sess.get "/vip" }
 
     in_process(process_a) do

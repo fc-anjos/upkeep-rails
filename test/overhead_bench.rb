@@ -30,10 +30,10 @@ class OverheadBench < ActionDispatch::IntegrationTest
     captured = 0.0
     6.times do |i|
       first_captured = i.odd?
-      RefreshSync::Capture.enabled = first_captured
+      Upkeep::Capture.enabled = first_captured
       t1 = Benchmark.realtime { (N / 6).times { get "/boards/#{@board1.id}" } }
-      RefreshSync::Capture.enabled = !first_captured
-      RefreshSync.store = RefreshSync::MemoryStore.new
+      Upkeep::Capture.enabled = !first_captured
+      Upkeep.store = Upkeep::MemoryStore.new
       t2 = Benchmark.realtime { (N / 6).times { get "/boards/#{@board1.id}" } }
       captured += first_captured ? t1 : t2
       plain += first_captured ? t2 : t1

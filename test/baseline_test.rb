@@ -37,9 +37,9 @@ class BaselineTest < ActionDispatch::IntegrationTest
     @alice_sess = session_for(@alice)
     @carol_sess = session_for(@carol)
     @alice_sess.get "/pulse/board"
-    @alice_stream = @alice_sess.response.headers["X-RefreshSync-Stream"]
+    @alice_stream = @alice_sess.response.headers["X-Upkeep-Stream"]
     @carol_sess.get "/pulse/board"
-    @carol_stream = @carol_sess.response.headers["X-RefreshSync-Stream"]
+    @carol_stream = @carol_sess.response.headers["X-Upkeep-Stream"]
     assert_equal :region_shared, surface(SURFACE).status, "precondition: promoted"
   end
 
@@ -63,7 +63,7 @@ class BaselineTest < ActionDispatch::IntegrationTest
 
   def test_cohort_with_stale_baseline_gets_cumulative_diff_without_corruption
     subscribe
-    carol_cohort = RefreshSync.store.cohorts_for_surface(SURFACE)
+    carol_cohort = Upkeep.store.cohorts_for_surface(SURFACE)
                               .find { |c| c.stream == @carol_stream }
     capture_baseline = carol_cohort.baselines[SURFACE]
 
@@ -74,7 +74,7 @@ class BaselineTest < ActionDispatch::IntegrationTest
     # Simulate carol's cohort missing that delivery's baseline advancement
     # (a crash between transport and bookkeeping, a lost message): her
     # server-side baseline reverts to the capture-time one.
-    RefreshSync.store.update_baseline(@carol_stream, SURFACE, capture_baseline)
+    Upkeep.store.update_baseline(@carol_stream, SURFACE, capture_baseline)
     ActionCable.server.pubsub.clear
 
     @items[1].update!(title: "Task 2 (w2)")

@@ -1,4 +1,4 @@
-module RefreshSync
+module Upkeep
   # Routes one committed fact. Per matching cohort: per-member divergence
   # ejection, Tier S coverage, and (when not covered) a scheduled Tier P
   # refresh carrying the cohort's own verdict of the fact. Touched surfaces
@@ -16,16 +16,16 @@ module RefreshSync
       # One hydrated surface object per name for this whole fact, so a
       # member ejection and the generation bump land on the same state (two
       # hydrations of the same row would overwrite each other on persist).
-      @hydrated = Hash.new { |h, name| h[name] = RefreshSync.registry.lookup(name) }
+      @hydrated = Hash.new { |h, name| h[name] = Upkeep.registry.lookup(name) }
       @refreshes = {} # stream => verdict
       @touched = Set.new
     end
 
     def call
-      RefreshSync.store.matching_cohorts(@fact).each { |cohort| route(cohort) }
+      Upkeep.store.matching_cohorts(@fact).each { |cohort| route(cohort) }
       @touched.each { |surface| advance(surface) }
       @refreshes.each do |stream, verdict|
-        RefreshSync.debouncer.schedule(
+        Upkeep.debouncer.schedule(
           stream, request_id: @origin_request_id, fact: @fact, verdict: verdict
         )
       end
@@ -68,12 +68,12 @@ module RefreshSync
     # for changes they don't carry). An ejected member is never covered:
     # their delivery is personal until re-admission.
     def tier_s_covers?(cohort, covering, ejected)
-      return false if ejected || RefreshSync.region_broadcast_disabled?
+      return false if ejected || Upkeep.region_broadcast_disabled?
       covering.any? do |s|
         next false if s.member_diverged?(cohort.identity)
         s.shared? ||
           (s.region_shared? && cohort.read_set &&
-            cohort.read_set.change_covered_by?(@fact, RefreshSync.region_span(s)))
+            cohort.read_set.change_covered_by?(@fact, Upkeep.region_span(s)))
       end
     end
 
@@ -83,16 +83,16 @@ module RefreshSync
     # false identity pins whenever a write lands between two viewers).
     def advance(surface)
       surface.bump_generation
-      return unless surface.tier_s? && !RefreshSync.region_broadcast_disabled?
+      return unless surface.tier_s? && !Upkeep.region_broadcast_disabled?
       # Schedule by KEY, not by hydrated object: the closure rehydrates
       # through this process's registry at dispatch time, so a demotion
       # persisted by any process between schedule and fire is seen. (A
       # closure-captured surface holds a stale :shared status — the
       # cross-process demotion race.)
-      registry = RefreshSync.registry
+      registry = Upkeep.registry
       name = surface.name
       deploy_key = surface.deploy_key
-      RefreshSync.debouncer.schedule("surface:#{surface.key}", kind: :broadcast) do
+      Upkeep.debouncer.schedule("surface:#{surface.key}", kind: :broadcast) do
         registry.lookup(name, deploy_key: deploy_key)&.broadcast!
       end
     end

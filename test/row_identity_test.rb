@@ -63,7 +63,7 @@ class RowIdentityTest < ActionDispatch::IntegrationTest
     assert_includes tag, "@items:#{item.id}", "the replace must target the row's instance address"
     assert_includes tag, "Task 1 (row edit)"
     refute_includes tag, "Task 2", "a row replace must not carry the rest of the list"
-    assert_equal 1, RefreshSync.stats[:region_row_replaces]
+    assert_equal 1, Upkeep.stats[:region_row_replaces]
     assert_no_sentinel_broadcast
   end
 
@@ -79,7 +79,7 @@ class RowIdentityTest < ActionDispatch::IntegrationTest
     assert_equal 1, removes.size, "exactly one row remove: #{tags.inspect}"
     assert_includes removes.first, "@items:#{item.id}"
     assert_equal 0, replaces.size, "no other row and no whole region may be replaced"
-    assert_equal 1, RefreshSync.stats[:region_row_removes]
+    assert_equal 1, Upkeep.stats[:region_row_removes]
     assert_no_sentinel_broadcast
   end
 
@@ -103,7 +103,7 @@ class RowIdentityTest < ActionDispatch::IntegrationTest
     region = surface("pulse_items").region_addresses.find { |a| tag.include?("targets=\"[data-rs-node=&#39;#{a}&#39;]\"") }
     assert region, "the replace must target a stable (non-instance) region address"
     refute_includes region, "@"
-    assert_equal 0, RefreshSync.stats[:region_row_replaces]
+    assert_equal 0, Upkeep.stats[:region_row_replaces]
     assert_no_sentinel_broadcast
   end
 
@@ -128,9 +128,9 @@ class RowIdentityTest < ActionDispatch::IntegrationTest
     tags = decoded_broadcasts(skip_stream)
     replaces = tags.select { |t| t.include?(%(action="replace")) }
     assert_operator replaces.size, :>=, 1, "the change still goes out: #{tags.inspect}"
-    assert_equal 0, RefreshSync.stats[:region_row_replaces],
+    assert_equal 0, Upkeep.stats[:region_row_replaces],
       "row targeting must be voided for an unsound loop"
-    assert_equal 0, RefreshSync.stats[:region_row_removes]
+    assert_equal 0, Upkeep.stats[:region_row_removes]
     assert replaces.any? { |t| t.include?("Task 1 (skiplist edit)") }
     replaces.each do |t|
       target = t[/targets="\[data-rs-node=&#39;([^&]*)&#39;\]"/, 1]

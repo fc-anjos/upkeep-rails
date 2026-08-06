@@ -44,9 +44,9 @@ class CrossProcessTest < ActiveSupport::TestCase
       )
       ActionCable.server.config.cable = { "adapter" => "redis" }
       ActionCable.server.instance_variable_set(:@pubsub, nil)
-      RefreshSync.store = RefreshSync::ActiveRecordStore.new
-      RefreshSync.registry = RefreshSync::ActiveRecordSurfaceRegistry.new
-      RefreshSync.debouncer = RefreshSync::Debouncer.new(window: 0.2, claimer: RefreshSync::DbClaimer.new)
+      Upkeep.store = Upkeep::ActiveRecordStore.new
+      Upkeep.registry = Upkeep::ActiveRecordSurfaceRegistry.new
+      Upkeep.debouncer = Upkeep::Debouncer.new(window: 0.2, claimer: Upkeep::DbClaimer.new)
       block.call
       sleep 0.8 # let the debounce window fire before the process exits
       exit!(0)
@@ -57,16 +57,16 @@ class CrossProcessTest < ActiveSupport::TestCase
     skip "no redis server" unless redis_available?
 
     # Process "browser-owner": register the cohort into the shared store.
-    rs = RefreshSync::ReadSet.new
+    rs = Upkeep::ReadSet.new
     rs.record_id("cards", @card1.id)
-    ar_store = RefreshSync::ActiveRecordStore.new
+    ar_store = Upkeep::ActiveRecordStore.new
     cohort = ar_store.register(read_set: rs)
     messages, thread = subscribe_collecting(cohort.stream)
 
     # Process "writer": a real forked process reports the write.
     pid = fork_worker do
-      RefreshSync.report_change(
-        RefreshSync::Change.new(table: "cards", id: @card1.id, kind: :update,
+      Upkeep.report_change(
+        Upkeep::Change.new(table: "cards", id: @card1.id, kind: :update,
                                 new_attrs: { "id" => @card1.id, "title" => "From another process" })
       )
     end
@@ -83,14 +83,14 @@ class CrossProcessTest < ActiveSupport::TestCase
   def test_same_write_reported_by_two_processes_delivers_once
     skip "no redis server" unless redis_available?
 
-    rs = RefreshSync::ReadSet.new
+    rs = Upkeep::ReadSet.new
     rs.record_id("cards", @card1.id)
-    cohort = RefreshSync::ActiveRecordStore.new.register(read_set: rs)
+    cohort = Upkeep::ActiveRecordStore.new.register(read_set: rs)
     messages, thread = subscribe_collecting(cohort.stream)
 
-    change = RefreshSync::Change.new(table: "cards", id: @card1.id, kind: :update,
+    change = Upkeep::Change.new(table: "cards", id: @card1.id, kind: :update,
                                      new_attrs: { "id" => @card1.id, "title" => "Twice" })
-    pids = 2.times.map { fork_worker { RefreshSync.report_change(change) } }
+    pids = 2.times.map { fork_worker { Upkeep.report_change(change) } }
     pids.each { |p| Process.wait(p) }
     sleep 1.0
 
@@ -101,10 +101,10 @@ class CrossProcessTest < ActiveSupport::TestCase
   end
 
   def test_ejection_in_one_process_is_visible_in_another
-    registry = RefreshSync::ActiveRecordSurfaceRegistry.new
+    registry = Upkeep::ActiveRecordSurfaceRegistry.new
     seeded = registry.upsert("xproc")
     seeded.instance_variable_set(:@status, :shared)
-    seeded.instance_variable_set(:@shared_read_set, RefreshSync::ReadSet.new)
+    seeded.instance_variable_set(:@shared_read_set, Upkeep::ReadSet.new)
     seeded.persist!
 
     pid = fork do
@@ -112,7 +112,7 @@ class CrossProcessTest < ActiveSupport::TestCase
         adapter: "sqlite3", database: File.join(PROTO_ROOT, "tmp", "proof.sqlite3"),
         timeout: 2000 # multi-process SQLite: wait out the writer instead of BusyException
       )
-      RefreshSync::ActiveRecordSurfaceRegistry.new.lookup("xproc")
+      Upkeep::ActiveRecordSurfaceRegistry.new.lookup("xproc")
                  .eject_member!("42", reason: :delta_row_write)
       exit!(0)
     end

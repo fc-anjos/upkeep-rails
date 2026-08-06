@@ -13,18 +13,18 @@ class FragmentCacheTest < ActionDispatch::IntegrationTest
     # Cold: alice renders the block live.
     a_sess = session_for(@alice)
     a_sess.get "/cached_board/#{@board1.id}"
-    stream_a = a_sess.response.headers["X-RefreshSync-Stream"]
-    cold = cards_deps(RefreshSync::Capture.last_recording)
+    stream_a = a_sess.response.headers["X-Upkeep-Stream"]
+    cold = cards_deps(Upkeep::Capture.last_recording)
     assert cold, "cold render must record cards dependencies"
-    assert_equal 1, RefreshSync.stats[:fragment_readset_captures]
-    assert_equal 0, RefreshSync.stats[:fragment_readset_replays]
+    assert_equal 1, Upkeep.stats[:fragment_readset_captures]
+    assert_equal 0, Upkeep.stats[:fragment_readset_replays]
 
     # Warm: bob hits the fragment; the block never runs.
     b_sess = session_for(@bob)
     b_sess.get "/cached_board/#{@board1.id}"
-    stream_b = b_sess.response.headers["X-RefreshSync-Stream"]
-    warm = cards_deps(RefreshSync::Capture.last_recording)
-    assert_equal 1, RefreshSync.stats[:fragment_readset_replays],
+    stream_b = b_sess.response.headers["X-Upkeep-Stream"]
+    warm = cards_deps(Upkeep::Capture.last_recording)
+    assert_equal 1, Upkeep.stats[:fragment_readset_replays],
       "warm render must replay the stored read set"
     assert warm, "warm render must carry cards dependencies despite the cache hit"
     assert_equal cold.predicates.sort_by(&:to_a), warm.predicates.sort_by(&:to_a),
@@ -39,20 +39,20 @@ class FragmentCacheTest < ActionDispatch::IntegrationTest
 
   def test_missing_side_entry_expires_the_fragment_and_recaptures
     session_for(@alice).get "/cached_board/#{@board1.id}"
-    assert_equal 1, RefreshSync.stats[:fragment_readset_captures]
+    assert_equal 1, Upkeep.stats[:fragment_readset_captures]
 
     # Evict ONLY the read-set side entry; the fragment stays warm.
     side_keys = []
     ActiveSupport::Notifications.subscribed(->(*, payload) { side_keys << payload[:key] }, "cache_delete.active_support") do
-      Rails.cache.delete_matched(/#{Regexp.escape(RefreshSync::FragmentCache::SIDE_KEY_PREFIX)}/)
+      Rails.cache.delete_matched(/#{Regexp.escape(Upkeep::FragmentCache::SIDE_KEY_PREFIX)}/)
     end
 
     c_sess = session_for(@carol)
     c_sess.get "/cached_board/#{@board1.id}"
-    stream_c = c_sess.response.headers["X-RefreshSync-Stream"]
-    assert_equal 2, RefreshSync.stats[:fragment_readset_captures],
+    stream_c = c_sess.response.headers["X-Upkeep-Stream"]
+    assert_equal 2, Upkeep.stats[:fragment_readset_captures],
       "orphaned fragment must be expired and recaptured live"
-    assert cards_deps(RefreshSync::Capture.last_recording),
+    assert cards_deps(Upkeep::Capture.last_recording),
       "recaptured render must carry cards dependencies"
 
     Card.create!(board: @board1, title: "After recapture", status: "open")

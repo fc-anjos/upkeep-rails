@@ -7,16 +7,16 @@ class CoercionTest < ActionDispatch::IntegrationTest
   include ProofHelpers
 
   def roundtrip(read_set)
-    RefreshSync::ReadSet.from_h(JSON.parse(JSON.generate(read_set.to_h)))
+    Upkeep::ReadSet.from_h(JSON.parse(JSON.generate(read_set.to_h)))
   end
 
   def change(kind: :update, id: nil, attrs: {})
-    RefreshSync::Change.new(table: "cards", id: id, kind: kind,
+    Upkeep::Change.new(table: "cards", id: id, kind: kind,
                             new_attrs: attrs, old_attrs: attrs)
   end
 
   def test_string_vs_integer_ids_match_after_roundtrip
-    rs = RefreshSync::ReadSet.new
+    rs = Upkeep::ReadSet.new
     rs.record_id("cards", "5")
     reloaded = roundtrip(rs)
     assert reloaded.matches?(change(id: 5)), "\"5\" and 5 are the same primary key"
@@ -24,7 +24,7 @@ class CoercionTest < ActionDispatch::IntegrationTest
   end
 
   def test_date_predicates_survive_json_roundtrip
-    rs = RefreshSync::ReadSet.new
+    rs = Upkeep::ReadSet.new
     rs.record_predicate("cards", { "due_on" => [Date.new(2026, 1, 1)] })
     reloaded = roundtrip(rs)
 
@@ -36,7 +36,7 @@ class CoercionTest < ActionDispatch::IntegrationTest
 
   def test_uuid_string_predicates_roundtrip
     uuid = "0195c2ae-9f42-7aa3-b18e-000000000001"
-    rs = RefreshSync::ReadSet.new
+    rs = Upkeep::ReadSet.new
     rs.record_predicate("cards", { "uid" => [uuid] })
     reloaded = roundtrip(rs)
     assert reloaded.matches?(change(kind: :insert, attrs: { "uid" => uuid }))
@@ -53,7 +53,7 @@ class CoercionTest < ActionDispatch::IntegrationTest
       get "/boards/#{@board1.id}" # captures cards where board_id=<int>
       assert_response :success
     end
-    stream = response.headers["X-RefreshSync-Stream"]
+    stream = response.headers["X-Upkeep-Stream"]
 
     in_process(sim_process) do # restart: read set now comes from JSON
       Card.create!(board_id: @board1.id.to_s, title: "Typed", status: "open", due_on: due)
@@ -67,7 +67,7 @@ class CoercionTest < ActionDispatch::IntegrationTest
     in_process(sim_process) do
       get "/boards/#{@board1.id}"
     end
-    stream = response.headers["X-RefreshSync-Stream"]
+    stream = response.headers["X-Upkeep-Stream"]
 
     in_process(sim_process) do
       Card.create!(board: @board2, title: "Elsewhere", status: "open")

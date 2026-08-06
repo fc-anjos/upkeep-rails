@@ -1,6 +1,6 @@
-class CreateRefreshSyncTables < ActiveRecord::Migration[<%= ActiveRecord::Migration.current_version %>]
+class CreateUpkeepTables < ActiveRecord::Migration[<%= ActiveRecord::Migration.current_version %>]
   def change
-    create_table :refresh_sync_cohorts do |t|
+    create_table :upkeep_cohorts do |t|
       t.string :stream, null: false
       t.string :deploy_key, null: false
       # Viewer identity (nil for unauthenticated pages): the key per-member
@@ -14,18 +14,18 @@ class CreateRefreshSyncTables < ActiveRecord::Migration[<%= ActiveRecord::Migrat
       # on the same stream are reconnects and trigger one resync refresh.
       t.datetime :activated_at
     end
-    add_index :refresh_sync_cohorts, :stream, unique: true
+    add_index :upkeep_cohorts, :stream, unique: true
 
     # Indexed inverse of each cohort's read-set table list: write matching
     # is an indexed join, never a JSON scan.
-    create_table :refresh_sync_cohort_tables do |t|
+    create_table :upkeep_cohort_tables do |t|
       t.bigint :cohort_id, null: false
       t.string :table_name, null: false
     end
-    add_index :refresh_sync_cohort_tables, :table_name
-    add_index :refresh_sync_cohort_tables, :cohort_id
+    add_index :upkeep_cohort_tables, :table_name
+    add_index :upkeep_cohort_tables, :cohort_id
 
-    create_table :refresh_sync_surfaces do |t|
+    create_table :upkeep_surfaces do |t|
       t.string :name, null: false
       t.string :deploy_key, null: false
       # Duplicated out of state_json so the dispatch-time claim is a single
@@ -37,12 +37,12 @@ class CreateRefreshSyncTables < ActiveRecord::Migration[<%= ActiveRecord::Migrat
       t.integer :lock_version, null: false, default: 0
       t.text :state_json
     end
-    add_index :refresh_sync_surfaces, [:name, :deploy_key], unique: true
+    add_index :upkeep_surfaces, [:name, :deploy_key], unique: true
 
-    create_table :refresh_sync_claims do |t|
+    create_table :upkeep_claims do |t|
       t.string :claim_key, null: false
       t.datetime :created_at
     end
-    add_index :refresh_sync_claims, :claim_key, unique: true
+    add_index :upkeep_claims, :claim_key, unique: true
   end
 end

@@ -1,6 +1,6 @@
 require "set"
 
-module RefreshSync
+module Upkeep
   # What one rendered page read, per table:
   #   ids        - primary keys actually materialized (execution-time truth)
   #   predicates - array of {attr => [values]} conjunctions from simple where

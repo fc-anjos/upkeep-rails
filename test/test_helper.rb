@@ -8,7 +8,7 @@ require "action_cable/engine"
 require "turbo-rails"
 require "minitest/autorun"
 
-require "refresh_sync"
+require "upkeep"
 
 PROTO_ROOT = File.expand_path("..", __dir__)
 
@@ -17,7 +17,7 @@ class ProofApp < Rails::Application
   config.load_defaults 8.0
   config.eager_load = false
   config.hosts.clear
-  config.secret_key_base = "refresh-sync-proof" * 2
+  config.secret_key_base = "upkeep-rails-proof" * 2
   config.logger = Logger.new(IO::NULL)
   config.active_record.maintain_test_schema = false
   config.action_cable.cable = { "adapter" => "test" }
@@ -73,15 +73,15 @@ ActiveRecord::Schema.define do
   end
 end
 
-RefreshSync.install!
-RefreshSync::ActiveRecordStore.setup!
+Upkeep.install!
+Upkeep::ActiveRecordStore.setup!
 
 # Provenance: templates under test/views compile through Herb with the
 # node-bracketing visitor (byte-identical output); Pulse fixture views under
 # test/views/pulse additionally get data-rs-node stamps for region delivery.
-RefreshSync::Provenance.instrument_paths = [File.join(PROTO_ROOT, "test", "views")]
-RefreshSync::Provenance.stamp_paths = [File.join(PROTO_ROOT, "test", "views", "pulse")]
-RefreshSync::Provenance.install!
+Upkeep::Provenance.instrument_paths = [File.join(PROTO_ROOT, "test", "views")]
+Upkeep::Provenance.stamp_paths = [File.join(PROTO_ROOT, "test", "views", "pulse")]
+Upkeep::Provenance.install!
 
 class Board < ActiveRecord::Base
   has_many :cards
@@ -127,11 +127,11 @@ end
 class ScrubbedController < ActionController::Base
   prepend_view_path File.join(PROTO_ROOT, "test", "views")
 end
-RefreshSync.renderer_class = ScrubbedController
+Upkeep.renderer_class = ScrubbedController
 
-RefreshSync.viewer_resolver = ->(request) do
+Upkeep.viewer_resolver = ->(request) do
   user = User.find_by(id: request.session[:user_id])
-  user && RefreshSync::Viewer.new(id: user.id, role: user.role)
+  user && Upkeep::Viewer.new(id: user.id, role: user.role)
 end
 
 class SessionsController < ActionController::Base
@@ -145,8 +145,8 @@ class SessionsController < ActionController::Base
 end
 
 class BoardsController < ActionController::Base
-  include RefreshSync::Capture
-  refresh_sync
+  include Upkeep::Capture
+  upkeep
 
   def show
     @board = Board.find(params[:id])
@@ -178,8 +178,8 @@ end
 # non-materializing read door (calculate/pluck/exists?/statement cache), and
 # audit fixtures that read through a deliberately unhooked path.
 class ReadDoorsController < ActionController::Base
-  include RefreshSync::Capture
-  refresh_sync
+  include Upkeep::Capture
+  upkeep
 
   def open_count
     @open = Card.where(status: "open").count
@@ -230,8 +230,8 @@ end
 
 # Ignore-list misuse fixture: a reactive page that reads the audits table.
 class AuditLogsController < ActionController::Base
-  include RefreshSync::Capture
-  refresh_sync
+  include Upkeep::Capture
+  upkeep
 
   def index
     @audits = AuditRecord.all.to_a
@@ -243,15 +243,15 @@ end
 # paginated, Discard-scoped list with a cached aggregate fragment and a
 # per-viewer tag inside the shared partial (the personal island).
 class PulseController < ActionController::Base
-  include RefreshSync::Capture
+  include Upkeep::Capture
   prepend_view_path File.join(PROTO_ROOT, "test", "views")
   layout "pulse"
-  refresh_sync
+  upkeep
 
   helper_method :current_user
 
   def current_user
-    @current_user ||= RefreshSync::Ambient.unobserved { User.find_by(id: session[:user_id]) }
+    @current_user ||= Upkeep::Ambient.unobserved { User.find_by(id: session[:user_id]) }
   end
 
   def board
@@ -282,9 +282,9 @@ end
 
 # Fragment-cache fixture: card list read INSIDE a cache block.
 class CachedBoardsController < ActionController::Base
-  include RefreshSync::Capture
+  include Upkeep::Capture
   prepend_view_path File.join(PROTO_ROOT, "test", "views")
-  refresh_sync
+  upkeep
 
   def show
     @board_id = params[:id].to_i
@@ -294,16 +294,16 @@ end
 
 # Adversarial + legitimate shared-surface pages.
 class SurfacesController < ActionController::Base
-  include RefreshSync::Capture
+  include Upkeep::Capture
   prepend_view_path File.join(PROTO_ROOT, "test", "views")
-  refresh_sync
+  upkeep
 
   helper_method :current_user
 
   # Sanctioned identity declaration: reads the session through the
   # unobserved escape hatch, exactly like a real auth integration would.
   def current_user
-    @current_user ||= RefreshSync::Ambient.unobserved { User.find_by(id: session[:user_id]) }
+    @current_user ||= Upkeep::Ambient.unobserved { User.find_by(id: session[:user_id]) }
   end
 
   def shared_board
@@ -325,7 +325,7 @@ class SurfacesController < ActionController::Base
   def threadlocal
     # Deliberate smuggle: copies session state into Thread.current without
     # touching the observed choke points.
-    Thread.current[:banner] = RefreshSync::Ambient.unobserved { session[:banner] }
+    Thread.current[:banner] = Upkeep::Ambient.unobserved { session[:banner] }
     render template: "surfaces/threadlocal", layout: false
   end
 
@@ -376,18 +376,18 @@ module ProofHelpers
   WINDOW = 0.3
 
   def setup
-    RefreshSync.store = RefreshSync::MemoryStore.new
-    RefreshSync.debouncer = RefreshSync::Debouncer.new(window: WINDOW)
-    RefreshSync.registry = RefreshSync::SurfaceRegistry.new
-    RefreshSync.deploy_key = "deploy-1"
-    RefreshSync.require_role_diversity = true
-    RefreshSync.payload_limit = nil
-    RefreshSync.ignored_tables = nil
-    RefreshSync.dispatch_interlock = nil
+    Upkeep.store = Upkeep::MemoryStore.new
+    Upkeep.debouncer = Upkeep::Debouncer.new(window: WINDOW)
+    Upkeep.registry = Upkeep::SurfaceRegistry.new
+    Upkeep.deploy_key = "deploy-1"
+    Upkeep.require_role_diversity = true
+    Upkeep.payload_limit = nil
+    Upkeep.ignored_tables = nil
+    Upkeep.dispatch_interlock = nil
     Rails.cache.clear
-    RefreshSync.reset_stats!
-    RefreshSync::Coercion.reset!
-    RefreshSync::ActiveRecordStore.wipe!
+    Upkeep.reset_stats!
+    Upkeep::Coercion.reset!
+    Upkeep::ActiveRecordStore.wipe!
     ActionCable.server.pubsub.clear
     Board.delete_all
     Card.delete_all
@@ -426,31 +426,31 @@ module ProofHelpers
     sess
   end
 
-  def surface(name) = RefreshSync.registry.lookup(name)
+  def surface(name) = Upkeep.registry.lookup(name)
 
   # Simulate a distinct app process: its own store/registry/debouncer
   # instances (sharing the DB and the cable, as real processes would).
   SimProcess = Struct.new(:store, :registry, :debouncer, keyword_init: true)
 
-  def sim_process(window: WINDOW, claimer: RefreshSync::DbClaimer.new)
+  def sim_process(window: WINDOW, claimer: Upkeep::DbClaimer.new)
     SimProcess.new(
-      store: RefreshSync::ActiveRecordStore.new,
-      registry: RefreshSync::ActiveRecordSurfaceRegistry.new,
-      debouncer: RefreshSync::Debouncer.new(window: window, claimer: claimer)
+      store: Upkeep::ActiveRecordStore.new,
+      registry: Upkeep::ActiveRecordSurfaceRegistry.new,
+      debouncer: Upkeep::Debouncer.new(window: window, claimer: claimer)
     )
   end
 
   def in_process(sim)
-    RefreshSync.store = sim.store
-    RefreshSync.registry = sim.registry
-    RefreshSync.debouncer = sim.debouncer
+    Upkeep.store = sim.store
+    Upkeep.registry = sim.registry
+    Upkeep.debouncer = sim.debouncer
     yield
   end
 
   def visit_board(board)
     get "/boards/#{board.id}"
     assert_response :success
-    response.headers["X-RefreshSync-Stream"].tap { |s| assert s, "capture should register a cohort" }
+    response.headers["X-Upkeep-Stream"].tap { |s| assert s, "capture should register a cohort" }
   end
 
   def drain_debounce

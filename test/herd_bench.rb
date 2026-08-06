@@ -32,14 +32,14 @@ class HerdBench < ActionDispatch::IntegrationTest
     per_get = get_ms[100] / 100
 
     # --- Tier S: one scrubbed render + N transmits ---
-    descriptor = RefreshSync::Descriptor.new(
+    descriptor = Upkeep::Descriptor.new(
       name: "open_cards", partial: "surfaces/cards",
       locals: { cards: Card.where(status: "open") }
     )
-    RefreshSync::SharedRender.call(descriptor) # warm
-    render_ms = Benchmark.realtime { 10.times { RefreshSync::SharedRender.call(descriptor) } } * 100
+    Upkeep::SharedRender.call(descriptor) # warm
+    render_ms = Benchmark.realtime { 10.times { Upkeep::SharedRender.call(descriptor) } } * 100
 
-    payload = RefreshSync::SharedRender.call(descriptor).html
+    payload = Upkeep::SharedRender.call(descriptor).html
     transmit_ms = Benchmark.realtime {
       1000.times { ActionCable.server.pubsub.broadcast("herd-bench", payload) }
     } # per-transmit

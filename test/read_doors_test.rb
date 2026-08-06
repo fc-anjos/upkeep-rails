@@ -19,14 +19,14 @@ class ReadDoorsTest < ActionDispatch::IntegrationTest
   def stream_for(path)
     get path
     assert_response :success
-    response.headers["X-RefreshSync-Stream"]
+    response.headers["X-Upkeep-Stream"]
   end
 
   def test_count_page_depends_on_the_counted_predicate
-    capture_events("capture_incomplete.refresh_sync") do |events|
+    capture_events("capture_incomplete.upkeep") do |events|
       stream = stream_for("/doors/open_count")
       assert stream, "count-only page must register a cohort"
-      deps = RefreshSync::Capture.last_recording.read_set.tables.fetch("cards")
+      deps = Upkeep::Capture.last_recording.read_set.tables.fetch("cards")
       assert_includes deps.membership_predicates, { "status" => ["open"] },
         "the calculate door must record the counted predicate as membership-only"
       assert_empty events, "hooked doors must not trip the audit"
@@ -53,7 +53,7 @@ class ReadDoorsTest < ActionDispatch::IntegrationTest
 
   def test_pluck_page_depends_on_the_plucked_predicate
     stream = stream_for("/doors/open_titles")
-    deps = RefreshSync::Capture.last_recording.read_set.tables.fetch("cards")
+    deps = Upkeep::Capture.last_recording.read_set.tables.fetch("cards")
     assert_includes deps.predicates, { "status" => ["open"] }
     @card1.update!(title: "First (renamed)")
     assert_refreshes(stream, 1)
@@ -61,7 +61,7 @@ class ReadDoorsTest < ActionDispatch::IntegrationTest
 
   def test_exists_page_depends_on_the_tested_predicate
     stream = stream_for("/doors/any_open")
-    deps = RefreshSync::Capture.last_recording.read_set.tables.fetch("cards")
+    deps = Upkeep::Capture.last_recording.read_set.tables.fetch("cards")
     assert_includes deps.membership_predicates, { "status" => ["open"] }
     Card.create!(board: @board1, title: "Another open", status: "open")
     assert_refreshes(stream, 1)
@@ -72,7 +72,7 @@ class ReadDoorsTest < ActionDispatch::IntegrationTest
   # silently missed. The bind-map door records the predicate either way.
   def test_nil_result_find_by_still_records_its_predicate
     stream = stream_for("/doors/lost_card")
-    deps = RefreshSync::Capture.last_recording.read_set.tables.fetch("cards")
+    deps = Upkeep::Capture.last_recording.read_set.tables.fetch("cards")
     assert deps.predicates.any? { |p| p["uid"] == ["lost-uid"] },
       "the cached find_by predicate must be recorded despite the nil result: #{deps.predicates.inspect}"
     Card.create!(board: @board1, title: "Found me", status: "open", uid: "lost-uid")
@@ -80,14 +80,14 @@ class ReadDoorsTest < ActionDispatch::IntegrationTest
   end
 
   def test_unhooked_attributable_read_degrades_to_table_level_loudly
-    capture_events("capture_incomplete.refresh_sync") do |events|
+    capture_events("capture_incomplete.upkeep") do |events|
       stream = stream_for("/doors/raw_named")
       assert stream, "an attributable unhooked read keeps the page live (conservatively)"
       assert events.any? { |p| p[:mode] == :degraded_table_level && p[:table] == "cards" },
         "the audit must warn loudly: #{events.inspect}"
-      deps = RefreshSync::Capture.last_recording.read_set.tables.fetch("cards")
+      deps = Upkeep::Capture.last_recording.read_set.tables.fetch("cards")
       assert_includes deps.table_reasons, :unhooked_read_door
-      assert_operator RefreshSync.stats[:unhooked_reads_degraded], :>=, 1
+      assert_operator Upkeep.stats[:unhooked_reads_degraded], :>=, 1
 
       # Conservative means table-level: even a write no predicate could
       # match refreshes the page instead of leaving it silently stale.
@@ -97,16 +97,16 @@ class ReadDoorsTest < ActionDispatch::IntegrationTest
   end
 
   def test_unhooked_unattributable_read_refuses_the_capture_loudly
-    capture_events("capture_refused.refresh_sync") do |refusals|
-      capture_events("capture_incomplete.refresh_sync") do |events|
+    capture_events("capture_refused.upkeep") do |refusals|
+      capture_events("capture_incomplete.upkeep") do |events|
         get "/doors/raw_anonymous"
         assert_response :success
-        assert_nil response.headers["X-RefreshSync-Stream"],
+        assert_nil response.headers["X-Upkeep-Stream"],
           "an unattributable unhooked read must refuse cohort registration"
         assert events.any? { |p| p[:mode] == :unattributable }
         assert refusals.any? { |p| p[:reason] == :unattributable_read && p[:path] == "/doors/raw_anonymous" },
           "the refusal must be loud: #{refusals.inspect}"
-        assert_equal 1, RefreshSync.stats[:captures_refused]
+        assert_equal 1, Upkeep.stats[:captures_refused]
       end
     end
   end
@@ -118,11 +118,11 @@ class PrecisionDebtsTest < ActiveSupport::TestCase
   include ProofHelpers
 
   def capture
-    recording = RefreshSync::Recording.start
+    recording = Upkeep::Recording.start
     yield
     recording
   ensure
-    RefreshSync::Recording.finish
+    Upkeep::Recording.finish
   end
 
   def test_joined_table_conditions_become_that_tables_predicate
@@ -134,9 +134,9 @@ class PrecisionDebtsTest < ActiveSupport::TestCase
     assert_empty deps.table_reasons, "conditions on the joined table's own columns analyze"
     assert(deps.predicates.any? { |p| p["status"] == ["open"] })
 
-    hit = RefreshSync::Change.new(table: "cards", id: 999, kind: :update,
+    hit = Upkeep::Change.new(table: "cards", id: 999, kind: :update,
                                   new_attrs: { "id" => 999, "status" => "open" })
-    miss = RefreshSync::Change.new(table: "cards", id: 999, kind: :update,
+    miss = Upkeep::Change.new(table: "cards", id: 999, kind: :update,
                                    new_attrs: { "id" => 999, "status" => "archived" },
                                    old_attrs: { "id" => 999, "status" => "archived" })
     assert recording.read_set.matches?(hit)
@@ -162,8 +162,8 @@ class PrecisionDebtsTest < ActiveSupport::TestCase
     due = Date.new(2026, 8, 6)
     Card.create!(board: @board1, title: "Dated", status: "open", due_on: due)
     recording = capture { Card.where(due_on: due).to_a }
-    revived = RefreshSync::ReadSet.from_h(JSON.parse(JSON.generate(recording.read_set.to_h)))
-    change = RefreshSync::Change.new(table: "cards", id: 999, kind: :update,
+    revived = Upkeep::ReadSet.from_h(JSON.parse(JSON.generate(recording.read_set.to_h)))
+    change = Upkeep::Change.new(table: "cards", id: 999, kind: :update,
                                      new_attrs: { "id" => 999, "due_on" => due })
     assert revived.matches?(change),
       "a JSON-reloaded date predicate must still match a live Date write"

@@ -1,7 +1,7 @@
 require "digest"
 require "set"
 
-module RefreshSync
+module Upkeep
   # A "surface" is a named shareable region: a partial + captured locals.
   # Promotion state machine, per (surface name, deploy key):
   #
@@ -149,7 +149,7 @@ module RefreshSync
     end
 
     def key = "#{@deploy_key}/#{@name}"
-    def stream = "refresh_sync:surface:#{key}"
+    def stream = "upkeep:surface:#{key}"
     def shared? = @status == :shared
     def region_shared? = @status == :region_shared
     def tier_s? = shared? || region_shared?
@@ -204,7 +204,7 @@ module RefreshSync
         next if @diverged_viewers.include?(key)
         @diverged_viewers << key
         @evidence.delete(key) # their pre-flip evidence no longer describes them
-        RefreshSync.stats[:member_ejections] += 1
+        Upkeep.stats[:member_ejections] += 1
         instrument("member_diverged", viewer: key, reason: reason)
       end
     end
@@ -214,7 +214,7 @@ module RefreshSync
       return unless @diverged_viewers.include?(key)
       mutate do
         next unless @diverged_viewers.delete?(key)
-        RefreshSync.stats[:member_readmissions] += 1
+        Upkeep.stats[:member_readmissions] += 1
         instrument("member_readmitted", viewer: key)
       end
     end
@@ -255,7 +255,7 @@ module RefreshSync
       # by the demotion's own cohort refreshes, which are always scheduled
       # after its commit (strict exclusion would mean holding a DB lock
       # across a network call; rejected).
-      RefreshSync.dispatch_interlock&.call
+      Upkeep.dispatch_interlock&.call
       unless claim_dispatch!
         instrument("surface_broadcast_dropped", reason: :demoted_at_claim)
         return nil
@@ -268,9 +268,9 @@ module RefreshSync
       oversized = oversized_payload(result)
       if oversized
         instrument("payload_limit_degrade",
-                   size: oversized, limit: RefreshSync.payload_limit)
-        RefreshSync.stats[:payload_limit_degrades] += 1
-        @cohort_streams.each { |s| RefreshSync.debouncer.schedule(s) }
+                   size: oversized, limit: Upkeep.payload_limit)
+        Upkeep.stats[:payload_limit_degrades] += 1
+        @cohort_streams.each { |s| Upkeep.debouncer.schedule(s) }
         return nil
       end
 
@@ -282,7 +282,7 @@ module RefreshSync
           stream, action: :update, target: @name, html: result.html,
           attributes: generation_stamp
         )
-        RefreshSync.stats[:surface_broadcasts] += 1
+        Upkeep.stats[:surface_broadcasts] += 1
         instrument("surface_broadcast_sent")
         @last_broadcast = { digest: result.digest, generation: @generation }
       end
@@ -298,9 +298,9 @@ module RefreshSync
     # it after the broadcast closes the corrupt-then-nothing race.
     def converge_diverged_members!
       return if @diverged_viewers.empty?
-      RefreshSync.store.cohorts_for_surface(@name).each do |cohort|
+      Upkeep.store.cohorts_for_surface(@name).each do |cohort|
         next unless member_diverged?(cohort.identity)
-        RefreshSync.debouncer.schedule(cohort.stream)
+        Upkeep.debouncer.schedule(cohort.stream)
       end
     end
 
@@ -415,7 +415,7 @@ module RefreshSync
       # excluded from the diff groups (converge_diverged_members! refreshes
       # them instead) and their baselines deliberately do not advance — a
       # stale baseline only ever makes a later diff larger, never wrong.
-      cohorts = RefreshSync.store.cohorts_for_surface(@name)
+      cohorts = Upkeep.store.cohorts_for_surface(@name)
                            .reject { |c| member_diverged?(c.identity) }
       groups = cohorts.group_by do |cohort|
         region_delivery_plan(result, cohort.baselines&.dig(@name) || {})
@@ -437,14 +437,14 @@ module RefreshSync
       return degrade_unrenderable(members, unrenderable) if unrenderable.any?
       streams = single ? [stream] : members.map(&:stream)
       streams.each { |s| send_region_payloads(s, whole, row_replaces, row_removes, result) }
-      members.each { |cohort| RefreshSync.store.update_baseline(cohort.stream, @name, span) }
+      members.each { |cohort| Upkeep.store.update_baseline(cohort.stream, @name, span) }
       whole + row_replaces + row_removes
     end
 
     def degrade_unrenderable(members, unrenderable)
       instrument("region_unrenderable_degrade", regions: unrenderable)
-      RefreshSync.stats[:region_degrades] += 1
-      members.each { |cohort| RefreshSync.debouncer.schedule(cohort.stream) }
+      Upkeep.stats[:region_degrades] += 1
+      members.each { |cohort| Upkeep.debouncer.schedule(cohort.stream) }
       []
     end
 
@@ -454,15 +454,15 @@ module RefreshSync
           target_stream, action: :replace, targets: "[data-rs-node='#{address}']",
           html: result.node_texts[address], attributes: generation_stamp
         )
-        RefreshSync.stats[:region_broadcasts] += 1
-        RefreshSync.stats[:region_row_replaces] += 1 unless whole.include?(address)
+        Upkeep.stats[:region_broadcasts] += 1
+        Upkeep.stats[:region_row_replaces] += 1 unless whole.include?(address)
       end
       row_removes.each do |address|
         Turbo::StreamsChannel.broadcast_action_to(
           target_stream, action: :remove, targets: "[data-rs-node='#{address}']",
           attributes: generation_stamp
         )
-        RefreshSync.stats[:region_row_removes] += 1
+        Upkeep.stats[:region_row_removes] += 1
       end
     end
 
@@ -524,7 +524,7 @@ module RefreshSync
     # client can enforce the delivery-ordering invariant: never apply a
     # full-page state older than an already-applied region update.
     def generation_stamp
-      { "data-rs-gen" => @generation }
+      { "data-upkeep-gen" => @generation }
     end
 
     def span_digests(digests, region)
@@ -619,7 +619,7 @@ module RefreshSync
     # Returns the offending byte size when any payload this delivery would
     # send exceeds the configured transport limit, else nil.
     def oversized_payload(result)
-      limit = RefreshSync.payload_limit
+      limit = Upkeep.payload_limit
       return nil unless limit
       payloads =
         if @region_addresses.any?
@@ -658,7 +658,7 @@ module RefreshSync
 
     def instrument(event, **payload)
       ActiveSupport::Notifications.instrument(
-        "#{event}.refresh_sync", name: @name, deploy_key: @deploy_key, **payload
+        "#{event}.upkeep", name: @name, deploy_key: @deploy_key, **payload
       )
     end
 
@@ -676,7 +676,7 @@ module RefreshSync
     # roles when required) with current-generation evidence.
     def promotion_bar_met?
       return false if @evidence.size < 2
-      return true unless RefreshSync.require_role_diversity
+      return true unless Upkeep.require_role_diversity
       @evidence.values.map { |e| e[:role] }.uniq.size >= 2
     end
 
@@ -699,7 +699,7 @@ module RefreshSync
       # data, so they can be targeted inside a region but never anchor one.
       @region_addresses = top_level(broadcastable_addresses(scrubbed, (scrubbed.node_digests || {}).keys))
       report_unbroadcastable((scrubbed.node_digests || {}).keys) if @region_addresses.any?
-      RefreshSync.stats[:promotions] += 1
+      Upkeep.stats[:promotions] += 1
       instrument("surface_promoted", viewers: @evidence.size, regions: @region_addresses)
     end
 
@@ -720,7 +720,7 @@ module RefreshSync
       report_unbroadcastable(remainder)
       @status = :region_shared
       @shared_read_set = scrubbed.read_set
-      RefreshSync.stats[:region_promotions] += 1
+      Upkeep.stats[:region_promotions] += 1
       instrument("surface_promoted", viewers: @evidence.size, region: true, islands: islands)
     end
 
@@ -750,7 +750,7 @@ module RefreshSync
       end
       regions = top_level(uncovered)
       return if regions.empty?
-      RefreshSync.stats[:regions_unbroadcastable] += regions.size
+      Upkeep.stats[:regions_unbroadcastable] += regions.size
       instrument(
         "region_unbroadcastable",
         reason: :no_enclosing_stamped_element,
@@ -762,12 +762,12 @@ module RefreshSync
       was_tier_s = tier_s?
       @status = :personal
       @pin_reason = reason
-      RefreshSync.stats[:demotions] += 1 if was_tier_s
-      RefreshSync.stats[:pins] += 1
+      Upkeep.stats[:demotions] += 1 if was_tier_s
+      Upkeep.stats[:pins] += 1
       instrument(was_tier_s ? "surface_demoted" : "surface_pinned", reason: reason)
       # Drop any pending shared broadcast; converge viewers via refresh.
-      RefreshSync.debouncer.cancel("surface:#{key}")
-      @cohort_streams.each { |s| RefreshSync.debouncer.schedule(s) } if was_tier_s
+      Upkeep.debouncer.cancel("surface:#{key}")
+      @cohort_streams.each { |s| Upkeep.debouncer.schedule(s) } if was_tier_s
     end
 
     # --- persistence support -------------------------------------------------
@@ -825,11 +825,11 @@ module RefreshSync
       @mutex = Mutex.new
     end
 
-    def lookup(name, deploy_key: RefreshSync.deploy_key)
+    def lookup(name, deploy_key: Upkeep.deploy_key)
       @mutex.synchronize { @surfaces["#{deploy_key}/#{name}"] }
     end
 
-    def upsert(name, deploy_key: RefreshSync.deploy_key)
+    def upsert(name, deploy_key: Upkeep.deploy_key)
       @mutex.synchronize do
         @surfaces["#{deploy_key}/#{name}"] ||= Surface.new(name: name, deploy_key: deploy_key)
       end

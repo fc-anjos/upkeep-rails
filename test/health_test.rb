@@ -8,8 +8,8 @@ class HealthTest < ActionDispatch::IntegrationTest
 
   def collect_events
     events = []
-    sub = ActiveSupport::Notifications.subscribe(/\.refresh_sync\z/) do |name, *_args, payload|
-      events << [name.sub(".refresh_sync", ""), payload]
+    sub = ActiveSupport::Notifications.subscribe(/\.upkeep\z/) do |name, *_args, payload|
+      events << [name.sub(".upkeep", ""), payload]
     end
     yield
     events
@@ -41,8 +41,8 @@ class HealthTest < ActionDispatch::IntegrationTest
   end
 
   def test_dead_tier_s_is_visible_through_health
-    health = RefreshSync::Health.new
-    RefreshSync.renderer_class = Class.new(ActionController::Base) # every scrubbed render raises
+    health = Upkeep::Health.new
+    Upkeep.renderer_class = Class.new(ActionController::Base) # every scrubbed render raises
 
     begin
       # Three separate surfaces, each with fully eligible promotion evidence.
@@ -57,13 +57,13 @@ class HealthTest < ActionDispatch::IntegrationTest
         "eligible surfaces keep failing scrubbed render and nothing promotes: the dead-feature signal fires"
       assert_operator health.pin_reasons.keys.grep(/scrubbed_render_error/).size, :>=, 1
     ensure
-      RefreshSync.renderer_class = ScrubbedController
+      Upkeep.renderer_class = ScrubbedController
       health.detach!
     end
   end
 
   def test_healthy_system_does_not_report_dead
-    health = RefreshSync::Health.new
+    health = Upkeep::Health.new
     begin
       session_for(@alice).get "/shared_board"
       session_for(@carol).get "/shared_board"
@@ -85,7 +85,7 @@ class CableTopologyTest < ActiveSupport::TestCase
 
   def test_async_adapter_with_multiple_workers_is_broken
     logger, verdict = capture_warns do |l|
-      RefreshSync::Health.check_cable_topology!(adapter: "async", web_concurrency: "4", logger: l)
+      Upkeep::Health.check_cable_topology!(adapter: "async", web_concurrency: "4", logger: l)
     end
     assert_equal :broken, verdict
     assert_match(/WILL be silently lost/, logger.lines.first)
@@ -93,7 +93,7 @@ class CableTopologyTest < ActiveSupport::TestCase
 
   def test_async_adapter_single_process_still_warns
     logger, verdict = capture_warns do |l|
-      RefreshSync::Health.check_cable_topology!(adapter: "async", web_concurrency: nil, logger: l)
+      Upkeep::Health.check_cable_topology!(adapter: "async", web_concurrency: nil, logger: l)
     end
     assert_equal :single_process_only, verdict
     assert_match(/per-process/, logger.lines.first)
@@ -101,7 +101,7 @@ class CableTopologyTest < ActiveSupport::TestCase
 
   def test_cross_process_adapters_pass_silently
     logger, verdict = capture_warns do |l|
-      RefreshSync::Health.check_cable_topology!(adapter: "solid_cable", web_concurrency: "4", logger: l)
+      Upkeep::Health.check_cable_topology!(adapter: "solid_cable", web_concurrency: "4", logger: l)
     end
     assert_equal :ok, verdict
     assert_empty logger.lines

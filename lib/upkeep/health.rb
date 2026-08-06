@@ -1,4 +1,4 @@
-module RefreshSync
+module Upkeep
   # Fail-closed must be observable: Tier S degrades to Tier P silently by
   # design, so a broken scrubbed renderer looks like conservatism, not like
   # a bug (this exact failure shipped in phase 2 as the reset_all incident).
@@ -15,7 +15,7 @@ module RefreshSync
       @counters = Hash.new(0)
       @pin_reasons = Hash.new(0)
       @subscribers = EVENTS.map do |event|
-        ActiveSupport::Notifications.subscribe("#{event}.refresh_sync") do |*_args, payload|
+        ActiveSupport::Notifications.subscribe("#{event}.upkeep") do |*_args, payload|
           @counters[event.to_sym] += 1
           @pin_reasons[payload[:reason]] += 1 if payload[:reason]
         end
@@ -47,10 +47,10 @@ module RefreshSync
       verdict = workers > 1 ? :broken : :single_process_only
       (logger || (defined?(::Rails) && ::Rails.logger))&.warn(topology_warning(verdict, workers))
       ActiveSupport::Notifications.instrument(
-        "cable_topology.refresh_sync", adapter: adapter.to_s, verdict: verdict,
+        "cable_topology.upkeep", adapter: adapter.to_s, verdict: verdict,
         web_concurrency: workers
       )
-      RefreshSync.stats[:cable_topology_warnings] += 1
+      Upkeep.stats[:cable_topology_warnings] += 1
       verdict
     end
 
@@ -61,12 +61,12 @@ module RefreshSync
 
     def self.topology_warning(verdict, workers)
       if verdict == :broken
-        "RefreshSync: the async Action Cable adapter cannot deliver across " \
+        "Upkeep: the async Action Cable adapter cannot deliver across " \
         "processes, and WEB_CONCURRENCY=#{workers} runs a multi-process server — " \
         "updates WILL be silently lost between workers. Use a cross-process " \
         "adapter (solid_cable, redis, postgresql) in config/cable.yml."
       else
-        "RefreshSync: the async Action Cable adapter is per-process; " \
+        "Upkeep: the async Action Cable adapter is per-process; " \
         "deliveries will not cross processes. Fine for a single-process " \
         "server, broken the moment a second process appears."
       end

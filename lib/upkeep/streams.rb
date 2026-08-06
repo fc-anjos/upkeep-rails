@@ -1,10 +1,10 @@
-module RefreshSync
+module Upkeep
   # The "browser client" — deliberately zero custom JavaScript.
   #
   # Turbo 8 already ships everything the client contract needs: the
   # <turbo-cable-stream-source> element subscribes, Turbo Streams apply
   # themselves, refresh actions morph, and X-Turbo-Request-Id discard breaks
-  # the GET-write loop. RefreshSync therefore ships no JS at all:
+  # the GET-write loop. Upkeep therefore ships no JS at all:
   #
   # 1. Subscription: Capture injects stock <turbo-cable-stream-source>
   #    elements (cohort stream + each surface stream) before </body>. The
@@ -29,7 +29,7 @@ module RefreshSync
       def auto_subscribe = @auto_subscribe.nil? ? true : @auto_subscribe
 
       def cohort_stream?(name)
-        name.is_a?(String) && name.start_with?("refresh_sync:cohort:")
+        name.is_a?(String) && name.start_with?("upkeep:cohort:")
       end
 
       # Build the stock Turbo stream source tags for a set of stream names.
@@ -46,9 +46,9 @@ module RefreshSync
         return if streams.empty?
         body = response.body
         unless body.include?("</body>")
-          RefreshSync.stats[:subscribe_injection_skipped] += 1
+          Upkeep.stats[:subscribe_injection_skipped] += 1
           ActiveSupport::Notifications.instrument(
-            "subscribe_injection_skipped.refresh_sync", reason: :no_body_tag
+            "subscribe_injection_skipped.upkeep", reason: :no_body_tag
           )
           return
         end
@@ -61,19 +61,19 @@ module RefreshSync
       # pushed, nil for non-cohort streams / unknown cohorts.
       def subscribed(stream_name)
         return nil unless cohort_stream?(stream_name)
-        state = RefreshSync.store.mark_subscribed(stream_name)
+        state = Upkeep.store.mark_subscribed(stream_name)
         case state
         when :reconnect
           # The viewer may have missed deliveries while disconnected; one
           # idempotent refresh converges them. Server-side by design — the
           # client has no resync logic to get wrong.
           ::Turbo::StreamsChannel.broadcast_refresh_to(stream_name)
-          RefreshSync.stats[:reconnect_refreshes] += 1
+          Upkeep.stats[:reconnect_refreshes] += 1
           ActiveSupport::Notifications.instrument(
-            "reconnect_refresh.refresh_sync", stream: stream_name
+            "reconnect_refresh.upkeep", stream: stream_name
           )
         when :first
-          RefreshSync.stats[:cohorts_activated] += 1
+          Upkeep.stats[:cohorts_activated] += 1
         end
         state
       end

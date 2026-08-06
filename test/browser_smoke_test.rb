@@ -95,9 +95,9 @@ class BrowserSmokeTest < ActiveSupport::TestCase
       )
       ActionCable.server.config.cable = { "adapter" => "async" }
       ActionCable.server.instance_variable_set(:@pubsub, nil)
-      RefreshSync.store = RefreshSync::ActiveRecordStore.new
-      RefreshSync.registry = RefreshSync::ActiveRecordSurfaceRegistry.new
-      RefreshSync.debouncer = RefreshSync::Debouncer.new(window: 0.2)
+      Upkeep.store = Upkeep::ActiveRecordStore.new
+      Upkeep.registry = Upkeep::ActiveRecordSurfaceRegistry.new
+      Upkeep.debouncer = Upkeep::Debouncer.new(window: 0.2)
 
       injector = Class.new do
         define_method(:initialize) { |app| @app = app }

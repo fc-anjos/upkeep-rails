@@ -1,4 +1,4 @@
-module RefreshSync
+module Upkeep
   # Matching must compare through the column's ActiveRecord type, not Ruby
   # ==: a read set persisted as JSON and reloaded holds "2026-01-01" where a
   # live write holds a Date, "5" where the write holds 5. Both sides of

@@ -12,16 +12,16 @@ class MemberDivergenceTest < ActionDispatch::IntegrationTest
     @a = session_for(@alice)
     @c = session_for(@carol)
     @a.get "/vip_page"
-    @stream_a = @a.response.headers["X-RefreshSync-Stream"]
+    @stream_a = @a.response.headers["X-Upkeep-Stream"]
     @c.get "/vip_page"
-    @stream_c = @c.response.headers["X-RefreshSync-Stream"]
+    @stream_c = @c.response.headers["X-Upkeep-Stream"]
     assert_equal :shared, surface("vip_cards").status
   end
 
   def events(name)
     @events ||= Hash.new { |h, k| h[k] = [] }
     @subscribed ||= %w[member_diverged member_readmitted].each do |event|
-      ActiveSupport::Notifications.subscribe("#{event}.refresh_sync") do |*args|
+      ActiveSupport::Notifications.subscribe("#{event}.upkeep") do |*args|
         @events[event] << ActiveSupport::Notifications::Event.new(*args).payload
       end
     end
@@ -30,7 +30,7 @@ class MemberDivergenceTest < ActionDispatch::IntegrationTest
 
   def teardown
     %w[member_diverged member_readmitted].each do |event|
-      ActiveSupport::Notifications.unsubscribe("#{event}.refresh_sync")
+      ActiveSupport::Notifications.unsubscribe("#{event}.upkeep")
     end
   end
 
@@ -52,7 +52,7 @@ class MemberDivergenceTest < ActionDispatch::IntegrationTest
 
     Card.create!(board: @board1, title: "After flip", status: "open")
     drain_debounce
-    assert_equal 1, RefreshSync.stats[:surface_broadcasts],
+    assert_equal 1, Upkeep.stats[:surface_broadcasts],
       "the shared broadcast still goes out for everyone else"
     assert_equal 0, broadcasts(@stream_a).size, "alice is served by the broadcast alone"
     assert_operator broadcasts(@stream_c).size, :>=, 2,
@@ -85,13 +85,13 @@ class MemberDivergenceTest < ActionDispatch::IntegrationTest
 
     # Covered writes now split: broadcast for the surface, refresh for her —
     # once at write time, plus the post-broadcast converge chase.
-    new_stream_c = @c.response.headers["X-RefreshSync-Stream"]
+    new_stream_c = @c.response.headers["X-Upkeep-Stream"]
     Card.create!(board: @board1, title: "While diverged", status: "open")
     drain_debounce
     drain_debounce
     assert_includes 1..2, broadcasts(new_stream_c).size,
       "the ejected member rides personal refresh"
-    assert_equal 2, RefreshSync.stats[:surface_broadcasts]
+    assert_equal 2, Upkeep.stats[:surface_broadcasts]
     assert_no_sentinel_broadcast
   end
 
@@ -115,11 +115,11 @@ class MemberDivergenceTest < ActionDispatch::IntegrationTest
     assert_equal 2, @c.response.body.scan("<turbo-cable-stream-source ").size,
       "re-admitted member's page subscribes to the surface stream again"
 
-    new_stream_c = @c.response.headers["X-RefreshSync-Stream"]
-    before = RefreshSync.stats[:surface_broadcasts]
+    new_stream_c = @c.response.headers["X-Upkeep-Stream"]
+    before = Upkeep.stats[:surface_broadcasts]
     Card.create!(board: @board1, title: "After re-admission", status: "open")
     drain_debounce
-    assert_equal before + 1, RefreshSync.stats[:surface_broadcasts]
+    assert_equal before + 1, Upkeep.stats[:surface_broadcasts]
     assert_no_refresh(new_stream_c)
     assert_no_sentinel_broadcast
   end
@@ -141,7 +141,7 @@ class MemberDivergenceTest < ActionDispatch::IntegrationTest
 
     Card.create!(board: @board1, title: "Bulk window write", status: "open")
     drain_debounce
-    assert_equal 1, RefreshSync.stats[:surface_broadcasts]
+    assert_equal 1, Upkeep.stats[:surface_broadcasts]
     all_broadcast_payloads.each { |p| refute_match(/VIP LANE/, p) }
 
     @c.get "/vip_page" # carol genuinely diverged: she stays personal

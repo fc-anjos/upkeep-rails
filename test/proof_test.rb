@@ -33,7 +33,7 @@ class ProofTest < ActionDispatch::IntegrationTest
   def test_unscoped_relation_catches_any_insert
     get "/cards"
     assert_response :success
-    stream = response.headers["X-RefreshSync-Stream"]
+    stream = response.headers["X-Upkeep-Stream"]
 
     Card.create!(board: @board2, title: "Anywhere")
     assert_refreshes(stream, 1)
@@ -66,16 +66,16 @@ class ProofTest < ActionDispatch::IntegrationTest
 
   # (e) zero cohorts: writes do no matching work and nothing broadcasts
   def test_no_cohorts_means_no_write_side_work
-    assert_equal 0, RefreshSync.stats[:writes_analyzed]
+    assert_equal 0, Upkeep.stats[:writes_analyzed]
 
     @card1.update!(title: "Quiet")
     Card.create!(board: @board1, title: "Still quiet")
     Card.where(board_id: @board1.id).update_all(status: "x")
     sleep 0.5
 
-    assert_equal 0, RefreshSync.stats[:writes_analyzed],
+    assert_equal 0, Upkeep.stats[:writes_analyzed],
       "no cohorts registered: write path must not analyze anything"
-    assert_equal 0, RefreshSync.stats[:refreshes_broadcast]
+    assert_equal 0, Upkeep.stats[:refreshes_broadcast]
   end
 
   # multiple viewers: same write fans out to both cohorts, separately debounced
@@ -91,11 +91,11 @@ class ProofTest < ActionDispatch::IntegrationTest
 
   # capture must not tax uncaptured requests or non-GETs
   def test_read_analysis_only_runs_while_capturing
-    baseline = RefreshSync.stats[:relations_analyzed]
+    baseline = Upkeep.stats[:relations_analyzed]
     Card.where(board_id: @board1.id).to_a
-    assert_equal baseline, RefreshSync.stats[:relations_analyzed]
+    assert_equal baseline, Upkeep.stats[:relations_analyzed]
 
     visit_board(@board1)
-    assert_operator RefreshSync.stats[:relations_analyzed], :>, baseline
+    assert_operator Upkeep.stats[:relations_analyzed], :>, baseline
   end
 end

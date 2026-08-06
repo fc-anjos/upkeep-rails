@@ -24,11 +24,11 @@ class PulseFixtureTest < ActionDispatch::IntegrationTest
     a_sess = session_for(@alice)
     c_sess = session_for(@carol)
     a_sess.get "/pulse/board"
-    @alice_trace = RefreshSync::Capture.last_recording.prov
+    @alice_trace = Upkeep::Capture.last_recording.prov
     c_sess.get "/pulse/board"
-    @carol_trace = RefreshSync::Capture.last_recording.prov
-    [a_sess.response.headers["X-RefreshSync-Stream"],
-     c_sess.response.headers["X-RefreshSync-Stream"]]
+    @carol_trace = Upkeep::Capture.last_recording.prov
+    [a_sess.response.headers["X-Upkeep-Stream"],
+     c_sess.response.headers["X-Upkeep-Stream"]]
   end
 
   def test_promotion_localizes_chrome_and_islands_while_list_stays_shared
@@ -49,7 +49,7 @@ class PulseFixtureTest < ActionDispatch::IntegrationTest
 
     # Page-level localization: chrome (who-span, admin nav) diverges; the
     # list is byte-shared between a regular user and an admin.
-    localization = RefreshSync::Provenance.localize(@alice_trace, @carol_trace)
+    localization = Upkeep::Provenance.localize(@alice_trace, @carol_trace)
     chrome_islands = localization[:innermost].map { |a| @carol_trace.text_for(a).to_s }
     assert chrome_islands.any? { |t| t.include?("SENTINEL_USER") || t.include?("Admin tools") },
       "chrome must localize as personal: #{localization[:innermost].inspect}"
@@ -63,7 +63,7 @@ class PulseFixtureTest < ActionDispatch::IntegrationTest
     stream_a, stream_c = subscribe_role_diverse_viewers
     b_sess = session_for(@bob)
     b_sess.get "/pulse/board"
-    stream_b = b_sess.response.headers["X-RefreshSync-Stream"]
+    stream_b = b_sess.response.headers["X-Upkeep-Stream"]
 
     @items.first.update!(title: "Task 1 (renamed)")
     deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 3
@@ -83,7 +83,7 @@ class PulseFixtureTest < ActionDispatch::IntegrationTest
     target = tag[/targets="\[data-rs-node=&#39;([^&]*)&#39;\]"/, 1]
     assert target, "replace must target a stamped node address"
     assert_includes target, "@items:", "a one-row change arrives as a row-targeted replace"
-    assert_equal replaces.size, RefreshSync.stats[:region_broadcasts]
+    assert_equal replaces.size, Upkeep.stats[:region_broadcasts]
 
     # Fully covered by the region: nobody gets a refresh; the one broadcast
     # reaches every subscriber via the shared surface stream.
@@ -115,7 +115,7 @@ class PulseFixtureTest < ActionDispatch::IntegrationTest
 
     pin_sess = session_for(@bob)
     pin_sess.get "/pulse/board_with_pin", params: { pin: @items.first.id }
-    pin_stream = pin_sess.response.headers["X-RefreshSync-Stream"]
+    pin_stream = pin_sess.response.headers["X-Upkeep-Stream"]
 
     @items.first.update!(title: "Task 1 (pinned rename)")
     assert_refreshes(pin_stream, 1) # controller read outside any node -> refresh
@@ -133,8 +133,8 @@ class PulseFixtureTest < ActionDispatch::IntegrationTest
 
   def test_cached_fragment_inside_the_region_keeps_dependencies_and_freshness
     subscribe_role_diverse_viewers
-    assert_operator RefreshSync.stats[:fragment_readset_captures], :>=, 1
-    assert_operator RefreshSync.stats[:fragment_readset_replays], :>=, 1,
+    assert_operator Upkeep.stats[:fragment_readset_captures], :>=, 1
+    assert_operator Upkeep.stats[:fragment_readset_replays], :>=, 1,
       "the second viewer must hit the fragment and replay its read set"
 
     # A write that changes the cached aggregate (new top item) still reaches
@@ -148,16 +148,16 @@ class PulseFixtureTest < ActionDispatch::IntegrationTest
   end
 
   def test_uncovered_bulk_write_respects_the_refresh_budget
-    RefreshSync.debouncer = RefreshSync::Debouncer.new(window: WINDOW, refresh_budget: 1)
+    Upkeep.debouncer = Upkeep::Debouncer.new(window: WINDOW, refresh_budget: 1)
     streams = [@alice, @bob, @carol].map do |user|
       sess = session_for(user)
       sess.get "/pulse/board_with_pin", params: { pin: @items.first.id }
-      sess.response.headers["X-RefreshSync-Stream"]
+      sess.response.headers["X-Upkeep-Stream"]
     end
 
     Item.unscoped.where(discarded_at: nil).update_all("position = position + 1")
     streams.each { |s| assert_refreshes(s, 1) }
-    assert_operator RefreshSync.stats[:refreshes_deferred], :>=, 1,
+    assert_operator Upkeep.stats[:refreshes_deferred], :>=, 1,
       "a table-level burst beyond the budget must defer with jitter"
   end
 end

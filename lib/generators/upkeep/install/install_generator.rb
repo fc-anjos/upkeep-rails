@@ -1,7 +1,7 @@
 require "rails/generators"
 require "rails/generators/active_record"
 
-module RefreshSync
+module Upkeep
   module Generators
     class InstallGenerator < ::Rails::Generators::Base
       include ActiveRecord::Generators::Migration
@@ -9,12 +9,12 @@ module RefreshSync
       source_root File.expand_path("templates", __dir__)
 
       def copy_initializer
-        template "initializer.rb", "config/initializers/refresh_sync.rb"
+        template "initializer.rb", "config/initializers/upkeep.rb"
       end
 
       def copy_migration
-        migration_template "create_refresh_sync_tables.rb",
-                           "db/migrate/create_refresh_sync_tables.rb"
+        migration_template "create_upkeep_tables.rb",
+                           "db/migrate/create_upkeep_tables.rb"
       end
 
       def copy_herb_config

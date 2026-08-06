@@ -10,7 +10,7 @@ class StreamsTest < ActionDispatch::IntegrationTest
   def test_capture_injects_signed_stream_sources_for_cohort_and_surfaces
     get "/pulse/board"
     assert_response :success
-    stream = response.headers["X-RefreshSync-Stream"]
+    stream = response.headers["X-Upkeep-Stream"]
     assert stream
 
     sources = response.body.scan(
@@ -21,7 +21,7 @@ class StreamsTest < ActionDispatch::IntegrationTest
     verified = sources.map { |s| Turbo.signed_stream_verifier.verified(s) }
     assert_includes verified, stream, "cohort stream must be subscribable via its signed name"
     # Surface streams ride along (the page rendered shared-surface candidates).
-    assert verified.any? { |v| v.to_s.start_with?("refresh_sync:surface:") },
+    assert verified.any? { |v| v.to_s.start_with?("upkeep:surface:") },
            "surface stream sources should be injected too"
     # All injected names verify — nothing unsigned ships.
     assert verified.all?, "every injected stream name must verify"
@@ -34,21 +34,21 @@ class StreamsTest < ActionDispatch::IntegrationTest
 
   def test_first_subscription_activates_then_reconnect_pushes_one_refresh
     get "/boards/#{@board1.id}"
-    stream = response.headers["X-RefreshSync-Stream"]
+    stream = response.headers["X-Upkeep-Stream"]
 
-    assert_equal :first, RefreshSync::Streams.subscribed(stream)
+    assert_equal :first, Upkeep::Streams.subscribed(stream)
     assert_equal 0, broadcasts(stream).size, "first subscription must not refresh"
 
-    assert_equal :reconnect, RefreshSync::Streams.subscribed(stream)
+    assert_equal :reconnect, Upkeep::Streams.subscribed(stream)
     assert_equal 1, broadcasts(stream).size, "reconnect must push exactly one resync refresh"
     tag = ActiveSupport::JSON.decode(broadcasts(stream).first)
     assert_includes tag, %(action="refresh")
-    assert_equal 1, RefreshSync.stats[:reconnect_refreshes]
+    assert_equal 1, Upkeep.stats[:reconnect_refreshes]
   end
 
   def test_unknown_and_foreign_streams_are_ignored
-    assert_nil RefreshSync::Streams.subscribed("refresh_sync:cohort:deadbeef")
-    assert_nil RefreshSync::Streams.subscribed("some_other_stream")
+    assert_nil Upkeep::Streams.subscribed("upkeep:cohort:deadbeef")
+    assert_nil Upkeep::Streams.subscribed("some_other_stream")
     assert_equal 0, all_broadcast_payloads.size
   end
 
@@ -56,12 +56,12 @@ class StreamsTest < ActionDispatch::IntegrationTest
     sim = sim_process
     in_process(sim) do
       get "/boards/#{@board1.id}"
-      stream = response.headers["X-RefreshSync-Stream"]
+      stream = response.headers["X-Upkeep-Stream"]
       assert_equal :first, sim.store.mark_subscribed(stream)
       assert_equal :reconnect, sim.store.mark_subscribed(stream)
-      assert_nil sim.store.mark_subscribed("refresh_sync:cohort:nope")
+      assert_nil sim.store.mark_subscribed("upkeep:cohort:nope")
     end
   ensure
-    RefreshSync.store = RefreshSync::MemoryStore.new
+    Upkeep.store = Upkeep::MemoryStore.new
   end
 end

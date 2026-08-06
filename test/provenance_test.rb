@@ -8,7 +8,7 @@ class ProvenanceTest < ActionDispatch::IntegrationTest
 
   def test_read_set_entries_carry_node_addresses
     session_for(@alice).get "/vip"
-    read_set = RefreshSync::Capture.last_recording.read_set
+    read_set = Upkeep::Capture.last_recording.read_set
 
     node_reads = read_set.tables.fetch("cards").node_reads
     assert node_reads.any?, "cards reads should carry node addresses"
@@ -17,16 +17,16 @@ class ProvenanceTest < ActionDispatch::IntegrationTest
     assert_includes deps.ids, @card1.id, "the loop node should own the loaded card ids"
 
     # Round-trips through JSON (the AR store path) intact.
-    reloaded = RefreshSync::ReadSet.from_h(JSON.parse(JSON.generate(read_set.to_h)))
+    reloaded = Upkeep::ReadSet.from_h(JSON.parse(JSON.generate(read_set.to_h)))
     assert_equal read_set.to_h, reloaded.to_h
     assert reloaded.tables.fetch("cards").node_reads.key?(address)
   end
 
   def test_matching_node_addresses_routes_a_change_to_its_nodes
     session_for(@alice).get "/vip"
-    read_set = RefreshSync::Capture.last_recording.read_set
+    read_set = Upkeep::Capture.last_recording.read_set
 
-    change = RefreshSync::Change.new(
+    change = Upkeep::Change.new(
       table: "cards", id: @card1.id, kind: :update,
       old_attrs: @card1.attributes, new_attrs: @card1.attributes
     )
@@ -34,7 +34,7 @@ class ProvenanceTest < ActionDispatch::IntegrationTest
     assert matched.any?, "the change should map to at least one node"
     matched.each { |address| assert address.start_with?("t:") }
 
-    boards_change = RefreshSync::Change.new(
+    boards_change = Upkeep::Change.new(
       table: "boards", id: @board1.id, kind: :update,
       old_attrs: @board1.attributes, new_attrs: @board1.attributes
     )
@@ -44,11 +44,11 @@ class ProvenanceTest < ActionDispatch::IntegrationTest
 
   def test_divergence_localizes_to_the_admin_badge_node
     session_for(@alice).get "/badge"
-    trace_a = RefreshSync::Capture.last_recording.prov
+    trace_a = Upkeep::Capture.last_recording.prov
     session_for(@carol).get "/badge" # carol is admin: badge div renders
-    trace_c = RefreshSync::Capture.last_recording.prov
+    trace_c = Upkeep::Capture.last_recording.prov
 
-    result = RefreshSync::Provenance.localize(trace_a, trace_c)
+    result = Upkeep::Provenance.localize(trace_a, trace_c)
 
     assert result[:differing].any?, "admin badge must diverge"
     assert_equal 1, result[:innermost].size,

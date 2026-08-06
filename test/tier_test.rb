@@ -14,9 +14,9 @@ class TierTest < ActionDispatch::IntegrationTest
     a = session_for(@alice)
     c = session_for(@carol)
     a.get "/shared_board"
-    stream_a = a.response.headers["X-RefreshSync-Stream"]
+    stream_a = a.response.headers["X-Upkeep-Stream"]
     c.get "/shared_board"
-    stream_c = c.response.headers["X-RefreshSync-Stream"]
+    stream_c = c.response.headers["X-Upkeep-Stream"]
 
     assert_equal :shared, surface("open_cards").status
 
@@ -36,16 +36,16 @@ class TierTest < ActionDispatch::IntegrationTest
     a = session_for(@alice)
     b = session_for(@bob)
     a.get "/shared_board"
-    stream_a = a.response.headers["X-RefreshSync-Stream"]
+    stream_a = a.response.headers["X-Upkeep-Stream"]
     b.get "/shared_board"
-    stream_b = b.response.headers["X-RefreshSync-Stream"]
+    stream_b = b.response.headers["X-Upkeep-Stream"]
 
     assert_equal :observing, surface("open_cards").status
 
     Card.create!(board: @board1, title: "Tier P still", status: "open")
     assert_refreshes(stream_a, 1)
     assert_equal 1, broadcasts(stream_b).size
-    assert_equal 0, RefreshSync.stats[:surface_broadcasts]
+    assert_equal 0, Upkeep.stats[:surface_broadcasts]
   end
 
   def test_unauthenticated_viewers_never_count_as_evidence
@@ -84,20 +84,20 @@ class TierTest < ActionDispatch::IntegrationTest
     a = session_for(@alice)
     c = session_for(@carol)
     a.get "/shared_board"
-    stream_a = a.response.headers["X-RefreshSync-Stream"]
+    stream_a = a.response.headers["X-Upkeep-Stream"]
     c.get "/shared_board"
     assert_equal :shared, surface("open_cards").status
 
     broken = Class.new(ActionController::Base) # no view paths: render raises
-    RefreshSync.renderer_class = broken
+    Upkeep.renderer_class = broken
     begin
       Card.create!(board: @board1, title: "Boom", status: "open")
       assert_refreshes(stream_a, 1)
       assert_equal :personal, surface("open_cards").status
       assert_match(/scrubbed_render_error/, surface("open_cards").pin_reason.to_s)
-      assert_equal 0, RefreshSync.stats[:surface_broadcasts]
+      assert_equal 0, Upkeep.stats[:surface_broadcasts]
     ensure
-      RefreshSync.renderer_class = ScrubbedController
+      Upkeep.renderer_class = ScrubbedController
     end
   end
 
@@ -109,7 +109,7 @@ class TierTest < ActionDispatch::IntegrationTest
     c.get "/shared_board"
     assert_equal :shared, surface("open_cards").status
 
-    RefreshSync.deploy_key = "deploy-2"
+    Upkeep.deploy_key = "deploy-2"
     a2 = session_for(@alice)
     a2.get "/shared_board"
     assert_equal :observing, surface("open_cards").status, "new deploy starts from scratch"
@@ -131,11 +131,11 @@ class TierTest < ActionDispatch::IntegrationTest
   # Tier P refresh budget: a table-level write burst to many cohorts is
   # spread across windows instead of stampeding.
   def test_refresh_budget_caps_storms
-    RefreshSync.debouncer = RefreshSync::Debouncer.new(window: 0.25, refresh_budget: 8, jitter: 0.3)
+    Upkeep.debouncer = Upkeep::Debouncer.new(window: 0.25, refresh_budget: 8, jitter: 0.3)
     streams = 24.times.map do
       s = open_session
       s.get "/cards"
-      s.response.headers["X-RefreshSync-Stream"]
+      s.response.headers["X-Upkeep-Stream"]
     end
 
     Card.where(board_id: @board1.id).update_all(status: "swept")
@@ -150,6 +150,6 @@ class TierTest < ActionDispatch::IntegrationTest
       sleep 0.05
     end
     assert streams.all? { |s| broadcasts(s).size == 1 }, "every cohort eventually refreshes exactly once"
-    assert_operator RefreshSync.stats[:refreshes_deferred], :>, 0
+    assert_operator Upkeep.stats[:refreshes_deferred], :>, 0
   end
 end

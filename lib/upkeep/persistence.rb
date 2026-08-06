@@ -1,7 +1,7 @@
 require "securerandom"
 require "json"
 
-module RefreshSync
+module Upkeep
   # ActiveRecord-backed cohort store: one cohorts table (stream, serialized
   # read set, surface names, deploy key, heartbeat), plus a claims table for
   # cross-process coalescing and a surfaces table for shared promotion state.
@@ -12,28 +12,28 @@ module RefreshSync
   # the shared store exists to prevent. Claims are a third (two columns).
   class ActiveRecordStore
     class CohortRow < ActiveRecord::Base
-      self.table_name = "refresh_sync_cohorts"
+      self.table_name = "upkeep_cohorts"
     end
 
     class SurfaceRow < ActiveRecord::Base
-      self.table_name = "refresh_sync_surfaces"
+      self.table_name = "upkeep_surfaces"
     end
 
     class ClaimRow < ActiveRecord::Base
-      self.table_name = "refresh_sync_claims"
+      self.table_name = "upkeep_claims"
     end
 
     # One row per (cohort, table it depends on): the indexed inverse of the
     # read set's table list, so write matching is an indexed lookup instead
     # of a tables_json LIKE scan.
     class CohortTableRow < ActiveRecord::Base
-      self.table_name = "refresh_sync_cohort_tables"
+      self.table_name = "upkeep_cohort_tables"
     end
 
     def self.setup!
       conn = ActiveRecord::Base.connection
-      unless conn.table_exists?(:refresh_sync_cohorts)
-        conn.create_table :refresh_sync_cohorts do |t|
+      unless conn.table_exists?(:upkeep_cohorts)
+        conn.create_table :upkeep_cohorts do |t|
           t.string :stream, null: false
           t.string :deploy_key, null: false
           # Viewer identity (nil for unauthenticated pages): the key
@@ -47,18 +47,18 @@ module RefreshSync
           # subscriptions on the same stream are reconnects (resync refresh).
           t.datetime :activated_at
         end
-        conn.add_index :refresh_sync_cohorts, :stream, unique: true
+        conn.add_index :upkeep_cohorts, :stream, unique: true
       end
-      unless conn.table_exists?(:refresh_sync_cohort_tables)
-        conn.create_table :refresh_sync_cohort_tables do |t|
+      unless conn.table_exists?(:upkeep_cohort_tables)
+        conn.create_table :upkeep_cohort_tables do |t|
           t.bigint :cohort_id, null: false
           t.string :table_name, null: false
         end
-        conn.add_index :refresh_sync_cohort_tables, :table_name
-        conn.add_index :refresh_sync_cohort_tables, :cohort_id
+        conn.add_index :upkeep_cohort_tables, :table_name
+        conn.add_index :upkeep_cohort_tables, :cohort_id
       end
-      unless conn.table_exists?(:refresh_sync_surfaces)
-        conn.create_table :refresh_sync_surfaces do |t|
+      unless conn.table_exists?(:upkeep_surfaces)
+        conn.create_table :upkeep_surfaces do |t|
           t.string :name, null: false
           t.string :deploy_key, null: false
           # Status is duplicated out of state_json into its own column so
@@ -75,14 +75,14 @@ module RefreshSync
           t.integer :lock_version, null: false, default: 0
           t.text :state_json
         end
-        conn.add_index :refresh_sync_surfaces, [:name, :deploy_key], unique: true
+        conn.add_index :upkeep_surfaces, [:name, :deploy_key], unique: true
       end
-      unless conn.table_exists?(:refresh_sync_claims)
-        conn.create_table :refresh_sync_claims do |t|
+      unless conn.table_exists?(:upkeep_claims)
+        conn.create_table :upkeep_claims do |t|
           t.string :claim_key, null: false
           t.datetime :created_at
         end
-        conn.add_index :refresh_sync_claims, :claim_key, unique: true
+        conn.add_index :upkeep_claims, :claim_key, unique: true
       end
     end
 
@@ -119,10 +119,10 @@ module RefreshSync
 
     def register(read_set:, surfaces: [], baselines: {}, identity: nil)
       id = SecureRandom.hex(8)
-      stream = "refresh_sync:cohort:#{id}"
+      stream = "upkeep:cohort:#{id}"
       row = CohortRow.create!(
         stream: stream,
-        deploy_key: RefreshSync.deploy_key,
+        deploy_key: Upkeep.deploy_key,
         identity: identity,
         read_set_json: JSON.generate(read_set.to_h),
         surfaces_json: JSON.generate(surfaces),
@@ -153,8 +153,8 @@ module RefreshSync
         @mutex.synchronize { @watch_cache = nil }
       end
       claims = ClaimRow.where(created_at: ...now - CLAIM_TTL).delete_all
-      RefreshSync.stats[:cohorts_swept] += dead.size
-      RefreshSync.stats[:claims_swept] += claims
+      Upkeep.stats[:cohorts_swept] += dead.size
+      Upkeep.stats[:claims_swept] += claims
       { cohorts: dead.size, claims: claims }
     end
 
@@ -319,12 +319,12 @@ module RefreshSync
       end
     end
 
-    def lookup(name, deploy_key: RefreshSync.deploy_key)
+    def lookup(name, deploy_key: Upkeep.deploy_key)
       row = ActiveRecordStore::SurfaceRow.find_by(name: name, deploy_key: deploy_key)
       row && hydrate(row)
     end
 
-    def upsert(name, deploy_key: RefreshSync.deploy_key)
+    def upsert(name, deploy_key: Upkeep.deploy_key)
       row = ActiveRecordStore::SurfaceRow.find_or_create_by!(name: name, deploy_key: deploy_key)
       hydrate(row)
     rescue ActiveRecord::RecordNotUnique

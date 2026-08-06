@@ -1,6 +1,6 @@
 require "securerandom"
 
-module RefreshSync
+module Upkeep
   # One cohort = one rendered page view: a stream name, its read set, and
   # the names of shared-surface candidates it rendered.
   # (The real gem adds durability, TTL leases and the signed activation
@@ -21,7 +21,7 @@ module RefreshSync
 
     def register(read_set:, surfaces: [], baselines: {}, identity: nil)
       id = SecureRandom.hex(8)
-      cohort = Cohort.new(id: id, stream: "refresh_sync:cohort:#{id}",
+      cohort = Cohort.new(id: id, stream: "upkeep:cohort:#{id}",
                           read_set: read_set, surfaces: surfaces,
                           identity: identity, baselines: baselines)
       @mutex.synchronize do

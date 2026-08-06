@@ -17,14 +17,14 @@ class UnbroadcastableRegionTest < ActionDispatch::IntegrationTest
 
   def test_bare_cache_block_is_reported_and_covered_by_refresh
     events = []
-    sub = ActiveSupport::Notifications.subscribe("region_unbroadcastable.refresh_sync") do |*_a, payload|
+    sub = ActiveSupport::Notifications.subscribe("region_unbroadcastable.upkeep") do |*_a, payload|
       events << payload
     end
 
     a_sess = session_for(@alice)
     c_sess = session_for(@carol)
     a_sess.get "/pulse/bare_board"
-    a_stream = a_sess.response.headers["X-RefreshSync-Stream"]
+    a_stream = a_sess.response.headers["X-Upkeep-Stream"]
     c_sess.get "/pulse/bare_board"
 
     s = surface("pulse_bare")
@@ -41,7 +41,7 @@ class UnbroadcastableRegionTest < ActionDispatch::IntegrationTest
       "the event names the template: #{event[:regions].inspect}"
     assert event[:regions].none? { |r| s.region_addresses.include?(r[:address]) },
       "reported regions are exactly the ones Tier S cannot target"
-    assert_operator RefreshSync.stats[:regions_unbroadcastable], :>=, 1
+    assert_operator Upkeep.stats[:regions_unbroadcastable], :>=, 1
 
     # Correctness rides on refresh: a write matching the cache block's
     # dependencies (outside every broadcastable region) refreshes viewers.

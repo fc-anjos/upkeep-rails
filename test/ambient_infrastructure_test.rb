@@ -9,8 +9,8 @@ class AmbientInfrastructureTest < ActionDispatch::IntegrationTest
   include ProofHelpers
 
   class ProbeController < ActionController::Base
-    include RefreshSync::Capture
-    refresh_sync
+    include Upkeep::Capture
+    upkeep
 
     def infra
       session["flash"]
@@ -43,20 +43,20 @@ class AmbientInfrastructureTest < ActionDispatch::IntegrationTest
   def test_infrastructure_session_keys_do_not_taint
     get "/probe/infra"
     assert_response :success
-    assert response.headers["X-RefreshSync-Stream"], "capture should register"
-    recording = RefreshSync::Capture.last_recording
+    assert response.headers["X-Upkeep-Stream"], "capture should register"
+    recording = Upkeep::Capture.last_recording
     assert_empty recording.ambient, "flash/csrf/warden reads must not identity-taint"
   end
 
   def test_app_session_keys_still_taint
     get "/probe/app_key"
     assert_response :success
-    recording = RefreshSync::Capture.last_recording
+    recording = Upkeep::Capture.last_recording
     assert_includes recording.ambient, :session_read
   end
 
   def test_whole_session_reads_still_taint
-    RefreshSync::Ambient.observe(:probe) # sanity: helper exists
+    Upkeep::Ambient.observe(:probe) # sanity: helper exists
     get "/probe/infra" # warm session
     sess = open_session
     sess.post "/login", params: { user_id: @alice.id }
@@ -69,7 +69,7 @@ class AmbientInfrastructureTest < ActionDispatch::IntegrationTest
       end
     end
     sess.get "/probe/infra"
-    recording = RefreshSync::Capture.last_recording
+    recording = Upkeep::Capture.last_recording
     assert_includes recording.ambient, :session_read
   ensure
     ProbeController.class_eval do

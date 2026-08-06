@@ -1,6 +1,6 @@
 require "digest"
 
-module RefreshSync
+module Upkeep
   # Scrubbed render for Tier S broadcasts: a named partial with captured
   # locals, rendered by a bare renderer controller on a *fresh thread* —
   # empty session, no cookies, no request, clean thread-locals, clean
@@ -23,7 +23,7 @@ module RefreshSync
     # base class stays bare ActionController::Base — never the app's
     # ApplicationController.
     def self.renderer
-      base = RefreshSync.renderer_class
+      base = Upkeep.renderer_class
       return @renderer if @renderer && @renderer_base == base
       @renderer_base = base
       @renderer =
@@ -31,7 +31,7 @@ module RefreshSync
            ::Rails.application.respond_to?(:helpers)
           helpers = ::Rails.application.helpers
           Class.new(base) do
-            define_singleton_method(:name) { "RefreshSync::ScrubRenderer" }
+            define_singleton_method(:name) { "Upkeep::ScrubRenderer" }
             helper helpers
           end
         else
@@ -43,7 +43,7 @@ module RefreshSync
 
     def self.call(descriptor)
       thread = Thread.new do
-        Thread.current.name = "refresh_sync_scrub"
+        Thread.current.name = "upkeep_scrub"
         Thread.current.report_on_exception = false # caller handles via #value
         ActiveSupport::CurrentAttributes.clear_all
         begin

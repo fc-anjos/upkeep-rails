@@ -13,7 +13,7 @@ class LeakTest < ActionDispatch::IntegrationTest
     a = session_for(@alice, banner: "SENTINEL_BANNER")
     c = session_for(@carol, banner: "SENTINEL_BANNER")
     a.get "/threadlocal"
-    stream_a = a.response.headers["X-RefreshSync-Stream"]
+    stream_a = a.response.headers["X-Upkeep-Stream"]
     c.get "/threadlocal"
 
     assert_equal :personal, surface("threadlocal_cards").status
@@ -21,7 +21,7 @@ class LeakTest < ActionDispatch::IntegrationTest
 
     Card.create!(board: @board1, title: "After smuggle", status: "open")
     assert_refreshes(stream_a, 1)
-    assert_equal 0, RefreshSync.stats[:surface_broadcasts]
+    assert_equal 0, Upkeep.stats[:surface_broadcasts]
     assert_no_sentinel_broadcast
   end
 
@@ -41,7 +41,7 @@ class LeakTest < ActionDispatch::IntegrationTest
 
     Card.create!(board: @board1, title: "No broadcast", status: "open")
     drain_debounce
-    assert_equal 0, RefreshSync.stats[:surface_broadcasts]
+    assert_equal 0, Upkeep.stats[:surface_broadcasts]
     assert_no_sentinel_broadcast
   end
 
@@ -51,7 +51,7 @@ class LeakTest < ActionDispatch::IntegrationTest
   # scrubbed render can't render privileged content) but wrong/degraded
   # content for privileged viewers during the window.
   def test_admin_badge_would_promote_without_role_diversity
-    RefreshSync.require_role_diversity = false
+    Upkeep.require_role_diversity = false
     a = session_for(@alice)
     b = session_for(@bob)
     a.get "/badge"
@@ -77,7 +77,7 @@ class LeakTest < ActionDispatch::IntegrationTest
     c = session_for(@carol)
     a.get "/vip"
     c.get "/vip"
-    stream_c = c.response.headers["X-RefreshSync-Stream"]
+    stream_c = c.response.headers["X-Upkeep-Stream"]
     assert_equal :shared, surface("vip_cards").status,
       "role diversity satisfied (user+admin) and nobody is beta: promotion is evidence-clean"
 
@@ -90,7 +90,7 @@ class LeakTest < ActionDispatch::IntegrationTest
 
     Card.create!(board: @board1, title: "Window write", status: "open")
     drain_debounce
-    assert_equal 1, RefreshSync.stats[:surface_broadcasts]
+    assert_equal 1, Upkeep.stats[:surface_broadcasts]
     payload = ActiveSupport::JSON.decode(broadcasts(surface("vip_cards").stream).first)
     refute_includes payload, "VIP LANE", "scrubbed render can never emit privileged content"
     assert_operator broadcasts(stream_c).size, :>=, 2,
@@ -120,7 +120,7 @@ class LeakTest < ActionDispatch::IntegrationTest
     payload = ActiveSupport::JSON.decode(broadcasts(surface("flagged_cards").stream).last)
     assert_includes payload, "NEW LOOK", "broadcast renders current ENV, not stale capture"
 
-    RefreshSync.deploy_key = "deploy-2"
+    Upkeep.deploy_key = "deploy-2"
     a2 = session_for(@alice)
     a2.get "/flagged"
     assert_equal :observing, surface("flagged_cards").status, "new deploy re-earns promotion"
@@ -133,7 +133,7 @@ class LeakTest < ActionDispatch::IntegrationTest
   def test_personalized_page_sentinels_never_broadcast
     a = session_for(@alice)
     a.get "/dashboard"
-    stream_a = a.response.headers["X-RefreshSync-Stream"]
+    stream_a = a.response.headers["X-Upkeep-Stream"]
     assert_includes a.response.body, "SENTINEL_USER_ALICE", "page itself is personalized"
 
     Card.create!(user_id: @alice.id, title: "Mine", status: "open")

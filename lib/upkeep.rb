@@ -1,42 +1,42 @@
 require "active_support"
 require "active_support/core_ext"
-require "refresh_sync/version"
+require "upkeep/version"
 
-# RefreshSync: minimal proof of the from-scratch upkeep design.
+# Upkeep: minimal proof of the from-scratch upkeep design.
 #   - read sets recorded from execution (loaded ids + simple where predicates)
 #   - coarse write matching (id overlap / predicate / table-level fallback)
 #   - two-tier delivery:
 #       Tier P (default): debounced Turbo 8 page refresh per cohort
 #       Tier S (earned):  one scrubbed shared render broadcast per surface
 #     Identity fails closed; freshness fails open.
-module RefreshSync
-  autoload :ReadSet,          "refresh_sync/read_set"
-  autoload :Recording,        "refresh_sync/recording"
-  autoload :RelationAnalysis, "refresh_sync/relation_analysis"
-  autoload :MemoryStore,      "refresh_sync/memory_store"
-  autoload :Debouncer,        "refresh_sync/debouncer"
-  autoload :Hooks,            "refresh_sync/hooks"
-  autoload :Capture,          "refresh_sync/capture"
-  autoload :SurfaceHelper,    "refresh_sync/capture"
-  autoload :Ambient,          "refresh_sync/ambient"
-  autoload :SharedRender,     "refresh_sync/shared_render"
-  autoload :Descriptor,       "refresh_sync/surfaces"
-  autoload :SurfaceObservation, "refresh_sync/surfaces"
-  autoload :Viewer,           "refresh_sync/surfaces"
-  autoload :Surface,          "refresh_sync/surfaces"
-  autoload :SurfaceRegistry,  "refresh_sync/surfaces"
-  autoload :Coercion,         "refresh_sync/coercion"
-  autoload :ActiveRecordStore, "refresh_sync/persistence"
-  autoload :ActiveRecordSurfaceRegistry, "refresh_sync/persistence"
-  autoload :DbClaimer,        "refresh_sync/persistence"
-  autoload :Health,           "refresh_sync/health"
-  autoload :Provenance,       "refresh_sync/provenance"
-  autoload :FragmentCache,    "refresh_sync/fragment_cache"
-  autoload :Streams,          "refresh_sync/streams"
-  autoload :RowIdentity,      "refresh_sync/row_identity"
-  autoload :AutoSurfaces,     "refresh_sync/auto_surfaces"
-  autoload :Verdict,          "refresh_sync/verdict"
-  autoload :Dispatch,         "refresh_sync/dispatch"
+module Upkeep
+  autoload :ReadSet,          "upkeep/read_set"
+  autoload :Recording,        "upkeep/recording"
+  autoload :RelationAnalysis, "upkeep/relation_analysis"
+  autoload :MemoryStore,      "upkeep/memory_store"
+  autoload :Debouncer,        "upkeep/debouncer"
+  autoload :Hooks,            "upkeep/hooks"
+  autoload :Capture,          "upkeep/capture"
+  autoload :SurfaceHelper,    "upkeep/capture"
+  autoload :Ambient,          "upkeep/ambient"
+  autoload :SharedRender,     "upkeep/shared_render"
+  autoload :Descriptor,       "upkeep/surfaces"
+  autoload :SurfaceObservation, "upkeep/surfaces"
+  autoload :Viewer,           "upkeep/surfaces"
+  autoload :Surface,          "upkeep/surfaces"
+  autoload :SurfaceRegistry,  "upkeep/surfaces"
+  autoload :Coercion,         "upkeep/coercion"
+  autoload :ActiveRecordStore, "upkeep/persistence"
+  autoload :ActiveRecordSurfaceRegistry, "upkeep/persistence"
+  autoload :DbClaimer,        "upkeep/persistence"
+  autoload :Health,           "upkeep/health"
+  autoload :Provenance,       "upkeep/provenance"
+  autoload :FragmentCache,    "upkeep/fragment_cache"
+  autoload :Streams,          "upkeep/streams"
+  autoload :RowIdentity,      "upkeep/row_identity"
+  autoload :AutoSurfaces,     "upkeep/auto_surfaces"
+  autoload :Verdict,          "upkeep/verdict"
+  autoload :Dispatch,         "upkeep/dispatch"
 
   # One observed committed write.
   #   kind: :insert, :update, :delete - one row, full attrs known
@@ -119,8 +119,8 @@ module RefreshSync
     # if an active cohort actually depends on an ignored table, every
     # skipped write emits a loud warning instead of silently going stale.
     DEFAULT_IGNORED_TABLES = %w[
-      refresh_sync_cohorts refresh_sync_surfaces refresh_sync_claims
-      refresh_sync_cohort_tables
+      upkeep_cohorts upkeep_surfaces upkeep_claims
+      upkeep_cohort_tables
       schema_migrations ar_internal_metadata sessions
       active_storage_blobs active_storage_attachments active_storage_variant_records
       audits versions
@@ -172,7 +172,7 @@ module RefreshSync
       return unless watching?(change.table)
       stats[:ignored_writes_warned] += 1
       ActiveSupport::Notifications.instrument(
-        "ignored_table_write_skipped.refresh_sync",
+        "ignored_table_write_skipped.upkeep",
         table: change.table, watched: true
       )
     end
@@ -189,7 +189,7 @@ module RefreshSync
     # that have no browser behind them (Pulse's chatbot drives controllers
     # through in-process integration sessions from Sidekiq jobs, logged in
     # as real users). Write CAPTURE stays global — only registration stops.
-    SUPPRESS_KEY = :refresh_sync_suppress_registration
+    SUPPRESS_KEY = :upkeep_suppress_registration
 
     def suppress_registration
       prev = Thread.current[SUPPRESS_KEY]
@@ -213,11 +213,11 @@ module RefreshSync
       # registration for its whole duration (perform_now included).
       ActiveSupport.on_load(:active_job) do
         ActiveJob::Base.around_perform do |_job, block|
-          RefreshSync.suppress_registration(&block)
+          Upkeep.suppress_registration(&block)
         end
       end
     end
   end
 end
 
-require "refresh_sync/railtie" if defined?(::Rails::Railtie)
+require "upkeep/railtie" if defined?(::Rails::Railtie)

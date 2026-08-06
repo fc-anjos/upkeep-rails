@@ -1,4 +1,4 @@
-module RefreshSync
+module Upkeep
   # Extracts membership predicates from a relation's Arel where clause.
   # Deliberately narrow (the Electric restriction): only equality / IN on
   # columns of the relation's own table, with concrete values. Anything else
@@ -23,7 +23,7 @@ module RefreshSync
         read_set.record_predicate(@table, own, node: node, membership_only: membership_only)
         # A predicate binding an identity-scoped column marks the whole
         # capture identity-bound: its surfaces stay Tier P.
-        recording.identity_bound! if (own.keys & RefreshSync.identity_columns).any?
+        recording.identity_bound! if (own.keys & Upkeep.identity_columns).any?
       end
       joined.each do |t|
         # A joined table whose OWN columns are constrained by simple
@@ -34,7 +34,7 @@ module RefreshSync
         pred = fallback_reason ? nil : predicates[t]
         if pred&.any?
           read_set.record_predicate(t, pred, node: node, membership_only: membership_only)
-          recording.identity_bound! if (pred.keys & RefreshSync.identity_columns).any?
+          recording.identity_bound! if (pred.keys & Upkeep.identity_columns).any?
         else
           read_set.record_table(t, :joined_table, node: node)
         end

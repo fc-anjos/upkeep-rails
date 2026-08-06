@@ -1,4 +1,4 @@
-module RefreshSync
+module Upkeep
   # Coalesces deliveries: at most one action per key per window. A write
   # storm inside the window collapses to a single refresh/broadcast.
   #
@@ -68,7 +68,7 @@ module RefreshSync
         proc do |entry|
           attributes = entry&.request_id ? { request_id: entry.request_id } : {}
           Turbo::StreamsChannel.broadcast_refresh_to(key, **attributes)
-          RefreshSync.stats[:refreshes_broadcast] += 1
+          Upkeep.stats[:refreshes_broadcast] += 1
         end
       end
     end
@@ -102,8 +102,8 @@ module RefreshSync
       loop do
         ready, netted = next_batch
         netted.each do |key, _entry|
-          RefreshSync.stats[:refreshes_netted] += 1
-          ActiveSupport::Notifications.instrument("refresh_netted.refresh_sync", stream: key)
+          Upkeep.stats[:refreshes_netted] += 1
+          ActiveSupport::Notifications.instrument("refresh_netted.upkeep", stream: key)
         end
         ready.each { |key, entry| dispatch(key, entry) }
       end
@@ -149,19 +149,19 @@ module RefreshSync
       refreshes.drop(allowance).each do |key, entry|
         entry.due = current + @window * (1 + rand * @jitter)
         ready.delete([key, entry])
-        RefreshSync.stats[:refreshes_deferred] += 1
+        Upkeep.stats[:refreshes_deferred] += 1
       end
       @budget_used += [refreshes.size, allowance].min
     end
 
     def dispatch(key, entry)
       if @claimer && !@claimer.call(key, entry.claim_window)
-        RefreshSync.stats[:claims_lost] += 1
+        Upkeep.stats[:claims_lost] += 1
         return
       end
       entry.action.call(entry)
     rescue => e
-      warn "RefreshSync dispatch failed: #{e.class}: #{e.message}"
+      warn "Upkeep dispatch failed: #{e.class}: #{e.message}"
     end
   end
 end

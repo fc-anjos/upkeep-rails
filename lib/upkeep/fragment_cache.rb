@@ -1,4 +1,4 @@
-module RefreshSync
+module Upkeep
   # Fragment caching hides reads: on a cache hit the block never runs, so
   # the queries inside are unobserved and their dependencies silently drop
   # out of the page's read set — the under-invalidation direction, which
@@ -12,7 +12,7 @@ module RefreshSync
   # both entries are rewritten together. Fail open — never a cached
   # fragment without its read set.
   module FragmentCache
-    SIDE_KEY_PREFIX = "refresh_sync:fragment:".freeze
+    SIDE_KEY_PREFIX = "upkeep:fragment:".freeze
 
     module CacheHelperObserver
       def cache(name = {}, options = {}, &block)
@@ -32,7 +32,7 @@ module RefreshSync
           stored.fetch("node_digests", {}).each do |address, digest|
             recording.prov.inject_digest(address, digest)
           end
-          RefreshSync.stats[:fragment_readset_replays] += 1
+          Upkeep.stats[:fragment_readset_replays] += 1
           super
         else
           # No read set on record: force the block to run live even if the
@@ -50,7 +50,7 @@ module RefreshSync
             },
             **options.slice(:expires_in)
           )
-          RefreshSync.stats[:fragment_readset_captures] += 1
+          Upkeep.stats[:fragment_readset_captures] += 1
           result
         end
       end

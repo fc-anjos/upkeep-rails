@@ -79,7 +79,7 @@ hatch that forces refresh-only delivery, for the day the demotion machinery
 itself misbehaves. If you are setting it for any other reason, file a bug.
 
 **Principles.** Identity fails closed; freshness fails open. Whenever upkeep
-silently does less than you'd expect, it warns (`*.refresh_sync`
+silently does less than you'd expect, it warns (`*.upkeep`
 notifications: capture refused, degrade to table-level, region
 unbroadcastable, payload over the transport cap, ignored-table misuse, cable
 topology that cannot deliver). The origin tab is just another subscriber.
@@ -93,14 +93,14 @@ gem "upkeep-rails"
 ```
 
 ```sh
-bin/rails generate refresh_sync:install
+bin/rails generate upkeep:install
 bin/rails db:migrate
 ```
 
 The generator creates four bookkeeping tables, an initializer, and a
 `.herb.yml` (provenance: views compile through ReActionView/Herb so shared
 content can be addressed and broadcast per-region). Opt controllers in with
-`refresh_sync` (an `around_action`); everything else — read tracking, write
+`upkeep` (an `around_action`); everything else — read tracking, write
 observation, cable subscription tags, reconnect resync, lifecycle sweeping —
 is automatic.
 

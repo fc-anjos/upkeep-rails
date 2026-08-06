@@ -20,7 +20,7 @@ class PlatformSignalsTest < ActionDispatch::IntegrationTest
     Card.transaction do
       Card.where(id: @card1.id).update_all(title: "Committed")
       # Inside the transaction nothing has been scheduled yet.
-      assert_equal 0, RefreshSync.debouncer.pending_count
+      assert_equal 0, Upkeep.debouncer.pending_count
     end
     assert_refreshes(stream, 1)
   end
@@ -33,7 +33,7 @@ class PlatformSignalsTest < ActionDispatch::IntegrationTest
 
   def test_returning_gives_bulk_writes_exact_row_identity
     stream1 = visit_board(@board1)
-    stream2 = open_session.then { |s| s.get "/boards/#{@board2.id}"; s.response.headers["X-RefreshSync-Stream"] }
+    stream2 = open_session.then { |s| s.get "/boards/#{@board2.id}"; s.response.headers["X-Upkeep-Stream"] }
     assert stream2
 
     # A bulk write to board2's row only: with table-level identity both
@@ -45,14 +45,14 @@ class PlatformSignalsTest < ActionDispatch::IntegrationTest
   end
 
   def test_returning_probe_failure_degrades_to_table_level
-    RefreshSync::RowIdentity.reset!
-    RefreshSync::RowIdentity.singleton_class.class_eval do
+    Upkeep::RowIdentity.reset!
+    Upkeep::RowIdentity.singleton_class.class_eval do
       alias_method :_orig_probe, :probe
       define_method(:probe) { |_conn| false }
     end
     stream1 = visit_board(@board1)
     events = []
-    sub = ActiveSupport::Notifications.subscribe("row_identity_unavailable.refresh_sync") { |e| events << e.payload }
+    sub = ActiveSupport::Notifications.subscribe("row_identity_unavailable.upkeep") { |e| events << e.payload }
     Board.where(id: @board2.id).update_all(name: "Blunt")
     # Table-level fallback: board1's cohort refreshes too (over-delivery,
     # never staleness), and the degrade warned loudly.
@@ -60,10 +60,10 @@ class PlatformSignalsTest < ActionDispatch::IntegrationTest
     assert events.any?, "probe failure must instrument row_identity_unavailable"
   ensure
     ActiveSupport::Notifications.unsubscribe(sub)
-    RefreshSync::RowIdentity.singleton_class.class_eval do
+    Upkeep::RowIdentity.singleton_class.class_eval do
       define_method(:probe) { |conn| _orig_probe(conn) }
     end
-    RefreshSync::RowIdentity.reset!
+    Upkeep::RowIdentity.reset!
   end
 
   def test_insert_all_ids_ride_the_returned_result
@@ -73,7 +73,7 @@ class PlatformSignalsTest < ActionDispatch::IntegrationTest
     # brand-new ids cannot match it, so no refresh — and no degrade warning
     # because the ids were really present in Rails' returned result.
     assert_no_refresh(stream)
-    assert_equal 0, RefreshSync.stats[:insert_all_without_ids]
+    assert_equal 0, Upkeep.stats[:insert_all_without_ids]
   end
 
   def test_kill_switch_forces_refresh_only
@@ -83,7 +83,7 @@ class PlatformSignalsTest < ActionDispatch::IntegrationTest
     alice.get "/shared_board"
     carol.get "/shared_board"
     s = surface("open_cards")
-    stream = carol.response.headers["X-RefreshSync-Stream"]
+    stream = carol.response.headers["X-Upkeep-Stream"]
     assert s.tier_s?, "promotion evidence still accumulates under the kill switch"
     Card.create!(board: @board1, title: "Killed", status: "open")
     assert_refreshes(stream, 1)
@@ -93,22 +93,22 @@ class PlatformSignalsTest < ActionDispatch::IntegrationTest
   end
 
   def test_column_intersection_resolves_shared_and_personal_rows
-    surface = RefreshSync::Surface.new(name: "col", deploy_key: "deploy-1")
-    shared = RefreshSync::ReadSet.new
+    surface = Upkeep::Surface.new(name: "col", deploy_key: "deploy-1")
+    shared = Upkeep::ReadSet.new
     shared.record_id("users", 7)
     shared.record_column("users", "name")
     surface.instance_variable_set(:@status, :shared)
     surface.instance_variable_set(:@shared_read_set, shared)
 
-    admin_flip = RefreshSync::Change.new(
+    admin_flip = Upkeep::Change.new(
       table: "users", id: 7, kind: :update,
       new_attrs: { "id" => 7, "role" => "admin" }, columns: ["role"]
     )
-    rename = RefreshSync::Change.new(
+    rename = Upkeep::Change.new(
       table: "users", id: 7, kind: :update,
       new_attrs: { "id" => 7, "name" => "New" }, columns: ["name"]
     )
-    unknown_columns = RefreshSync::Change.new(table: "users", id: 7, kind: :update)
+    unknown_columns = Upkeep::Change.new(table: "users", id: 7, kind: :update)
 
     assert surface.personal_change?(admin_flip),
       "a write to columns the scrub render never read is personal"
@@ -120,7 +120,7 @@ class PlatformSignalsTest < ActionDispatch::IntegrationTest
 
   def test_capture_records_column_reads
     visit_board(@board1)
-    columns = RefreshSync::Capture.last_recording.read_set.columns("cards")
+    columns = Upkeep::Capture.last_recording.read_set.columns("cards")
     assert columns, "rendered attribute reads produce column evidence"
     assert_includes columns, "title"
   end
@@ -133,7 +133,7 @@ class ArrayLocalsTest < ActiveSupport::TestCase
   include ProofHelpers
 
   def descriptor(cards)
-    RefreshSync::Descriptor.new(name: "page", partial: "surfaces/cards", locals: { cards: cards })
+    Upkeep::Descriptor.new(name: "page", partial: "surfaces/cards", locals: { cards: cards })
   end
 
   def test_record_arrays_are_refreshable_and_round_trip
@@ -142,7 +142,7 @@ class ArrayLocalsTest < ActiveSupport::TestCase
     assert d.refreshable?, "a homogeneous persisted-record array is rebuildable"
     assert_equal ["cards"], d.tables
 
-    revived = RefreshSync::Descriptor.from_h(JSON.parse(JSON.generate(d.to_h)))
+    revived = Upkeep::Descriptor.from_h(JSON.parse(JSON.generate(d.to_h)))
     assert_equal cards.map(&:id), revived.locals[:cards].map(&:id)
   end
 
@@ -150,7 +150,7 @@ class ArrayLocalsTest < ActiveSupport::TestCase
     cards = Card.where(id: @card1.id).to_a
     d = descriptor(cards)
     @card1.update!(title: "Freshened")
-    result = RefreshSync::SharedRender.call(d)
+    result = Upkeep::SharedRender.call(d)
     assert_includes result.html, "Freshened",
       "scrub render must see current data, not captured record objects"
   end
@@ -168,11 +168,11 @@ class AutoSurfacesTest < ActionDispatch::IntegrationTest
   include ProofHelpers
 
   def render_page(locals)
-    recording = RefreshSync::Recording.start
+    recording = Upkeep::Recording.start
     html = ScrubbedController.render(partial: "surfaces/cards", locals: locals)
     [recording, html]
   ensure
-    RefreshSync::Recording.finish
+    Upkeep::Recording.finish
   end
 
   def test_top_level_partial_renders_become_candidates
@@ -189,13 +189,13 @@ class AutoSurfacesTest < ActionDispatch::IntegrationTest
   end
 
   def test_auto_candidates_promote_through_the_normal_evidence_bar
-    RefreshSync.registry = RefreshSync::SurfaceRegistry.new
+    Upkeep.registry = Upkeep::SurfaceRegistry.new
     recording, = render_page(cards: Card.where(status: "open"))
     observation = recording.surfaces.first
-    surface = RefreshSync.registry.upsert(observation.descriptor.name)
-    surface.observe(observation, viewer: RefreshSync::Viewer.new(id: 1, role: "user"),
+    surface = Upkeep.registry.upsert(observation.descriptor.name)
+    surface.observe(observation, viewer: Upkeep::Viewer.new(id: 1, role: "user"),
                     cohort_stream: "s1", ambient: Set.new, identity_bound: false)
-    surface.observe(observation, viewer: RefreshSync::Viewer.new(id: 2, role: "admin"),
+    surface.observe(observation, viewer: Upkeep::Viewer.new(id: 2, role: "admin"),
                     cohort_stream: "s2", ambient: Set.new, identity_bound: false)
     assert surface.tier_s?, "role-diverse identical evidence promotes an auto candidate"
   end
@@ -203,7 +203,7 @@ class AutoSurfacesTest < ActionDispatch::IntegrationTest
   def test_declared_shared_surfaces_suppress_double_observation
     a = session_for(@alice)
     a.get "/shared_board"
-    names = RefreshSync::Capture.last_recording.surfaces.map { |o| o.descriptor.name }
+    names = Upkeep::Capture.last_recording.surfaces.map { |o| o.descriptor.name }
     assert_includes names, "open_cards"
     refute names.any? { |n| n.start_with?("auto:") && n.include?("_cards") },
       "the declared surface's own partial must not double-register as auto"

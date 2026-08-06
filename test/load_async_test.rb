@@ -11,11 +11,11 @@ class LoadAsyncTest < ActiveSupport::TestCase
 
   def test_load_async_reads_land_in_the_capturing_request
     ActiveRecord.async_query_executor = :global_thread_pool
-    recording = RefreshSync::Recording.start
+    recording = Upkeep::Recording.start
     relation = Card.where(status: "open").load_async
     sleep 0.05 # let the background execution actually win the race
     titles = relation.map(&:title)
-    RefreshSync::Recording.finish
+    Upkeep::Recording.finish
 
     assert_includes titles, "First"
     refute recording.incomplete?,
@@ -27,13 +27,13 @@ class LoadAsyncTest < ActiveSupport::TestCase
     assert_includes deps.ids, @card1.id
   ensure
     ActiveRecord.async_query_executor = nil
-    RefreshSync::Recording.finish
+    Upkeep::Recording.finish
   end
 
   def test_foreign_thread_reads_do_not_pollute_a_capture
-    recording = RefreshSync::Recording.start
+    recording = Upkeep::Recording.start
     Thread.new { Board.find(@board2.id) }.join
-    RefreshSync::Recording.finish
+    Upkeep::Recording.finish
     assert_nil recording.read_set.tables["boards"],
       "a plain background thread's reads belong to nobody's page"
   end
