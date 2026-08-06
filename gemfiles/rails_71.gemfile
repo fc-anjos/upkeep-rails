@@ -1,0 +1,15 @@
+source "https://rubygems.org"
+
+# The 7.1 leg of the version-coupling ledger. Known couplings this leg
+# exists to catch: internal ivar names (@model vs @klass), the raw-result
+# execute pipeline (RETURNING via internal_exec_query is marked fragile
+# on 7.1), no after_all_transactions_commit (bulk reports run at write
+# time; rollback costs a spurious refresh), no affected_rows payload.
+gem "rails", "~> 7.1.0"
+gem "turbo-rails", "~> 2.0"
+gem "reactionview", "~> 0.3"
+gem "herb", "~> 0.10.1"
+gem "sqlite3", "~> 1.7"
+gem "puma"
+gem "redis"
+gem "minitest"

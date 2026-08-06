@@ -1,0 +1,30 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    name: rails-${{ matrix.rails }} ruby-${{ matrix.ruby }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { rails: "8.1", ruby: "3.4", gemfile: gemfiles/rails_81.gemfile }
+          # The version-coupling ledger's older leg: red here means a
+          # documented coupling regressed, not necessarily a bug on 8.1.
+          - { rails: "7.1", ruby: "3.2", gemfile: gemfiles/rails_71.gemfile, experimental: true }
+    continue-on-error: ${{ matrix.experimental || false }}
+    env:
+      BUNDLE_GEMFILE: ${{ github.workspace }}/${{ matrix.gemfile }}
+    services:
+      redis:
+        image: redis
+        ports: ["6379:6379"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler-cache: true
+      - run: bash run_all.sh
