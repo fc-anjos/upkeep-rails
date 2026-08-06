@@ -33,9 +33,14 @@ module RefreshSync
   autoload :Provenance,       "refresh_sync/provenance"
   autoload :FragmentCache,    "refresh_sync/fragment_cache"
   autoload :Streams,          "refresh_sync/streams"
+  autoload :RowIdentity,      "refresh_sync/row_identity"
 
-  Change = Struct.new(:table, :id, :kind, :old_attrs, :new_attrs, keyword_init: true)
-  # kind: :insert, :update, :delete, :table (bulk/raw write, row identity unknown)
+  Change = Struct.new(:table, :id, :kind, :old_attrs, :new_attrs, :columns, :ids, keyword_init: true)
+  # kind: :insert, :update, :delete       - one row, attrs known
+  #       :bulk_rows                      - exact row ids known, attrs unknown
+  #       :table                          - bulk/raw write, row identity unknown
+  # columns: changed column names when statically known (update_all SET keys,
+  # previous_changes); nil means "assume all columns" (safe coarseness).
 
   class << self
     attr_writer :store, :debouncer, :registry
@@ -81,6 +86,25 @@ module RefreshSync
 
     def stats = @stats ||= Hash.new(0)
     def reset_stats! = @stats = Hash.new(0)
+
+    # Emergency kill switch (ops escape hatch, normally never set): forces
+    # refresh-only delivery even for promoted surfaces, for the case where
+    # the demotion machinery itself is buggy. NOT a configuration surface —
+    # the sole gate for shared delivery is the promotion evidence bar.
+    def region_broadcast_disabled? = ENV["UPKEEP_DISABLE_REGION_BROADCAST"] == "1"
+
+    # Rails owns "did this durably happen": on 7.2+ a block deferred here
+    # runs after the outermost transaction commits and is discarded on
+    # rollback. On 7.1 (no public API) the block runs immediately — a
+    # rolled-back write then costs one spurious refresh, which is the safe
+    # direction (freshness fails open).
+    def defer_to_commit(&block)
+      if ActiveRecord.respond_to?(:after_all_transactions_commit)
+        ActiveRecord.after_all_transactions_commit(&block)
+      else
+        yield
+      end
+    end
 
     def watching?(table) = store.watching?(table)
 
@@ -144,7 +168,7 @@ module RefreshSync
         # islands and controller reads converge via Tier P; region updates
         # never substitute for changes they don't carry). An ejected member
         # is never covered: their delivery is personal until re-admission.
-        covered = !ejected && covering.any? do |s|
+        covered = !ejected && !region_broadcast_disabled? && covering.any? do |s|
           next false if s.member_diverged?(cohort.identity)
           s.shared? ||
             (s.region_shared? && cohort.read_set &&
@@ -159,7 +183,7 @@ module RefreshSync
         # change are never compared against each other (that would produce
         # false identity pins whenever a write lands between two viewers).
         surface.bump_generation
-        if surface.shared? || surface.region_shared?
+        if (surface.shared? || surface.region_shared?) && !region_broadcast_disabled?
           # Schedule by KEY, not by hydrated object: the closure rehydrates
           # through this process's registry at dispatch time, so a demotion
           # persisted by any process between schedule and fire is seen.
@@ -176,8 +200,9 @@ module RefreshSync
       refresh_streams.each { |stream| debouncer.schedule(stream, request_id: origin_request_id) }
     end
 
-    def report_bulk(table)
-      report_change(Change.new(table: table, kind: :table))
+    def report_bulk(table, ids: nil, columns: nil)
+      kind = ids ? :bulk_rows : :table
+      report_change(Change.new(table: table, kind: kind, ids: ids, columns: columns))
     end
 
     def region_span(surface) = surface.region_addresses

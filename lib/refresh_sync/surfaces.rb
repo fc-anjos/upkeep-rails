@@ -135,8 +135,23 @@ module RefreshSync
 
     # A change is personal-to-some-member when the promoted scrub render's
     # own read set cannot explain it. Pure read-set evidence — no catalogs.
+    #
+    # Column refinement resolves the both-shared-and-personal row: a row the
+    # scrub render also read (a member's user row shown publicly as an
+    # author name) matches the shared read set, but when the write touched
+    # only columns the scrub render never read (their admin flag), the
+    # shared content cannot have changed for THIS write — it is personal to
+    # whoever depends on those columns. Direction of error is safe: missing
+    # column evidence on either side falls open to row-level behavior
+    # (no extra ejection), and over-recorded columns only over-eject
+    # (refresh delivery is never wrong).
     def personal_change?(change)
-      tier_s? && @shared_read_set && !@shared_read_set.matches?(change)
+      return false unless tier_s? && @shared_read_set
+      return true unless @shared_read_set.matches?(change)
+      changed = change.columns
+      shared_columns = @shared_read_set.columns(change.table)
+      return false unless changed && shared_columns
+      (changed.map(&:to_s) & shared_columns.to_a).empty?
     end
 
     def member_diverged?(viewer_id)

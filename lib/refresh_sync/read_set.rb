@@ -21,8 +21,8 @@ module RefreshSync
       def self.empty = new(Set.new, [], [])
     end
 
-    TableDeps = Struct.new(:ids, :predicates, :table_reasons, :node_reads) do
-      def self.empty = new(Set.new, [], [], {})
+    TableDeps = Struct.new(:ids, :predicates, :table_reasons, :node_reads, :columns) do
+      def self.empty = new(Set.new, [], [], {}, Set.new)
     end
 
     def initialize
@@ -58,6 +58,23 @@ module RefreshSync
       slices.each { |s| s.record_table(table, reason, node: node) }
     end
 
+    # Column-read evidence (attribute reads, pluck/calculate column lists).
+    # Consumed ONLY to refine per-member divergence toward correct ejection:
+    # presence of a column here means "this render read it"; absence proves
+    # nothing (a column can be read through paths we don't see), so matching
+    # never uses it to SKIP — fail open to row-level behavior.
+    def record_column(table, column)
+      deps(table).columns << column.to_s
+      slices.each { |s| s.record_column(table, column) }
+    end
+
+    # The columns this read set is known to have read from `table`; nil when
+    # no column evidence exists (callers must then assume all columns).
+    def columns(table)
+      cols = @tables[table]&.columns
+      cols&.any? ? cols : nil
+    end
+
     # --- fragment-cache slice capture ---------------------------------------
     # A slice is a nested ReadSet collecting everything recorded while it is
     # open (all open slices receive every record, so russian-doll outer
@@ -85,6 +102,7 @@ module RefreshSync
           nd.fetch("predicates", []).each { |p| record_predicate(table, p, node: address); node_predicates << p }
           nd.fetch("table_reasons", []).each { |r| record_table(table, r.to_sym, node: address); node_reasons << r.to_sym }
         end
+        d.fetch("columns", []).each { |c| record_column(table, c) }
         (d.fetch("ids", []) - node_ids).each { |id| record_id(table, id) }
         subtract_multiset(d.fetch("predicates", []), node_predicates).each { |p| record_predicate(table, p) }
         subtract_multiset(d.fetch("table_reasons", []).map(&:to_sym), node_reasons).each { |r| record_table(table, r) }
@@ -129,6 +147,7 @@ module RefreshSync
           "ids" => d.ids.to_a,
           "predicates" => d.predicates.map { |p| p.transform_keys(&:to_s) },
           "table_reasons" => d.table_reasons.map(&:to_s),
+          "columns" => d.columns.to_a,
           "node_reads" => d.node_reads.to_h do |addr, nd|
             [addr, {
               "ids" => nd.ids.to_a,
@@ -147,6 +166,7 @@ module RefreshSync
         deps.ids.merge(d.fetch("ids", []))
         d.fetch("predicates", []).each { |p| deps.predicates << p }
         d.fetch("table_reasons", []).each { |r| deps.table_reasons << r.to_sym }
+        deps.columns.merge(d.fetch("columns", []))
         d.fetch("node_reads", {}).each do |addr, nd|
           node = rs.node_deps(table, addr)
           node.ids.merge(nd.fetch("ids", []))
@@ -165,6 +185,13 @@ module RefreshSync
 
     def deps_match?(deps, change)
       return true if deps.table_reasons.any?
+      # Exact-id bulk write (RETURNING / insert_all result): row identity is
+      # known, attrs are not — id matching is precise, predicate matching
+      # stays conservative (the changed row may have entered the set).
+      if change.kind == :bulk_rows
+        return true if deps.predicates.any?
+        return change.ids.any? { |cid| deps.ids.any? { |i| Coercion.same?(change.table, "id", i, cid) } }
+      end
       return true if change.kind == :table && (deps.ids.any? || deps.predicates.any?)
       if change.id && deps.ids.any? { |i| Coercion.same?(change.table, "id", i, change.id) }
         return true

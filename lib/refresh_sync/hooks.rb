@@ -26,6 +26,7 @@ module RefreshSync
         return super unless recording
         result = recording.accounting { super }
         recording.record_relation(self)
+        _refresh_sync_record_columns(recording, [column_name])
         result
       end
 
@@ -34,6 +35,7 @@ module RefreshSync
         return super unless recording
         result = recording.accounting { super }
         recording.record_relation(self)
+        _refresh_sync_record_columns(recording, column_names)
         result
       end
 
@@ -56,6 +58,21 @@ module RefreshSync
           )
         end
         result
+      end
+
+      private
+
+      # Plain column names from a pluck/calculate column list; Arel nodes
+      # and star are skipped (missing column evidence only widens, never
+      # narrows — absence means "assume all columns").
+      def _refresh_sync_record_columns(recording, column_names)
+        table = klass.table_name
+        return if Recording::OWN_TABLES.include?(table)
+        column_names.each do |column|
+          next unless column.is_a?(Symbol) || column.is_a?(String)
+          name = column.to_s
+          recording.read_set.record_column(table, name) if klass.column_names.include?(name)
+        end
       end
     end
 
@@ -99,9 +116,13 @@ module RefreshSync
     module AttributeReadObserver
       def _read_attribute(attr_name, &block)
         if (recording = Recording.current)
+          table = self.class.table_name
           pk = self.class.primary_key
           if pk.is_a?(String) && attr_name.to_s != pk
-            recording.note_attribute_read(self.class.table_name, super(pk))
+            recording.note_attribute_read(table, super(pk))
+            # Column-read evidence: which columns this render actually
+            # consumed. Used only to refine member-divergence ejection.
+            recording.read_set.record_column(table, attr_name) unless Recording::OWN_TABLES.include?(table)
           end
         end
         super
@@ -129,24 +150,90 @@ module RefreshSync
             Change.new(table: table, id: id, kind: :insert, new_attrs: attributes)
           else
             old_attrs = attributes.merge(previous_changes.transform_values(&:first))
-            Change.new(table: table, id: id, kind: :update, old_attrs: old_attrs, new_attrs: attributes)
+            Change.new(table: table, id: id, kind: :update, old_attrs: old_attrs,
+                       new_attrs: attributes, columns: previous_changes.keys)
           end
         RefreshSync.report_change(change)
       end
     end
 
-    # Write side: bulk writes that skip callbacks.
+    # Write side: bulk writes that skip callbacks. The adapter-level
+    # RowIdentity hook (RETURNING, capability-probed) turns them into
+    # exact-id changes where the database can answer; otherwise they stay
+    # table-level. The statement's own return value is the affected count —
+    # zero affected rows means nothing changed and nothing is reported.
+    # Reports are deferred to the outermost commit (a rolled-back bulk
+    # write must not refresh anyone).
     module BulkWriteObserver
-      def update_all(...)
-        result = super
-        RefreshSync.report_bulk(klass.table_name)
+      def update_all(updates)
+        table = klass.table_name
+        return super unless RefreshSync.watching?(table)
+        result, ids = RowIdentity.collecting(self) { super }
+        return result if result == 0
+        columns = _refresh_sync_set_columns(updates)
+        RefreshSync.defer_to_commit do
+          RefreshSync.report_bulk(table, ids: ids.presence, columns: columns)
+        end
         result
       end
 
-      def delete_all(...)
-        result = super
-        RefreshSync.report_bulk(klass.table_name)
+      def delete_all
+        table = klass.table_name
+        return super unless RefreshSync.watching?(table)
+        result, ids = RowIdentity.collecting(self) { super }
+        return result if result == 0
+        RefreshSync.defer_to_commit do
+          RefreshSync.report_bulk(table, ids: ids.presence)
+        end
         result
+      end
+
+      private
+
+      # SET columns are statically visible for hash assignments (plus the
+      # auto-added locking column). A raw-string SET is opaque without SQL
+      # parsing (banned): nil = assume all columns, the safe coarseness.
+      def _refresh_sync_set_columns(updates)
+        return nil unless updates.is_a?(Hash)
+        columns = updates.keys.map(&:to_s)
+        columns << klass.locking_column if klass.locking_enabled?
+        columns.uniq
+      end
+    end
+
+    # Write side: insert_all / upsert_all. Rails already asks the database
+    # for the inserted primary keys wherever it can (RETURNING by default
+    # when the adapter supports insert returning) — the ids were never
+    # missing, they ride the public return value. Where the database can't
+    # answer (MySQL proper), degrade to table-level with a warning.
+    module InsertAllObserver
+      def execute
+        result = super
+        table = model.table_name
+        if RefreshSync.watching?(table) && !RefreshSync.ignored_table?(table)
+          pk = Array(model.primary_key).first
+          ids = _refresh_sync_result_ids(result, pk)
+          if ids.blank?
+            RefreshSync.stats[:insert_all_without_ids] += 1
+            ActiveSupport::Notifications.instrument(
+              "row_identity_unavailable.refresh_sync",
+              adapter: :insert_returning_unsupported, table: table,
+              consequence: :bulk_writes_match_table_level
+            )
+          end
+          RefreshSync.defer_to_commit do
+            RefreshSync.report_bulk(table, ids: ids.presence)
+          end
+        end
+        result
+      end
+
+      private
+
+      def _refresh_sync_result_ids(result, pk)
+        return nil unless pk && result.is_a?(ActiveRecord::Result)
+        index = result.columns.index(pk)
+        index && result.rows.map { |row| row[index] }
       end
     end
 
@@ -200,6 +287,7 @@ module RefreshSync
       ActiveRecord::Relation.prepend(RelationReadDoors)
       # (Ambient choke points are installed separately via Ambient.install!)
       ActiveRecord::Relation.prepend(BulkWriteObserver)
+      ActiveRecord::InsertAll.prepend(InsertAllObserver) if defined?(ActiveRecord::InsertAll)
       ActiveRecord::StatementCache.prepend(StatementCacheObserver)
       ActiveRecord::Base.singleton_class.prepend(InstantiateObserver)
       ActiveRecord::Base.prepend(AttributeReadObserver)
@@ -216,16 +304,35 @@ module RefreshSync
       end
 
       # Raw SQL safety net: writes issued via execute/exec_query carry no
-      # model name; degrade them to a table-level change. Detection is
-      # heuristic, but a false positive only costs an extra page refresh —
-      # refresh delivery makes double-detection harmless.
+      # model name; degrade them to a table-level change (deferred to
+      # commit). Detection is heuristic, but a false positive only costs an
+      # extra page refresh — refresh delivery makes double-detection
+      # harmless. Rails' own read/write classifier (write_query?, the one
+      # that marks transactions dirty) cross-checks the heuristic: a
+      # Rails-classified write our table extraction can't attribute is a
+      # completeness warning, never a silent miss.
       ActiveSupport::Notifications.subscribe("sql.active_record") do |event|
         payload = event.payload
         name = payload[:name]
         next unless name.nil? || name == "SQL"
-        if (match = RAW_WRITE_SQL.match(payload[:sql]))
+        sql = payload[:sql]
+        if (match = RAW_WRITE_SQL.match(sql))
           table = match[2]
-          RefreshSync.report_bulk(table) if RefreshSync.watching?(table)
+          if RefreshSync.watching?(table) && !RowIdentity.current_collector
+            RefreshSync.defer_to_commit { RefreshSync.report_bulk(table) }
+          end
+        elsif (connection = payload[:connection]) &&
+              connection.respond_to?(:write_query?, true) &&
+              connection.send(:write_query?, sql)
+          # No verb catalog needed here: Rails instruments transaction
+          # control as "TRANSACTION" and DDL as "SCHEMA", both already
+          # excluded by this subscriber's name gate — what reaches this
+          # branch is an unnamed statement Rails itself classifies as a
+          # write and our table extraction could not attribute.
+          RefreshSync.stats[:unattributed_writes] += 1
+          ActiveSupport::Notifications.instrument(
+            "unattributed_write.refresh_sync", sql_head: sql.to_s[0, 60]
+          )
         end
       end
     end

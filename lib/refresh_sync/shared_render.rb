@@ -16,6 +16,31 @@ module RefreshSync
     # but NOT this one changed something only that member depends on).
     Result = Struct.new(:html, :digest, :node_digests, :node_texts, :read_set, keyword_init: true)
 
+    # The scrub renderer knows the app's view helpers (app/helpers modules,
+    # derived from the framework's own aggregate — Rails.application.helpers)
+    # but deliberately NOT helper_method controller delegations: those reach
+    # into controller/session state, which the scrub contract forbids. The
+    # base class stays bare ActionController::Base — never the app's
+    # ApplicationController.
+    def self.renderer
+      base = RefreshSync.renderer_class
+      return @renderer if @renderer && @renderer_base == base
+      @renderer_base = base
+      @renderer =
+        if defined?(::Rails) && ::Rails.respond_to?(:application) &&
+           ::Rails.application.respond_to?(:helpers)
+          helpers = ::Rails.application.helpers
+          Class.new(base) do
+            define_singleton_method(:name) { "RefreshSync::ScrubRenderer" }
+            helper helpers
+          end
+        else
+          base
+        end
+    end
+
+    def self.reset_renderer! = @renderer = @renderer_base = nil
+
     def self.call(descriptor)
       thread = Thread.new do
         Thread.current.name = "refresh_sync_scrub"
@@ -26,7 +51,7 @@ module RefreshSync
             value.is_a?(ActiveRecord::Relation) ? value.reset : value
           end
           recording = Recording.start
-          html = RefreshSync.renderer_class.render(partial: descriptor.partial, locals: locals)
+          html = renderer.render(partial: descriptor.partial, locals: locals)
           trace = recording.prov
           node_digests = trace.node_digests_since({})
           node_texts = trace.nodes.keys.to_h { |a| [a, trace.text_for(a)] }
