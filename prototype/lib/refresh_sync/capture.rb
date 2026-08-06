@@ -63,6 +63,18 @@ module RefreshSync
         )
       end
       response.set_header("X-RefreshSync-Stream", cohort.stream)
+      # Delivery-ordering stamp: the write generation of every surface on
+      # this page, at render time. The client compares it against the
+      # data-rs-gen carried by region updates: a full-page morph whose
+      # generation is OLDER than an already-applied region update must not
+      # be applied (it would silently roll the region back) — the client
+      # discards it and re-fetches. See README "Delivery-ordering
+      # invariant".
+      generations = recording.surfaces.filter_map do |o|
+        s = RefreshSync.registry.lookup(o.descriptor.name)
+        "#{o.descriptor.name}=#{s.generation}" if s
+      end
+      response.set_header("X-RefreshSync-Generation", generations.join(",")) if generations.any?
     end
   end
 

@@ -229,7 +229,8 @@ module RefreshSync
         broadcast_regions(result)
       else
         Turbo::StreamsChannel.broadcast_action_to(
-          stream, action: :update, target: @name, html: result.html
+          stream, action: :update, target: @name, html: result.html,
+          attributes: generation_stamp
         )
         RefreshSync.stats[:surface_broadcasts] += 1
         instrument("surface_broadcast_sent")
@@ -296,14 +297,16 @@ module RefreshSync
               target_stream,
               action: :replace,
               targets: "[data-rs-node='#{address}']",
-              html: result.node_texts[address]
+              html: result.node_texts[address],
+              attributes: generation_stamp
             )
             RefreshSync.stats[:region_broadcasts] += 1
             RefreshSync.stats[:region_row_replaces] += 1 unless whole.include?(address)
           end
           row_removes.each do |address|
             Turbo::StreamsChannel.broadcast_action_to(
-              target_stream, action: :remove, targets: "[data-rs-node='#{address}']"
+              target_stream, action: :remove, targets: "[data-rs-node='#{address}']",
+              attributes: generation_stamp
             )
             RefreshSync.stats[:region_row_removes] += 1
           end
@@ -350,6 +353,13 @@ module RefreshSync
         end
       end
       [whole, row_replaces, row_removes]
+    end
+
+    # Every Tier S artifact carries the surface's write generation so the
+    # client can enforce the delivery-ordering invariant: never apply a
+    # full-page state older than an already-applied region update.
+    def generation_stamp
+      { "data-rs-gen" => @generation }
     end
 
     def span_digests(digests, region)
