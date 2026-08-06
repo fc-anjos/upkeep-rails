@@ -168,7 +168,9 @@ class BoardsController < ActionController::Base
     unread = Card.find_by(status: "open")
     unread&.update!(status: "read")
     @cards = Card.all.to_a
-    render inline: "<ul><% @cards.each do |c| %><li><%= c.title %>:<%= c.status %></li><% end %></ul>", layout: false
+    # A real <body> (like any real app layout), so the browser smoke test
+    # exercises subscription-tag injection the way a real app would.
+    render inline: "<html><body><ul><% @cards.each do |c| %><li><%= c.title %>:<%= c.status %></li><% end %></ul></body></html>", layout: false
   end
 end
 
