@@ -65,6 +65,12 @@ ActiveRecord::Schema.define do
   create_table :audits, force: true do |t|
     t.string :action
   end
+  # Pulse-shaped fixture: a positioned, Discard-style list.
+  create_table :items, force: true do |t|
+    t.string :title
+    t.integer :position
+    t.datetime :discarded_at
+  end
 end
 
 RefreshSync.install!
@@ -97,6 +103,11 @@ end
 
 class SessionRecord < ActiveRecord::Base
   self.table_name = "sessions"
+end
+
+# Discard-style: a default scope every query inherits (Pulse's `kept`).
+class Item < ActiveRecord::Base
+  default_scope { where(discarded_at: nil) }
 end
 
 class AuditRecord < ActiveRecord::Base
@@ -181,6 +192,34 @@ class AuditLogsController < ActionController::Base
   end
 end
 
+# Pulse-shaped fixture: personalized layout chrome around a shared,
+# paginated, Discard-scoped list with a cached aggregate fragment and a
+# per-viewer tag inside the shared partial (the personal island).
+class PulseController < ActionController::Base
+  include RefreshSync::Capture
+  prepend_view_path File.join(PROTO_ROOT, "test", "views")
+  layout "pulse"
+  refresh_sync
+
+  helper_method :current_user
+
+  def current_user
+    @current_user ||= RefreshSync::Ambient.unobserved { User.find_by(id: session[:user_id]) }
+  end
+
+  def board
+    render template: "pulse/board"
+  end
+
+  # Same page plus a controller-level read OUTSIDE any template node — the
+  # coherence case: writes to the pinned item are NOT covered by region
+  # broadcasts and must refresh.
+  def board_with_pin
+    @pinned = Item.find(params[:pin].to_i)
+    render template: "pulse/board"
+  end
+end
+
 # Fragment-cache fixture: card list read INSIDE a cache block.
 class CachedBoardsController < ActionController::Base
   include RefreshSync::Capture
@@ -254,6 +293,8 @@ Rails.application.routes.draw do
   get "/vip", to: "surfaces#vip"
   get "/audit_log", to: "audit_logs#index"
   get "/cached_board/:id", to: "cached_boards#show"
+  get "/pulse/board", to: "pulse#board"
+  get "/pulse/board_with_pin", to: "pulse#board_with_pin"
 end
 
 module ProofHelpers

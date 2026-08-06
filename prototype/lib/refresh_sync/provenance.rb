@@ -42,6 +42,7 @@ module RefreshSync
         @buffers = {}  # buffer_id => buffer object
         @embeds = {}   # child buffer_id => [host buffer_id, offset]
         @stack = []    # [NodeRecord, buffer_id, start_offset]
+        @injected = [] # [address, digest] — replayed from cached fragments
       end
 
       def enter(address, file, line, buffer)
@@ -87,16 +88,27 @@ module RefreshSync
 
       # {address => sha256 of the text produced since `marker`} for nodes
       # that emitted output in that window (used per-surface-render).
+      # Injected digests (fragment-cache replays — a warm fragment's nodes
+      # never execute, so their unchanged digests are replayed alongside its
+      # read set) merge in with the same window semantics.
       def segment_marker
-        @nodes.transform_values { |r| r.segments.size }
+        @nodes.transform_values { |r| r.segments.size }.merge("__injected" => @injected.size)
       end
 
       def node_digests_since(marker)
-        @nodes.filter_map do |address, record|
+        live = @nodes.filter_map do |address, record|
           fresh = record.segments.drop(marker[address].to_i)
           next if fresh.empty?
           [address, Digest::SHA256.hexdigest(fresh.map { |seg| slice(seg) }.join)]
         end.to_h
+        @injected.drop(marker["__injected"].to_i).to_h.merge(live)
+      end
+
+      # A cached fragment's node digests: bytes identical to the capture-time
+      # render (that is what fragment caching means), so the digests remain
+      # valid evidence while the fragment is warm.
+      def inject_digest(address, digest)
+        @injected << [address, digest]
       end
 
       # Root-coordinate byte ranges per address, using explicit embeds only.

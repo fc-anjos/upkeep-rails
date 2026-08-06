@@ -10,6 +10,23 @@ Worktree state at handoff: three commits (`ff24887` core proof, `b7faab3`
 two-tier + leak suite, `b8583bf` origin/persistence/coercion/health), all
 suites green: 41 runs, 223 assertions, 0 failures (two seeds).
 
+> **Phase 4 addendum (2026-08-06, integration pass).** Provenance merged
+> into the runtime, demotion race closed, region broadcast + Pulse
+> hardening landed; 63 runs / 369 assertions across 14 suites, two seeds.
+> New version couplings: `ReActionView::Template::Handlers::Herb.call`
+> (class-level, reactionview 0.3.0), `ActionView::OutputFlow#get` (yield
+> buffer link), `ActionView::Helpers::CacheHelper#cache` +
+> `cache_fragment_name` signature (fragment read sets), Turbo's `targets:`
+> attribute escaping (tests assert `&#39;`). New harness traps: the pulse
+> fixture wipes `Item.unscoped` in ITS OWN setup (ProofHelpers#setup does
+> not know the table); combined runs share template caches, so visitor
+> changes need `tmp/` template-cache-free reruns; `Capture.last_recording`
+> is a test hook, not API. Region-delivery gotchas are in README phase-4
+> "Where reality pushed back" — read them before touching
+> `broadcast_regions` or the fragment side-entry format (now
+> `{"read_set" =>, "node_digests" =>}` — phase-3 side entries are absorbed
+> via the `fetch("read_set", stored)` fallback).
+
 ---
 
 ## 1. Rejected approaches (do not re-walk these)
@@ -229,6 +246,14 @@ followers — the existing tests restore in `ensure`; keep that discipline.
 ---
 
 ## Realized while writing this (changes a phase-3 conclusion)
+
+> **STATUS (phase 4): CLOSED.** `report_change` schedules the surface KEY
+> and rehydrates through the scheduling process's registry inside the
+> dispatch action; `broadcast!` re-reads status from the store between the
+> scrubbed render and the transport call (`live_tier_s?`). Regression test:
+> `demotion_race_test.rb` (fails against the pre-fix code). Residual: the
+> microseconds between the post-render check and the Turbo call — a
+> store-side lock would close it fully.
 
 **Cross-process demotion does NOT cancel the other process's pending Tier S
 broadcast — and the scheduled broadcast closure holds a STALE surface

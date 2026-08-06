@@ -337,3 +337,95 @@ survived its adversarial cascade; durability and cross-process coalescing
 work over a plain relational store with one unique index doing the heavy
 lifting; coercion closes the serialization under-invalidation hole both
 ways; and fail-closed is now observable instead of silent.
+
+---
+
+# Phase 4: Provenance integration, region broadcast, Pulse hardening (2026-08-06)
+
+The integration pass: the ReActionView/Herb provenance spike merged into the
+runtime, the cross-process demotion race closed, and the four Pulse-survey
+hardening items landed — capped by the full region-broadcast loop.
+
+## Test results (verbatim)
+
+All fourteen suites in one process (two seeds):
+
+    63 runs, 369 assertions, 0 failures, 0 errors, 0 skips
+
+LOC: lib/ 1,280 -> 2,207 (+927: provenance 383, region/evidence rework in
+surfaces ~260, fragment cache 78, guards/ignore/persistence/read-set the rest).
+
+## What was built
+
+1. **Demotion race CLOSED.** Broadcasts are scheduled by surface KEY and
+   rehydrated through the scheduling process's registry at dispatch, with a
+   second store read between the scrubbed render and the transport call.
+   The regression test reproduces the stale-closure broadcast pre-fix.
+2. **Provenance in the runtime.** Templates under instrumented view paths
+   compile through Herb with the node-bracketing visitor (byte-identical
+   output; every pre-existing suite passes unmodified). Read-set entries
+   carry structural node addresses; cross-template containment uses
+   explicit buffer links (render boundary + OutputFlow#get at yield) —
+   the spike's substring embedding did not ship.
+3. **Per-node evidence and region promotion.** Cross-viewer divergence that
+   localizes to islands with a stamped byte-shared remainder records
+   `personal_nodes` instead of pinning, and promotes to `:region_shared`.
+   Fully-shared surfaces with stamped nodes also deliver as targeted
+   replaces. Cohort routing skips refresh only when every matched node
+   dependency lies inside a broadcastable region AND no controller-level
+   (node-less) dependency matches — otherwise the refresh rides along.
+4. **Fragment-cache read sets.** A cache block stores its read-set slice
+   AND its node digests beside the fragment; hits replay both. An orphaned
+   fragment (side entry evicted) is expired and recaptured — never a warm
+   fragment without its dependencies.
+5. **Ignore list + activation guard + payload limit.** Infrastructure
+   tables produce no change events (loud misuse warning when an active
+   cohort depends on one); cohorts register only for genuine browser HTML
+   requests (job-context integration sessions, x-llm, XHR excluded — write
+   capture stays global); oversized Tier S payloads degrade that delivery
+   to a refresh with a `payload_limit_degrade` event.
+
+## The Pulse fixture (end-to-end)
+
+Personalized layout chrome + per-viewer tag INSIDE the shared partial +
+Discard default scope + ordered LIMIT list + cached aggregate fragment.
+Proven: region promotion with the viewer tag as a recorded island; a
+sprint-reorder `update_all` arriving as ONE scrubbed render broadcast as
+targeted `[data-rs-node=...]` replaces with ZERO per-viewer refetches; a
+controller-pinned cohort correctly getting refresh + region broadcast
+together; discarded-row writes precisely ignored; cache hits preserving
+both dependencies and node evidence; sentinel grep clean throughout.
+
+## Delivery-ordering invariant (chosen, documented)
+
+Every delivered artifact — a refresh-triggered GET response or a region
+replace — renders DB-current state at its own render time; per-stream
+ordering is Action Cable's; debouncing yields at most one artifact per
+stream per window. A cohort is exempted from refresh ONLY when the region
+broadcast fully covers the change, so no viewer ever depends on applying a
+region update to learn about a change the region doesn't carry. The
+transient interleave (refresh fetch in flight while a replace arrives)
+self-heals because both artifacts are DB-current at render.
+
+## Where reality pushed back (findings)
+
+1. **Region granularity is element granularity.** A cache block (or any
+   non-element node) is broadcastable only when enclosed in a byte-shared
+   element; the fixture's total had to be wrapped in a div. Not authoring —
+   but a real gem should surface "this dependency has no enclosing
+   broadcastable element" in instrumentation.
+2. **Warm fragments erase node evidence** — hits render no nodes, so
+   digests are replayed from the side entry (valid: cached bytes are
+   capture-time bytes). Without this, the second viewer falsely diverges
+   on every cached region.
+3. **Loop-body elements share one address** — every `<li>` carries the same
+   `data-rs-node`. Harmless (containment excludes them from targeting) but
+   per-instance identity is still needed before regions inside loops can
+   be targeted individually.
+4. **`Relation#count`/`maximum` are invisible to capture** (calculations
+   bypass `exec_queries`). The fixture covers count-staleness transitively
+   (same-table predicates) and via key-rotated fragments; a real gem must
+   hook `calculate` — the old upkeep's "Track Active Record calculations"
+   commit exists for exactly this reason.
+5. **First region delivery baselines every region** (no previous digests),
+   so it sends all regions once; steady-state sends only changed ones.

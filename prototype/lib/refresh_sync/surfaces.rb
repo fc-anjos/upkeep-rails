@@ -219,7 +219,7 @@ module RefreshSync
         return nil
       end
 
-      if region_shared?
+      if @region_addresses.any?
         broadcast_regions(result)
       else
         Turbo::StreamsChannel.broadcast_action_to(
@@ -242,6 +242,16 @@ module RefreshSync
       previous = @last_broadcast && @last_broadcast[:generation] != @generation ? @last_broadcast[:nodes] : @last_broadcast&.dig(:nodes)
       changed = @region_addresses.select do |address|
         result.node_digests[address] && result.node_digests[address] != previous&.dig(address)
+      end
+      # A changed region whose text is unavailable (its bytes came from a
+      # warm cached fragment in the scrubbed render) cannot be sent — fail
+      # open to a refresh for everyone rather than sending nothing.
+      unrenderable = changed.reject { |address| result.node_texts[address] }
+      if unrenderable.any?
+        instrument("region_unrenderable_degrade", regions: unrenderable)
+        RefreshSync.stats[:region_degrades] += 1
+        @cohort_streams.each { |s| RefreshSync.debouncer.schedule(s) }
+        return
       end
       changed.each do |address|
         Turbo::StreamsChannel.broadcast_action_to(
@@ -311,7 +321,7 @@ module RefreshSync
       limit = RefreshSync.payload_limit
       return nil unless limit
       payloads =
-        if region_shared?
+        if @region_addresses.any?
           @region_addresses.filter_map { |a| result.node_texts[a] }
         else
           [result.html]
@@ -359,8 +369,14 @@ module RefreshSync
       if @personal_nodes.empty?
         if scrubbed.digest == observation.digest
           @status = :shared
+          # Stamped nodes make even a fully-shared surface deliverable as
+          # targeted region replaces (real DOM targets, no dom_id contract);
+          # unstamped surfaces keep the whole-partial update.
+          @region_addresses = top_level(
+            (scrubbed.node_digests || {}).keys.select { |a| stamped?(scrubbed.node_texts[a], a) }
+          )
           RefreshSync.stats[:promotions] += 1
-          instrument("surface_promoted", viewers: @evidence.size)
+          instrument("surface_promoted", viewers: @evidence.size, regions: @region_addresses)
         else
           transition_to_personal(:scrubbed_divergence)
         end

@@ -26,7 +26,12 @@ module RefreshSync
 
         stored = Rails.cache.read(side_key)
         if stored
-          recording.read_set.absorb(stored)
+          recording.read_set.absorb(stored.fetch("read_set", stored))
+          # Warm fragments never execute their nodes; replay their digests
+          # so per-node evidence sees the (byte-identical) cached content.
+          stored.fetch("node_digests", {}).each do |address, digest|
+            recording.prov.inject_digest(address, digest)
+          end
           RefreshSync.stats[:fragment_readset_replays] += 1
           super
         else
@@ -34,9 +39,17 @@ module RefreshSync
           # fragment itself is still warm.
           controller.expire_fragment(fragment_name)
           recording.read_set.begin_slice
+          prov_marker = recording.prov.segment_marker
           result = super
           slice = recording.read_set.end_slice
-          Rails.cache.write(side_key, slice.to_h, **options.slice(:expires_in))
+          Rails.cache.write(
+            side_key,
+            {
+              "read_set" => slice.to_h,
+              "node_digests" => recording.prov.node_digests_since(prov_marker)
+            },
+            **options.slice(:expires_in)
+          )
           RefreshSync.stats[:fragment_readset_captures] += 1
           result
         end
