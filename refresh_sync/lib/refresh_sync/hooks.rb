@@ -68,7 +68,8 @@ module RefreshSync
       def execute(params, connection, **kwargs, &block)
         recording = Recording.current
         return super unless recording
-        model = instance_variable_get(:@model)
+        # Rails 8.1 renamed the ivar @klass -> @model; support both.
+        model = instance_variable_get(:@model) || instance_variable_get(:@klass)
         bind_map = instance_variable_get(:@bind_map)
         return super unless model && bind_map
         result = recording.accounting { super }

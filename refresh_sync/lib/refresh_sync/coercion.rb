@@ -24,9 +24,10 @@ module RefreshSync
           begin
             conn = ActiveRecord::Base.connection
             column = conn.schema_cache.columns_hash(table)[attr]
-            # Rails 8.1: lookup_cast_type (from sql_type); the older
-            # lookup_cast_type_from_column is gone.
-            column && conn.lookup_cast_type(column.sql_type)
+            # Rails 8.1: lookup_cast_type (from sql_type) is public; the
+            # older lookup_cast_type_from_column is gone. On 7.1 the same
+            # method exists but is private — send covers both.
+            column && conn.send(:lookup_cast_type, column.sql_type)
           rescue ActiveRecord::StatementInvalid, ActiveRecord::ConnectionNotEstablished
             nil
           end
