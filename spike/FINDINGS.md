@@ -6,14 +6,15 @@ addressing purely from compiler infrastructure — no idiom catalogs, no view
 authoring.
 
 **Verdict: the hypothesis holds, on the public API, with byte-identical
-output on the element-bracketing path and ~1.9µs/node capture cost.** The
-one thing ReActionView/Herb does not provide — per-template context for
-config-registered visitors — is an 8-line shim today and a small, obviously
-upstreamable PR.
+output on the element-bracketing path and ~1.9µs/node capture cost.**
+Template identity (source → digest) is available to visitors through public
+Herb API (`node.source` with `prism_nodes` enabled — see §2); the earlier
+"visitors get no template context" hook-gap claim is RETRACTED in its
+strong form. Only the cosmetic filename label needs app-side plumbing.
 
 Test results (verbatim, `ruby spike/provenance_spike_test.rb`):
 
-    5 runs, 78 assertions, 0 failures, 0 errors, 0 skips
+    6 runs, 81 assertions, 0 failures, 0 errors, 0 skips
 
 Spike size: `lib/prov_spike.rb` ~330 LOC + 6 small templates + 1 test file.
 
@@ -31,29 +32,45 @@ Versions read: reactionview 0.3.0, herb 0.10.3 (arm64-darwin), Rails 8.1.3.1.
 | Herb AST nodes | `herb/ast/nodes.rb` | Typed nodes with `location` (line/column), mutable child arrays (`children`/`body`/`statements`), `to_hash`/JSON. Everything needed to compute stable node paths and inject synthetic nodes (`ERBContentNode.new` at `nodes.rb:1706`, `Herb::Token`, `Herb::Location.from`). |
 | `Herb::Engine::Compiler` | `herb/engine/compiler.rb` | The AST→Ruby code generator. Its token stream (`[type, value, context]`, e.g. compiler.rb:21,448,456-466) **drops node identity** — you cannot hook "which node is emitting" here without a subclass. This is why AST-level injection is the right seam. |
 
-## 2. Hook gaps (upstream PR candidates)
+## 2. Template context for visitors — claim RE-VERIFIED (and retracted)
 
-1. **`transform_visitors` has no per-template context.** Config visitors are
-   shared instances; `ast.accept(visitor)` passes nothing about which
-   template is compiling (the handler constructs `DebugVisitor` per-call with
-   `file_path:`, but config visitors don't get that treatment —
-   `handlers/herb.rb:14-19` vs `:26`). Workaround: an 8-line prepend on
-   `Handlers::Herb#call` setting a thread-local `{file, digest}`
-   (`lib/prov_spike.rb` `HandlerShim`). **Upstream PR: accept callables in
-   `transform_visitors`, invoked per compile with `(template, source)` and
-   returning a visitor** — mirrors what the handler already does for its own
-   DebugVisitor.
-2. **No render-time current-node context** (by design — output is a flat
-   compiled method). Not needed: compile-time injection of
-   `enter(address)/leave` calls provides it, and that's the mechanism the
-   whole spike runs on. Nothing to upstream.
-3. **No stable node-path API.** `location` (line/col) exists on every node,
-   but a structural path must be computed by the visitor walking child
-   arrays (ours: `children0.statements1.body1`-style). Cheap to build; could
-   be a nice Herb addition but is not blocking.
-4. (Observation, not a gap:) the railtie registers handler *classes*;
-   class-level `call` dispatches correctly through ActionView's handler
-   protocol — probed, works.
+The first version of this document claimed config-registered visitors get no
+per-template context and framed an upstream PR. **Re-verification against
+the full public API of both gems (herb 0.10.3 and reactionview 0.3.0 — both
+the installed AND latest released versions, confirmed via `gem search -r -a`)
+shows the strong claim was WRONG:**
+
+- **Template source IS public API on every AST node.** `Herb::ParseResult#initialize`
+  assigns the full template source onto the tree (`parse_result.rb:17-22`,
+  propagated by `AST::Node#source=`, `node.rb:26-28`) when the parser runs
+  with `prism_nodes: true`. That option reaches the engine through the
+  public `parser_options` property (`engine.rb:84,134`) and can be enabled
+  project-wide with zero code: a `.herb.yml` containing
+  `engine: parser_options: prism_nodes: true` plus `Herb.configure(path)`
+  (`herb.rb:100-106`, `configuration.rb` engine_option). The spike now runs
+  this way: the visitor derives address digests from `node.source`, and
+  `test_visitor_self_serves_digest_from_node_source_without_any_shim`
+  proves the fully shim-free path (direct `Herb::Engine` compile, no
+  ReActionView, no thread-local — digest correct).
+- **What genuinely remains unavailable to visitors: the template FILENAME.**
+  The engine holds it (`@filename`, from the handler's
+  `filename: template.identifier`) but does not pass it to visitors, and
+  nodes carry source + line/col only. Checked: visitor construction/accept
+  path (`engine.rb:92-101,158-160`), all `Herb::AST::Node` attributes,
+  `ParseResult`/`ParserOptions`, `Herb::Template` (none exists; `Herb::Project`
+  is CLI-only). For upkeep this is cosmetic — addresses are digest-based;
+  the filename only labels human-readable reports — so the spike's
+  `HandlerShim` survives solely as (a) the opt-in gate for which view paths
+  are instrumented (app policy, not a Herb capability) and (b) the filename
+  label. No upstream change is required for the mechanism to work.
+
+**Decision (recorded): the enter/leave lifecycle instrumentation ships in
+upkeep**, implemented via the public visitor hook — it is upkeep's own
+runtime concern, not an upstream proposal. Other observations, none
+blocking: render-time current-node context isn't needed (compile-time
+injection provides it); node paths are computed by the visitor (a possible
+Herb nicety, not a gap); handler class-level `call` registration works
+(probed).
 
 ## 3. What was proven (with verbatim output)
 
@@ -100,16 +117,32 @@ Address = `t:<sha256(source)[0,12]>/<child-index path>`. Asserted: identical
 address sets across re-renders and across a data change (new card inserted);
 digest component changes when the source changes. No `dom_id`, no authoring.
 
-### Rendering fidelity
+### Rendering fidelity (re-verified on latest herb 0.10.3 + erubi 1.13.1)
 
 - **Element/control/loop bracketing: byte-identical output** (asserted while
   the fidelity test ran against a fully-instrumented tree in the first run).
-- Bracketing **`<%= %>` expression nodes** interacts with Herb's whitespace
-  trimming (`compiler.rb` `apply_trim`/`at_line_start?`): injected code tags
-  can eat a newline → output identical **modulo whitespace** (asserted).
-  A production gem should either bracket only element/control nodes (byte-
-  identical, still expression-level provenance via enclosing node) or teach
-  the injection to preserve the trim state — solvable, not architectural.
+- Bracketing **`<%= %>` expression nodes** loses a newline. Standalone repro
+  (`spike/trim_repro.rb`, single file, no upkeep code) pins down exactly
+  what it is, verbatim output:
+
+      A herb plain:            "a\n1\nb\n"
+      B herb visitor-injected: "a\n1b\n"
+      C herb literal tags:     "a\n1b\n"
+      D erubi literal tags:    "a\n1\nb\n"
+      B == C (injection == typing the tags):   true
+      C == D (herb matches erubi on literal):  false
+
+  Two conclusions: (1) **injection is NOT the cause** — visitor-injected
+  tags behave exactly like tags typed in the source (B == C), so this is
+  not an artifact of our bracketing approach; (2) **herb genuinely diverges
+  from erubi**: for `...<%= 1 %><% :probe %>\nb`, herb trims the newline
+  after a trailing code tag that does not start its line; erubi preserves
+  it. Since ReActionView's premise is parity with stock ActionView (erubi),
+  this is an upstream parity issue affecting even hand-written templates of
+  this shape under `intercept_erb` — repro script is issue-ready, NOT filed
+  (user submits externally). For upkeep the practical guidance is
+  unchanged: bracket element/control nodes (byte-identical) and let
+  expressions inherit their enclosing node's provenance.
 
 ### Overhead (Task 5)
 

@@ -27,6 +27,11 @@ class SpikeApp < Rails::Application
   config.action_dispatch.show_exceptions = :none
 end
 
+# Public Herb config path: .herb.yml in this directory enables
+# parser_options: prism_nodes, which populates node.source on every AST node
+# (Herb::ParseResult#initialize) — the visitor derives address digests from it.
+Herb.configure(File.expand_path(".", __dir__))
+
 ReActionView.config.intercept_erb = true
 ReActionView.config.transform_visitors << ProvSpike::Visitor.new
 ReActionView::Template::Handlers::Herb.prepend(ProvSpike::HandlerShim)
@@ -286,6 +291,26 @@ class ProvenanceSpikeTest < ActionDispatch::IntegrationTest
     modified = File.read(File.expand_path("views/boards/show.html.erb", __dir__)) + "<!-- v2 -->"
     new_digest = Digest::SHA256.hexdigest(modified)[0, 12]
     refute_equal show_digest, new_digest
+  end
+
+  # -- No-shim path: template identity from public Herb API --------------------
+
+  def test_visitor_self_serves_digest_from_node_source_without_any_shim
+    source = File.read(File.expand_path("views/boards/_card.html.erb", __dir__))
+    expected_digest = Digest::SHA256.hexdigest(source)[0, 12]
+
+    assert_nil Thread.current[:prov_spike_template] # prove: no shim involved
+
+    src = Herb::Engine.new(source,
+                           bufvar: "@output_buffer",
+                           preamble: "",
+                           postamble: "@output_buffer",
+                           escapefunc: "",
+                           parser_options: { prism_nodes: true },
+                           visitors: [ProvSpike::Visitor.new(always_instrument: true)]).src
+
+    assert_includes src, "t:#{expected_digest}/",
+                    "visitor must derive the address digest from node.source (public API), no handler shim"
   end
 
   # -- Rendering fidelity + overhead ------------------------------------------
