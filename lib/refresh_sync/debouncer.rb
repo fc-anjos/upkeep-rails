@@ -87,17 +87,25 @@ module RefreshSync
           current = now
           ready = @due.select { |_k, e| e.due <= current }.to_a
 
-          # Refresh budget: dispatch at most @refresh_budget refreshes this
-          # tick; defer the rest with jitter.
+          # Refresh budget: at most @refresh_budget refreshes per WINDOW
+          # (not per tick — two near-simultaneous ticks in one window must
+          # share the allowance); defer the rest with jitter.
           if @refresh_budget
+            window_id = (current / @window).floor
+            if @budget_window != window_id
+              @budget_window = window_id
+              @budget_used = 0
+            end
+            allowance = [@refresh_budget - @budget_used, 0].max
             refreshes = ready.select { |_k, e| e.kind == :refresh }
-            if refreshes.size > @refresh_budget
-              refreshes.drop(@refresh_budget).each do |key, entry|
+            if refreshes.size > allowance
+              refreshes.drop(allowance).each do |key, entry|
                 entry.due = current + @window * (1 + rand * @jitter)
                 ready.delete([key, entry])
                 RefreshSync.stats[:refreshes_deferred] += 1
               end
             end
+            @budget_used += [refreshes.size, allowance].min
           end
           ready.each { |key, _e| @due.delete(key) }
         end

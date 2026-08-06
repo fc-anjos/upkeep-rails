@@ -124,18 +124,19 @@ class MemberDivergenceTest < ActionDispatch::IntegrationTest
     assert_no_sentinel_broadcast
   end
 
-  # update_all skips callbacks and carries no row identity, so a bulk write
-  # to a delta table ejects EVERY member whose read set matches — identity
-  # fails closed, blunt but never wrong. Members whose next render matches
-  # the baseline are immediately re-admitted.
-  def test_update_all_flag_flip_ejects_and_matching_members_readmit
+  # update_all skips callbacks, but the RETURNING probe restores exact row
+  # identity: a bulk flip of one member's row ejects that member alone.
+  # (Where the database can't answer, the probe-failure path degrades to
+  # ejecting every matching member — blunt, never wrong; covered in
+  # platform_signals_test.)
+  def test_update_all_flag_flip_ejects_exactly_the_flipped_member
     promote_vip
 
     User.where(id: @carol.id).update_all(beta: true)
     assert_refreshes(@stream_c, 1)
     assert surface("vip_cards").member_diverged?(@carol.id)
-    assert surface("vip_cards").member_diverged?(@alice.id),
-      "table-level bulk cannot attribute rows: all matching members eject"
+    refute surface("vip_cards").member_diverged?(@alice.id),
+      "exact bulk row identity ejects only the row's own member"
     assert_equal :shared, surface("vip_cards").status
 
     Card.create!(board: @board1, title: "Bulk window write", status: "open")
@@ -143,8 +144,6 @@ class MemberDivergenceTest < ActionDispatch::IntegrationTest
     assert_equal 1, RefreshSync.stats[:surface_broadcasts]
     all_broadcast_payloads.each { |p| refute_match(/VIP LANE/, p) }
 
-    @a.get "/vip_page" # alice never actually diverged: her render matches
-    refute surface("vip_cards").member_diverged?(@alice.id)
     @c.get "/vip_page" # carol genuinely diverged: she stays personal
     assert surface("vip_cards").member_diverged?(@carol.id)
     assert_equal :shared, surface("vip_cards").status
