@@ -111,7 +111,13 @@ module Upkeep
     end
 
     def _upkeep_register_cohort(recording, viewer)
+      # Temporal-literal expiry: a predicate baking the capture day's date
+      # goes stale at the next local midnight with no write to signal it —
+      # stamp the cohort so TemporalExpiry heals it at the boundary.
+      expires_at = TemporalExpiry.expiry_for(recording.read_set)
+      TemporalExpiry.arm(expires_at) if expires_at
       Upkeep.store.register(
+        expires_at: expires_at,
         read_set: recording.read_set,
         surfaces: recording.surfaces.map { |o| o.descriptor.name },
         # Pure legibility: upkeep:report names pages by their captured path.

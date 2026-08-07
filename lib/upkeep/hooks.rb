@@ -205,11 +205,17 @@ module Upkeep
       private
 
       # SET columns are statically visible for hash assignments (plus the
-      # auto-added locking column). A raw-string SET is opaque without SQL
-      # parsing (banned): nil = assume all columns, the safe coarseness.
+      # auto-added locking column). A raw-string SET
+      # ("position = position + 1") is parsed — once per shape, via the
+      # capped SqlAnalysis cache — into its assigned column list; a parse
+      # failure keeps nil = assume all columns, the safe coarseness.
       def _upkeep_set_columns(updates)
-        return nil unless updates.is_a?(Hash)
-        columns = updates.keys.map(&:to_s)
+        columns =
+          case updates
+          when Hash then updates.keys.map(&:to_s)
+          when String then SqlAnalysis.set_columns(klass.table_name, updates)
+          end
+        return nil unless columns
         columns << klass.locking_column if klass.locking_enabled?
         columns.uniq
       end
@@ -282,23 +288,47 @@ module Upkeep
       if (table = attributable_table(payload[:name]))
         # Conservative degrade: whatever is attributable becomes a
         # table-level dependency — every write to that table now matches.
-        recording.read_set.record_table(table, :unhooked_read_door,
-                                        node: recording.prov_address)
-        Legibility.note_hint(table, :unhooked_read_door)
-        Upkeep.stats[:unhooked_reads_degraded] += 1
-        ActiveSupport::Notifications.instrument(
-          "capture_incomplete.upkeep",
-          mode: :degraded_table_level, table: table, query_name: payload[:name]
-        )
+        degrade_unaccounted_read(recording, [table],
+                                 reason: :unhooked_read_door, payload: payload)
+      elsif (tables = parsed_query_tables(payload[:sql])) && tables.any?
+        # No model name, but the parser can still name the tables read:
+        # register conservative table-level dependencies instead of
+        # refusing capture — liveness COARSENED, not lost. (Rule one: a
+        # wrong table list here could only add refreshes; the tables the
+        # statement actually read come from the parse of that statement.)
+        degrade_unaccounted_read(recording, tables,
+                                 reason: :unattributed_query, payload: payload)
       else
-        # Unattributable: the capture refuses precision entirely (no cohort
-        # registration). Silent partial liveness would be a stale-page lie.
+        # Even the parser cannot name a table (unparseable, or a read from
+        # no table at all): the capture refuses precision entirely (no
+        # cohort registration). Silent partial liveness would be a
+        # stale-page lie.
         recording.incomplete!(payload[:name] || "unnamed query")
         ActiveSupport::Notifications.instrument(
           "capture_incomplete.upkeep",
           mode: :unattributable, query_name: payload[:name]
         )
       end
+    end
+
+    def self.degrade_unaccounted_read(recording, tables, reason:, payload:)
+      tables.each do |table|
+        recording.read_set.record_table(table, reason, node: recording.prov_address)
+        Legibility.note_hint(table, reason)
+      end
+      Upkeep.stats[:unhooked_reads_degraded] += 1
+      ActiveSupport::Notifications.instrument(
+        "capture_incomplete.upkeep",
+        mode: :degraded_table_level, table: tables.first, tables: tables,
+        query_name: payload[:name]
+      )
+    end
+
+    # Physical tables read by an unattributable statement, via the parse
+    # cache; upkeep's own bookkeeping tables never become dependencies.
+    def self.parsed_query_tables(sql)
+      tables = SqlAnalysis.statement_tables(sql)
+      tables && (tables - Recording::OWN_TABLES)
     end
 
     def self.install!

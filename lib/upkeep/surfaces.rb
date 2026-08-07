@@ -56,8 +56,13 @@ module Upkeep
     def rebuildable_local?(v)
       case v
       when ActiveRecord::Relation
-        # Persistable+re-runnable only when the where clause is a faithful
-        # simple hash (rebuildable as klass.where(hash) in any process).
+        # Persistable+re-runnable when every where conjunct is either a
+        # faithful simple hash (rebuildable as klass.where(hash)) or a raw
+        # SQL fragment the parser proves self-contained: single-table,
+        # deterministic, fully structured (no functions, casts or
+        # subqueries). The digest/promotion machinery still validates the
+        # rebuilt render empirically — the parse is the notary, not the
+        # authority.
         v.where_clause.ast.nil? || simple_relation?(v)
       when Array
         # A homogeneous array of persisted records (pagy hands templates
@@ -84,14 +89,33 @@ module Upkeep
     end
 
     def simple_relation?(rel)
-      flat = rel.where_clause.ast.is_a?(Arel::Nodes::And) ? rel.where_clause.ast.children : [rel.where_clause.ast].compact
-      rel.where_values_hash.size == flat.size
+      hash_backed, fragments = partition_where(rel)
+      rel.where_values_hash.size == hash_backed.size &&
+        fragments.all? { |sql, binds| provable_fragment?(rel, sql, binds) }
+    end
+
+    def partition_where(rel)
+      ast = rel.where_clause.ast
+      flat = ast.is_a?(Arel::Nodes::And) ? ast.children : [ast].compact
+      extracted = flat.map { |node| [node, SqlAnalysis.arel_fragment(node)] }
+      hash_backed = extracted.select { |_node, frag| frag.nil? }.map(&:first)
+      [hash_backed, extracted.filter_map { |_node, frag| frag }]
+    end
+
+    # The parse must vouch for the whole fragment: every construct
+    # structured and evaluable (deterministic by construction — functions,
+    # casts and subqueries all disqualify) and every column the relation's
+    # own. Anything less is not provably rebuildable.
+    def provable_fragment?(rel, sql, binds)
+      compiled = SqlAnalysis.fragment(sql, table: rel.klass.table_name, binds: binds)
+      !!compiled&.fetch("evaluable")
     end
 
     def to_h
       serialized = locals.transform_values do |v|
         if v.is_a?(ActiveRecord::Relation)
-          { "__relation__" => v.klass.name, "where" => v.where_values_hash }
+          { "__relation__" => v.klass.name, "where" => v.where_values_hash,
+            "fragments" => partition_where(v).last.map { |sql, binds| [sql, *binds] } }
         elsif record_array?(v)
           { "__records__" => v.first.class.name, "ids" => v.map(&:id) }
         elsif v.is_a?(ActiveRecord::Base) && v.persisted?
@@ -107,7 +131,8 @@ module Upkeep
       locals = h.fetch("locals", {}).to_h do |k, v|
         value =
           if v.is_a?(Hash) && v["__relation__"]
-            v["__relation__"].constantize.where(v.fetch("where", {}))
+            rel = v["__relation__"].constantize.where(v.fetch("where", {}))
+            v.fetch("fragments", []).reduce(rel) { |r, (sql, *binds)| r.where(sql, *binds) }
           elsif v.is_a?(Hash) && v["__records__"]
             klass = v["__records__"].constantize
             ids = v.fetch("ids", [])

@@ -41,6 +41,14 @@ module Upkeep
   # path: reserved for analyzing registered query shapes, never a correctness
   # authority. Autoloaded so apps that never touch it skip the FFI load.
   autoload :SQLGlot,          "upkeep/sqlglot"
+  # Parser consumers: the capped parse-shape cache and the structured,
+  # three-valued fragment predicates it compiles. Both obey rule zero (one
+  # parse per shape, off the hot path) and rule one (never a correctness
+  # authority — every failure falls back to the pre-parser conservative
+  # behavior).
+  autoload :SqlAnalysis,      "upkeep/sql_analysis"
+  autoload :SqlPredicate,     "upkeep/sql_predicate"
+  autoload :TemporalExpiry,   "upkeep/temporal_expiry"
   autoload :Legibility,       "upkeep/legibility"
   autoload :Report,           "upkeep/report"
   autoload :LivenessLost,     "upkeep/legibility"

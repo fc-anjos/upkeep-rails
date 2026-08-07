@@ -11,8 +11,10 @@ module Upkeep
     # advanced after every region delivery it receives. Region broadcasts
     # are diffed per cohort against THIS, so the first write after
     # registration sends only what actually changed for that viewer.
+    # expires_at: temporal-literal expiry (a "today"-baked predicate goes
+    # stale at the next local-date rollover; see TemporalExpiry).
     Cohort = Struct.new(:id, :stream, :read_set, :surfaces, :identity, :baselines, :path,
-                        keyword_init: true)
+                        :expires_at, keyword_init: true)
 
     def initialize
       @mutex = Mutex.new
@@ -20,11 +22,13 @@ module Upkeep
       @watched_tables = Set.new
     end
 
-    def register(read_set:, surfaces: [], baselines: {}, identity: nil, path: nil)
+    def register(read_set:, surfaces: [], baselines: {}, identity: nil, path: nil,
+                 expires_at: nil)
       id = SecureRandom.hex(8)
       cohort = Cohort.new(id: id, stream: "upkeep:cohort:#{id}",
                           read_set: read_set, surfaces: surfaces,
-                          identity: identity, baselines: baselines, path: path)
+                          identity: identity, baselines: baselines, path: path,
+                          expires_at: expires_at)
       @mutex.synchronize do
         @cohorts[id] = cohort
         @watched_tables.merge(read_set.tables.keys)
@@ -63,7 +67,7 @@ module Upkeep
           deps = cohort.read_set.tables[table]
           next unless deps
           (deps.predicates + deps.membership_predicates).each do |pred|
-            columns.merge(pred.keys.map(&:to_s))
+            columns.merge(Verdict.predicate_columns(pred) || [])
           end
         end.to_a
       end
@@ -92,6 +96,17 @@ module Upkeep
     end
 
     def matching_streams(change) = matching_cohorts(change).map(&:stream)
+
+    # Remove and return every cohort whose temporal expiry has passed —
+    # their pages hold yesterday's predicate; the caller schedules their
+    # refresh (re-registration happens on the re-GET).
+    def expire_due!(now = Upkeep.now)
+      @mutex.synchronize do
+        expired = @cohorts.values.select { |c| c.expires_at && c.expires_at <= now }
+        expired.each { |c| @cohorts.delete(c.id) }
+        expired
+      end
+    end
 
     def reset!
       @mutex.synchronize do

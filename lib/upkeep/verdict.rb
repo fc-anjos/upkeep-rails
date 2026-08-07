@@ -124,8 +124,13 @@ module Upkeep
 
     # Conjunction over the predicate's attrs with partial knowledge: any
     # conjunct known false makes the whole predicate false; all known true
-    # is true; otherwise unknown.
+    # is true; otherwise unknown. Parsed SQL fragments (stored under the
+    # "__fragment__" key) evaluate through SqlPredicate's three-valued
+    # logic — UNKNOWN flows through the same nil as a missing attr.
     def satisfied?(pred, table, attrs)
+      if SqlPredicate.fragment?(pred)
+        return SqlPredicate.evaluate(SqlPredicate.unwrap(pred), table, attrs)
+      end
       unknown = false
       pred.each do |attr, values|
         key = attr.to_s
@@ -141,7 +146,17 @@ module Upkeep
 
     def columns_disjoint?(pred, written_columns)
       return false unless written_columns # nil = assume all columns written
-      (pred.keys.map(&:to_s) & written_columns.map(&:to_s)).empty?
+      columns = predicate_columns(pred)
+      return false unless columns # predicate columns unknown: never disjoint
+      (columns & written_columns.map(&:to_s)).empty?
+    end
+
+    # The columns a predicate depends on: hash predicates read their keys;
+    # parsed fragments carry an explicit column list. An empty fragment
+    # column list means "columns unknown" — nil, never provably disjoint.
+    def predicate_columns(pred)
+      return pred.keys.map(&:to_s) unless SqlPredicate.fragment?(pred)
+      SqlPredicate.unwrap(pred)["columns"].presence&.map(&:to_s)
     end
   end
 end

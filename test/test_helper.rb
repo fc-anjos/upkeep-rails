@@ -82,6 +82,17 @@ ActiveRecord::Schema.define do
     t.integer :position
     t.datetime :discarded_at
   end
+  # Census fixtures: the date-window scope (assignment.rb:119-127 shape)
+  # and an aliased-subquery join source.
+  create_table :assignments, force: true do |t|
+    t.string :title
+    t.date :start_date
+    t.date :end_date
+  end
+  create_table :reviews, force: true do |t|
+    t.integer :item_id
+    t.integer :score
+  end
 end
 
 Upkeep.install!
@@ -123,6 +134,16 @@ end
 
 class AuditRecord < ActiveRecord::Base
   self.table_name = "audits"
+end
+
+# Census fixture models: the Pulse date-window scope family.
+class Assignment < ActiveRecord::Base
+  scope :active_on, ->(date) {
+    where("start_date <= ? AND (end_date IS NULL OR end_date >= ?)", date, date)
+  }
+end
+
+class Review < ActiveRecord::Base
 end
 
 class SidekiqStyleJob < ActiveJob::Base
@@ -234,6 +255,60 @@ class ReadDoorsController < ActionController::Base
                                .select_all("SELECT COUNT(*) AS c FROM cards")
                                .first["c"]
     render inline: "<p>Raw: <%= @count %></p>", layout: false
+  end
+end
+
+# Census-shaped fragment pages: the SQL shapes the target app actually
+# renders hot (date-window scopes with OR/IS NULL, runtime-bound LIKE
+# search, function-wrapped columns, today-baked scopes, aliased-subquery
+# joins).
+class CensusController < ActionController::Base
+  include Upkeep::Capture
+  upkeep
+
+  # assignment.rb:119-127 shape: OR + IS NULL date window.
+  def active_assignments
+    date = Date.parse(params[:on])
+    @assignments = Assignment.active_on(date).to_a
+    render inline: "<ul><% @assignments.each do |a| %><li><%= a.title %></li><% end %></ul>",
+           layout: false
+  end
+
+  # Today-baked scope: correct at capture, silently wrong at midnight.
+  def due_today
+    @assignments = Assignment.where("start_date <= ?", Upkeep.now.to_date).to_a
+    render inline: "<ul><% @assignments.each do |a| %><li><%= a.title %></li><% end %></ul>",
+           layout: false
+  end
+
+  # Runtime-bound LIKE search (the bind varies per request, the shape not).
+  def search
+    @cards = Card.where("title LIKE ?", "%#{params[:q]}%").to_a
+    render inline: "<ul><% @cards.each do |c| %><li><%= c.title %></li><% end %></ul>",
+           layout: false
+  end
+
+  # Function-wrapped column: matchable (column known), never evaluable.
+  def long_titles
+    @cards = Card.where("length(title) >= ?", params[:min].to_i).to_a
+    render inline: "<ul><% @cards.each do |c| %><li><%= c.title %></li><% end %></ul>",
+           layout: false
+  end
+
+  # Aliased-subquery string join (latest_reviews shape).
+  def reviewed_items
+    @items = Item.joins(
+      "LEFT JOIN (SELECT item_id, MAX(score) AS top_score FROM reviews GROUP BY item_id) " \
+      "latest_reviews ON latest_reviews.item_id = items.id"
+    ).to_a
+    render inline: "<ul><% @items.each do |i| %><li><%= i.title %></li><% end %></ul>",
+           layout: false
+  end
+
+  # Membership-only door over the kept scope (raw-SET reorder neighbor).
+  def kept_count
+    @count = Item.count
+    render inline: "<p><%= @count %></p>", layout: false
   end
 end
 
@@ -385,6 +460,12 @@ Rails.application.routes.draw do
   get "/doors/raw_named", to: "read_doors#raw_named"
   get "/doors/raw_anonymous", to: "read_doors#raw_anonymous"
   get "/cached_board/:id", to: "cached_boards#show"
+  get "/census/active_assignments", to: "census#active_assignments"
+  get "/census/due_today", to: "census#due_today"
+  get "/census/search", to: "census#search"
+  get "/census/long_titles", to: "census#long_titles"
+  get "/census/reviewed_items", to: "census#reviewed_items"
+  get "/census/kept_count", to: "census#kept_count"
   get "/pulse/board", to: "pulse#board"
   get "/pulse/skip_board", to: "pulse#skip_board"
   get "/pulse/bare_board", to: "pulse#bare_board"
@@ -404,6 +485,7 @@ module ProofHelpers
     Upkeep.ignored_tables = nil
     Upkeep.dispatch_interlock = nil
     Upkeep.clock = nil
+    Upkeep::TemporalExpiry.reset!
     # Most fixture pages render bare fragments (no <body>), which strict
     # mode correctly reports as activation-impossible. Tests that exercise
     # injection re-enable it (with_auto_subscribe) on body-bearing pages.

@@ -49,6 +49,9 @@ module Upkeep
           # First verified cable subscription stamps this; later
           # subscriptions on the same stream are reconnects (resync refresh).
           t.datetime :activated_at
+          # Temporal-literal expiry: a "today"-baked predicate goes stale at
+          # the next local-date rollover (TemporalExpiry schedules a refresh).
+          t.datetime :expires_at
         end
         conn.add_index :upkeep_cohorts, :stream, unique: true
       end
@@ -121,7 +124,8 @@ module Upkeep
       @predicate_columns_cache = {}
     end
 
-    def register(read_set:, surfaces: [], baselines: {}, identity: nil, path: nil)
+    def register(read_set:, surfaces: [], baselines: {}, identity: nil, path: nil,
+                 expires_at: nil)
       id = SecureRandom.hex(8)
       stream = "upkeep:cohort:#{id}"
       row = CohortRow.create!(
@@ -132,7 +136,8 @@ module Upkeep
         read_set_json: JSON.generate(read_set.to_h),
         surfaces_json: JSON.generate(surfaces),
         baselines_json: JSON.generate(baselines),
-        heartbeat_at: Upkeep.now
+        heartbeat_at: Upkeep.now,
+        expires_at: expires_at
       )
       tables = read_set.tables.keys
       if tables.any?
@@ -145,7 +150,24 @@ module Upkeep
       sweep_opportunistically
       MemoryStore::Cohort.new(id: id, stream: stream, read_set: read_set,
                               surfaces: surfaces, identity: identity,
-                              baselines: baselines, path: path)
+                              baselines: baselines, path: path,
+                              expires_at: expires_at)
+    end
+
+    # Remove and return every cohort whose temporal expiry has passed —
+    # their pages hold yesterday's predicate; the caller schedules their
+    # refresh (re-registration happens on the re-GET).
+    def expire_due!(now = Upkeep.now)
+      rows = CohortRow.where(expires_at: ..now).where.not(expires_at: nil).to_a
+      return [] if rows.empty?
+      expired = rows.map { |row| hydrate_cohort(row) }
+      CohortRow.where(id: rows.map(&:id)).delete_all
+      CohortTableRow.where(cohort_id: rows.map(&:id)).delete_all
+      @mutex.synchronize do
+        @watch_cache = nil
+        @predicate_columns_cache.clear
+      end
+      expired
     end
 
     # Deletes what no browser is behind anymore. Cheap indexed deletes;
@@ -262,7 +284,7 @@ module Upkeep
         deps = JSON.parse(json)[table]
         next unless deps
         (deps.fetch("predicates", []) + deps.fetch("membership_predicates", [])).each do |pred|
-          columns.merge(pred.keys)
+          columns.merge(Verdict.predicate_columns(pred) || [])
         end
       end.to_a
     end
@@ -283,7 +305,8 @@ module Upkeep
         id: row.id, stream: row.stream, read_set: read_set,
         surfaces: JSON.parse(row.surfaces_json),
         identity: row.identity, path: row.path,
-        baselines: JSON.parse(row.baselines_json.presence || "{}")
+        baselines: JSON.parse(row.baselines_json.presence || "{}"),
+        expires_at: row.expires_at
       )
     end
 

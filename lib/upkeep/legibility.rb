@@ -45,6 +45,7 @@ module Upkeep
       "surface_pinned" => :coarsened,
       "surface_demoted" => :coarsened,
       "register" => :info,
+      "cohort_temporal_expiry" => :info,
       "refresh_netted" => :info,
       "reconnect_refresh" => :info,
       "member_diverged" => :info,
