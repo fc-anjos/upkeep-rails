@@ -170,13 +170,30 @@ as `Upkeep::SQLGlot` (parse, transpile, generate, plus schema-aware
 qualify/scope/lineage). Platform gems ship the compiled library; the source
 gem builds it at install time (needs git + cargo). Its role, precisely:
 
-- **Off the hot path.** Nothing in capture, matching, or delivery parses
-  SQL. The parser exists for future precision work — analyzing the distinct
-  registered query shapes an app produces, once each, cached by digest.
-- **Never a correctness authority.** Parse output can only refine cost
-  decisions; Turbo refresh from execution-recorded read sets remains the
-  sole correctness mechanism. A wrong or failed parse can cost an extra
-  refresh, never staleness.
+- **Off the hot path.** Each distinct SQL *shape* is parsed once, cached by
+  digest of its placeholder text (binds excluded) in a capped, evicting
+  cache (`Upkeep::SqlAnalysis`); a parse failure is a permanent "opaque"
+  entry. Capture and matching only ever consume cache hits (sub-µs).
+- **Never a correctness authority.** Parse output only refines precision;
+  Turbo refresh from execution-recorded read sets remains the sole
+  correctness mechanism. Every parser consumer falls back to the
+  pre-parser conservative behavior on any failure: a wrong or failed parse
+  can cost an extra refresh, never staleness.
+
+What the parser closes today: raw where-fragments
+(`where("start_date <= ? AND (end_date IS NULL OR end_date >= ?)", ...)`)
+become structured predicates — matched against writes and evaluated under
+SQL's three-valued logic for enter/leave/in-place verdicts (function calls
+and casts stay matchable-only); raw-string `SET` lists
+(`update_all("position = position + 1")`) yield exact changed-column sets;
+string JOINs resolve aliases and subqueries to physical tables; parser-
+proven self-contained fragments make their relations Tier S rebuildable
+(the empirical digest validation still gates promotion); predicates baking
+the capture day's date stamp their cohort with an expiry at the next local
+midnight, healing membership drift at the boundary; and unattributable
+audited reads degrade to parsed table-level dependencies — liveness
+coarsened — instead of refusing capture, which now happens only when even
+the parser cannot name a table.
 
 `benchmark/sqlglot_query_analysis.rb` measures the per-shape analysis cost
 (parse + qualify + scope, ~55us for a two-table join on Apple Silicon).

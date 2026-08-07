@@ -38,7 +38,12 @@ module Upkeep
     def node = @recording.prov_address
 
     def record_own(own, fragments)
-      read_set.record_predicate(@table, own, node: node, membership_only: @membership_only)
+      # An empty hash predicate means "unscoped — matches every change";
+      # when the relation's only scope is its fragments, the fragments ARE
+      # the predicate and the match-all must not ride along.
+      if own.any? || fragments.empty?
+        read_set.record_predicate(@table, own, node: node, membership_only: @membership_only)
+      end
       # A predicate binding an identity-scoped column marks the whole
       # capture identity-bound: its surfaces stay Tier P.
       note_identity(own.keys)

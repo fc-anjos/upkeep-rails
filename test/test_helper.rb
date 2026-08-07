@@ -194,9 +194,18 @@ class BoardsController < ActionController::Base
     render inline: "<ul><% @cards.each do |c| %><li><%= c.title %></li><% end %></ul>", layout: false
   end
 
-  # Raw-SQL where: relation analysis can't extract a predicate and degrades
-  # cards to a table-level dependency (dev-summary source-hint fixture).
+  # Raw-SQL where the parser cannot vouch for (a subquery on another
+  # table): relation analysis degrades cards to a table-level dependency
+  # (dev-summary source-hint fixture). Plain fragments no longer degrade —
+  # see CensusController for the precise shapes.
   def opaque_cards
+    @cards = Card.where("board_id IN (SELECT id FROM boards)").to_a
+    render inline: "<ul><% @cards.each do |c| %><li><%= c.title %></li><% end %></ul>", layout: false
+  end
+
+  # The same shape that used to degrade: a plain raw-SQL fragment, now
+  # parsed into a precise structured predicate (no degradation at all).
+  def fragment_cards
     @cards = Card.where("status = 'open'").to_a
     render inline: "<ul><% @cards.each do |c| %><li><%= c.title %></li><% end %></ul>", layout: false
   end
@@ -255,6 +264,13 @@ class ReadDoorsController < ActionController::Base
                                .select_all("SELECT COUNT(*) AS c FROM cards")
                                .first["c"]
     render inline: "<p>Raw: <%= @count %></p>", layout: false
+  end
+
+  # A read even the parser cannot attribute (no table at all): the one
+  # remaining capture-refusal shape.
+  def raw_scalar
+    @answer = ActiveRecord::Base.connection.select_all("SELECT 1 AS one").first["one"]
+    render inline: "<p>Raw: <%= @answer %></p>", layout: false
   end
 end
 
@@ -443,6 +459,7 @@ Rails.application.routes.draw do
   get "/boards/:id", to: "boards#show"
   get "/cards", to: "boards#all_cards"
   get "/opaque_cards", to: "boards#opaque_cards"
+  get "/fragment_cards", to: "boards#fragment_cards"
   get "/inbox", to: "boards#inbox"
   get "/shared_board", to: "surfaces#shared_board"
   get "/dashboard", to: "surfaces#dashboard"
@@ -459,6 +476,7 @@ Rails.application.routes.draw do
   get "/doors/lost_card", to: "read_doors#lost_card"
   get "/doors/raw_named", to: "read_doors#raw_named"
   get "/doors/raw_anonymous", to: "read_doors#raw_anonymous"
+  get "/doors/raw_scalar", to: "read_doors#raw_scalar"
   get "/cached_board/:id", to: "cached_boards#show"
   get "/census/active_assignments", to: "census#active_assignments"
   get "/census/due_today", to: "census#due_today"

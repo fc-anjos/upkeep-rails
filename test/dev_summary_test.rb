@@ -65,6 +65,16 @@ class DevSummaryTest < ActionDispatch::IntegrationTest
     assert_match(%r{degraded: cards → table-level \(unanalyzable_grouping at test/test_helper\.rb:\d+\)}, line)
   end
 
+  # The census win: a plain raw-SQL fragment parses into a structured
+  # predicate — nothing degrades anymore.
+  def test_plain_fragment_no_longer_degrades
+    in_development { get "/fragment_cards" }
+
+    line = summary_lines.first
+    assert_match(/\[upkeep\] live/, line)
+    refute_match(/degraded/, line, "a parseable fragment must not degrade: #{line}")
+  end
+
   def test_unhooked_read_degradation_names_the_query
     in_development { get "/doors/raw_named" }
 
@@ -83,14 +93,24 @@ class DevSummaryTest < ActionDispatch::IntegrationTest
 
   def test_refused_capture_says_not_live_and_why
     in_development do
-      no_raise { get "/doors/raw_anonymous" }
+      no_raise { get "/doors/raw_scalar" }
     end
 
     line = summary_lines.first
-    assert_match(/\A\[upkeep\] NOT live · GET \/doors\/raw_anonymous/, line)
+    assert_match(/\A\[upkeep\] NOT live · GET \/doors\/raw_scalar/, line)
     assert_match(/capture refused/, line)
     assert_match(/unattributable/, line)
     assert_match(/no cohort/, line)
+  end
+
+  # The parser now attributes an anonymous raw read to its tables: the
+  # page stays LIVE, coarsened to table-level — no longer a refusal.
+  def test_parser_attributed_raw_read_stays_live_coarsened
+    in_development { get "/doors/raw_anonymous" }
+
+    line = summary_lines.first
+    assert_match(/\A\[upkeep\] live · GET \/doors\/raw_anonymous/, line)
+    assert_match(/degraded: cards → table-level \(unattributed_query/, line)
   end
 
   def test_promoted_surface_counts_as_promoted

@@ -98,18 +98,42 @@ class ReadDoorsTest < ActionDispatch::IntegrationTest
 
   # Strict mode (the raise itself) is covered in legibility_test; this
   # asserts the production warn-and-refuse path stays intact underneath.
+  # The refusal now requires a read even the PARSER cannot attribute (no
+  # table at all) — anything with parseable table names degrades instead.
   def test_unhooked_unattributable_read_refuses_the_capture_loudly
     capture_events("capture_refused.upkeep") do |refusals|
       capture_events("capture_incomplete.upkeep") do |events|
-        no_raise { get "/doors/raw_anonymous" }
+        no_raise { get "/doors/raw_scalar" }
         assert_response :success
         assert_nil response.headers["X-Upkeep-Stream"],
           "an unattributable unhooked read must refuse cohort registration"
         assert events.any? { |p| p[:mode] == :unattributable }
-        assert refusals.any? { |p| p[:reason] == :unattributable_read && p[:path] == "/doors/raw_anonymous" },
+        assert refusals.any? { |p| p[:reason] == :unattributable_read && p[:path] == "/doors/raw_scalar" },
           "the refusal must be loud: #{refusals.inspect}"
         assert_equal 1, Upkeep.stats[:captures_refused]
       end
+    end
+  end
+
+  # Liveness LOST becomes liveness COARSENED: an anonymous raw read whose
+  # SQL the parser can attribute registers conservative table-level
+  # dependencies instead of refusing capture.
+  def test_parser_attributes_anonymous_raw_read_to_its_tables
+    capture_events("capture_incomplete.upkeep") do |events|
+      stream = nil
+      no_raise do
+        get "/doors/raw_anonymous"
+        assert_response :success
+        stream = response.headers["X-Upkeep-Stream"]
+      end
+      assert stream, "a parser-attributable read must still register a cohort"
+      assert events.any? { |p| p[:mode] == :degraded_table_level && p[:tables] == ["cards"] },
+        "the coarsening must be loud: #{events.inspect}"
+      assert_equal 0, Upkeep.stats[:captures_refused]
+
+      # Table-level means conservative: any write to cards refreshes.
+      Card.create!(board: @board2, title: "Unrelated", status: "done")
+      assert_refreshes(stream, 1)
     end
   end
 end

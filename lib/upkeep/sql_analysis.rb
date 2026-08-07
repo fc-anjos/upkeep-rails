@@ -41,12 +41,27 @@ module Upkeep
       def arel_fragment(node)
         if defined?(Arel::Nodes::BoundSqlLiteral) && node.is_a?(Arel::Nodes::BoundSqlLiteral)
           return nil if node.named_binds.present?
-          [node.sql_with_placeholders.to_s, node.positional_binds]
+          [unwrap_parens(node.sql_with_placeholders.to_s), node.positional_binds]
         elsif node.is_a?(Arel::Nodes::Grouping) && node.expr.is_a?(Arel::Nodes::SqlLiteral)
-          [node.expr.to_s, []]
+          [unwrap_parens(node.expr.to_s), []]
         elsif node.is_a?(Arel::Nodes::SqlLiteral)
-          [node.to_s, []]
+          [unwrap_parens(node.to_s), []]
         end
+      end
+
+      # Arel wraps raw where fragments in one paren layer; where(sql) will
+      # wrap again on revival. Strip a layer only when it encloses the
+      # whole fragment (never "(a) OR (b)").
+      def unwrap_parens(sql)
+        stripped = sql.strip
+        return stripped unless stripped.start_with?("(") && stripped.end_with?(")")
+        depth = 0
+        stripped.each_char.with_index do |char, index|
+          depth += 1 if char == "("
+          depth -= 1 if char == ")"
+          return stripped if depth.zero? && index < stripped.length - 1
+        end
+        stripped[1..-2].strip
       end
 
       # Column names assigned by a raw-string SET list

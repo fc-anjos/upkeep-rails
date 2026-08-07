@@ -78,7 +78,17 @@ class SqlAnalysisTest < ActiveSupport::TestCase
 
   def test_named_binds_stay_conservative
     node = Card.where("status = :s", s: "open").where_clause.ast
-    assert_nil Upkeep::SqlAnalysis.arel_fragment(node)
+    if defined?(Arel::Nodes::BoundSqlLiteral) && node.is_a?(Arel::Nodes::BoundSqlLiteral)
+      # 7.2+: named binds ride the BoundSqlLiteral unresolved — we cannot
+      # order them positionally, so the fragment stays conservative.
+      assert_nil Upkeep::SqlAnalysis.arel_fragment(node)
+    else
+      # 7.1 sanitizes named binds into the literal text: the fragment is
+      # complete as-is and extracts (with no separate binds).
+      sql, binds = Upkeep::SqlAnalysis.arel_fragment(node)
+      assert_equal "status = 'open'", sql
+      assert_empty binds
+    end
   end
 
   # -- three-valued evaluation ----------------------------------------------

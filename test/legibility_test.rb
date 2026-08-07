@@ -136,9 +136,17 @@ class LegibilityIntegrationTest < ActionDispatch::IntegrationTest
   include ProofHelpers
 
   def test_unattributable_read_raises_during_the_request
-    error = assert_raises(Upkeep::LivenessLost) { get "/doors/raw_anonymous" }
+    error = assert_raises(Upkeep::LivenessLost) { get "/doors/raw_scalar" }
     assert_match(/unattributable/, error.message)
     assert_match(/no cohort/i, error.message)
+  end
+
+  # The raise fires only when even the parser cannot extract a table:
+  # attributable raw SQL is now a coarsening, not a loss.
+  def test_parser_attributable_read_does_not_raise
+    get "/doors/raw_anonymous"
+    assert_response :success
+    assert response.headers["X-Upkeep-Stream"], "the page must stay live"
   end
 
   def test_ignored_table_write_on_a_watched_table_raises

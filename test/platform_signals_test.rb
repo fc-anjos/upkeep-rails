@@ -194,11 +194,38 @@ class RelationLocalRoundTripTest < ActiveSupport::TestCase
     assert_equal Card.where(status: "open").maximum(:id), cards.maximum(:id)
   end
 
-  def test_complex_relations_stay_unrefreshable
+  # Capability flip (was the test_complex_relations_stay_unrefreshable
+  # pin): a fragment the parser proves self-contained, single-table and
+  # deterministic IS rebuildable — serialized as SQL text + binds, revived
+  # via klass.where(sql, *binds). The digest/promotion machinery still
+  # validates the rebuilt render empirically; the parse is the notary, not
+  # the authority.
+  def test_provable_fragment_relations_are_refreshable_and_round_trip
+    d = Upkeep::Descriptor.new(
+      name: "page", partial: "surfaces/cards",
+      locals: { cards: Card.where(status: "open").where("title LIKE ?", "%s%") }
+    )
+    assert d.refreshable?, "a parsed LIKE fragment is provably rebuildable"
+
+    revived = Upkeep::Descriptor.from_h(JSON.parse(JSON.generate(d.to_h)))
+    cards = revived.locals[:cards]
+    assert_kind_of ActiveRecord::Relation, cards
+    assert_equal Card.where(status: "open").where("title LIKE ?", "%s%").to_sql,
+      cards.to_sql, "the revived relation must run the same predicate"
+  end
+
+  # The negative stays negative: constructs the parser cannot vouch for as
+  # self-contained (another table's subquery) or deterministic-evaluable
+  # (a function call) remain unrefreshable.
+  def test_unprovable_fragment_relations_stay_unrefreshable
     refute Upkeep::Descriptor.new(
       name: "page", partial: "surfaces/cards",
-      locals: { cards: Card.where("title LIKE ?", "%x%") }
-    ).refreshable?, "an opaque where clause is not provably rebuildable"
+      locals: { cards: Card.where("board_id IN (SELECT id FROM boards)") }
+    ).refreshable?, "a subquery referencing another table stays refused"
+    refute Upkeep::Descriptor.new(
+      name: "page", partial: "surfaces/cards",
+      locals: { cards: Card.where("length(title) > 3") }
+    ).refreshable?, "a function-wrapped column stays refused"
   end
 end
 
