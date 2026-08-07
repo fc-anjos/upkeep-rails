@@ -24,6 +24,9 @@ class ProofApp < Rails::Application
   config.active_record.maintain_test_schema = false
   config.action_cable.cable = { "adapter" => "test" }
   config.action_controller.allow_forgery_protection = false
+  # Re-raise request exceptions (a bare Rails::Application defaults to
+  # rendering a 500 page): strict-mode LivenessLost must reach the test.
+  config.action_dispatch.show_exceptions = :none
   config.action_controller.perform_caching = true
   config.cache_store = :memory_store
   config.active_job.queue_adapter = :inline
@@ -393,6 +396,10 @@ module ProofHelpers
     Upkeep.ignored_tables = nil
     Upkeep.dispatch_interlock = nil
     Upkeep.clock = nil
+    # Most fixture pages render bare fragments (no <body>), which strict
+    # mode correctly reports as activation-impossible. Tests that exercise
+    # injection re-enable it (with_auto_subscribe) on body-bearing pages.
+    Upkeep::Streams.auto_subscribe = false
     Rails.cache.clear
     Upkeep.reset_stats!
     Upkeep::Coercion.reset!
@@ -436,6 +443,22 @@ module ProofHelpers
   end
 
   def surface(name) = Upkeep.registry.lookup(name)
+
+  # The documented strict-mode opt-out, scoped to a block: tests that
+  # assert the production warn-and-degrade path run inside it.
+  def no_raise
+    ENV["UPKEEP_NO_RAISE"] = "1"
+    yield
+  ensure
+    ENV.delete("UPKEEP_NO_RAISE")
+  end
+
+  def with_auto_subscribe
+    Upkeep::Streams.auto_subscribe = true
+    yield
+  ensure
+    Upkeep::Streams.auto_subscribe = false
+  end
 
   # Simulate a distinct app process: its own store/registry/debouncer
   # instances (sharing the DB and the cable, as real processes would).

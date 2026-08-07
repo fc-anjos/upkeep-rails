@@ -96,10 +96,12 @@ class ReadDoorsTest < ActionDispatch::IntegrationTest
     end
   end
 
+  # Strict mode (the raise itself) is covered in legibility_test; this
+  # asserts the production warn-and-refuse path stays intact underneath.
   def test_unhooked_unattributable_read_refuses_the_capture_loudly
     capture_events("capture_refused.upkeep") do |refusals|
       capture_events("capture_incomplete.upkeep") do |events|
-        get "/doors/raw_anonymous"
+        no_raise { get "/doors/raw_anonymous" }
         assert_response :success
         assert_nil response.headers["X-Upkeep-Stream"],
           "an unattributable unhooked read must refuse cohort registration"

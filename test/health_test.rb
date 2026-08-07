@@ -83,9 +83,15 @@ class CableTopologyTest < ActiveSupport::TestCase
     [logger, yield(logger)]
   end
 
+  include ProofHelpers
+
+  # Strict mode raises on the broken verdict (legibility_test); the warn
+  # path underneath is the production behavior.
   def test_async_adapter_with_multiple_workers_is_broken
     logger, verdict = capture_warns do |l|
-      Upkeep::Health.check_cable_topology!(adapter: "async", web_concurrency: "4", logger: l)
+      no_raise do
+        Upkeep::Health.check_cable_topology!(adapter: "async", web_concurrency: "4", logger: l)
+      end
     end
     assert_equal :broken, verdict
     assert_match(/WILL be silently lost/, logger.lines.first)

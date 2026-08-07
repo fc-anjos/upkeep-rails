@@ -37,6 +37,9 @@ module Upkeep
   autoload :AutoSurfaces,     "upkeep/auto_surfaces"
   autoload :Verdict,          "upkeep/verdict"
   autoload :Dispatch,         "upkeep/dispatch"
+  autoload :Legibility,       "upkeep/legibility"
+  autoload :LivenessLost,     "upkeep/legibility"
+  autoload :UnclassifiedEvent, "upkeep/legibility"
 
   # One observed committed write.
   #   kind: :insert, :update, :delete - one row, full attrs known
@@ -211,6 +214,7 @@ module Upkeep
     def install!
       return if @installed
       @installed = true
+      Legibility.install!
       Hooks.install!
       Ambient.install!
       AutoSurfaces.install!

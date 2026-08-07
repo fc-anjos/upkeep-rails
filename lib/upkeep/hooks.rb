@@ -254,6 +254,12 @@ module Upkeep
 
     RAW_WRITE_SQL = /\A\s*(insert\s+into|update|delete\s+from)\s+["`']?(\w+)/i
 
+    # DDL and maintenance statements Rails classifies as writes but which
+    # change schema, not row data: never an unattributed-write warning.
+    # (The "SCHEMA" name gate below does not catch schema statements issued
+    # through bare execute — observed at boot with strict mode on.)
+    DDL_SQL = /\A\s*(create|drop|alter|pragma|vacuum|reindex|analyze|savepoint|release)\b/i
+
     # Completeness audit: a SELECT that executes during a capture with no
     # read door accounting for it is a dependency the read set cannot see.
     # Statement-kind guard only — dependencies are never derived from SQL
@@ -355,6 +361,7 @@ module Upkeep
     end
 
     def self.unattributable_write?(connection, sql)
+      return false if DDL_SQL.match?(sql)
       connection && connection.respond_to?(:write_query?, true) &&
         connection.send(:write_query?, sql)
     end
