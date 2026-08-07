@@ -9,10 +9,14 @@ require_relative "test_helper"
 class VerdictTest < ActiveSupport::TestCase
   V = Upkeep::Verdict
 
-  def deps(ids: [], predicates: [], table_reasons: [], membership: [])
+  def deps(ids: [], predicates: [], table_reasons: [], membership: [], aggregates: [])
     Upkeep::ReadSet::Deps.new(
-      Set.new(ids), predicates, table_reasons, membership
+      Set.new(ids), predicates, table_reasons, membership, aggregates
     )
+  end
+
+  def aggregate(fn:, column: nil, group: [], predicates: [{}])
+    { "fn" => fn, "column" => column, "group" => group, "predicates" => predicates }
   end
 
   def update(id:, old_attrs:, new_attrs:, columns: nil)
@@ -193,6 +197,128 @@ class VerdictTest < ActiveSupport::TestCase
     fact = update(id: 9, old_attrs: { "id" => 9, "status" => "done" },
                   new_attrs: { "id" => 9, "status" => "open" })
     assert_equal :enter, V.of(deps(membership: [OPEN]), fact)
+  end
+
+  # --- value-sensitive aggregates (capacity-dashboard shapes) --------------
+  # sum(duration) by user_id over status=open: membership changes always
+  # refresh; an in-place write refreshes only when it touches the
+  # aggregated column, a grouping key, or a predicate column.
+
+  SUM = { "fn" => "sum", "column" => "duration", "group" => ["user_id"],
+          "predicates" => [{ "status" => ["open"] }] }.freeze
+
+  def in_place_fact(columns:, extra: {})
+    base = { "id" => 9, "status" => "open", "user_id" => 1, "duration" => 5,
+             "title" => "a" }
+    update(id: 9, old_attrs: base,
+           new_attrs: base.merge(extra.presence || columns.to_h { |c| [c, "changed"] }),
+           columns: columns)
+  end
+
+  def test_aggregate_in_place_write_to_an_unrelated_column_is_irrelevant
+    fact = in_place_fact(columns: ["title"])
+    assert_equal :irrelevant, V.of(deps(aggregates: [SUM]), fact)
+    # The old membership-shaped behavior — the asserted delta: the same
+    # write against the same predicate recorded plainly still refreshes.
+    assert_equal :in_place, V.of(deps(predicates: [{ "status" => ["open"] }]), fact)
+  end
+
+  def test_aggregate_in_place_write_to_the_aggregated_column_refreshes
+    fact = in_place_fact(columns: ["duration"], extra: { "duration" => 7 })
+    assert_equal :in_place, V.of(deps(aggregates: [SUM]), fact)
+  end
+
+  def test_aggregate_in_place_write_to_a_grouping_key_refreshes
+    fact = in_place_fact(columns: ["user_id"], extra: { "user_id" => 2 })
+    assert_equal :in_place, V.of(deps(aggregates: [SUM]), fact)
+  end
+
+  def test_aggregate_membership_changes_always_refresh
+    enter = update(id: 9, old_attrs: { "id" => 9, "status" => "done" },
+                   new_attrs: { "id" => 9, "status" => "open" })
+    leave = update(id: 9, old_attrs: { "id" => 9, "status" => "open" },
+                   new_attrs: { "id" => 9, "status" => "done" })
+    assert_equal :enter, V.of(deps(aggregates: [SUM]), enter)
+    assert_equal :leave, V.of(deps(aggregates: [SUM]), leave)
+  end
+
+  def test_aggregate_write_outside_the_predicate_stays_irrelevant
+    fact = update(id: 9, old_attrs: { "id" => 9, "status" => "done", "title" => "a" },
+                  new_attrs: { "id" => 9, "status" => "done", "title" => "b" })
+    assert_equal :irrelevant, V.of(deps(aggregates: [SUM]), fact)
+  end
+
+  def test_aggregate_with_unknown_changed_columns_refreshes_conservatively
+    fact = update(id: 9, old_attrs: { "id" => 9, "status" => "open", "title" => "a" },
+                  new_attrs: { "id" => 9, "status" => "open", "title" => "b" },
+                  columns: nil)
+    fact.columns = nil
+    assert_equal :in_place, V.of(deps(aggregates: [SUM]), fact)
+  end
+
+  def test_aggregate_with_unknown_predicate_columns_refreshes_conservatively
+    opaque = aggregate(fn: "sum", column: "duration",
+                       predicates: [{ "__fragment__" => {
+                         "op" => "opaque", "columns" => [], "evaluable" => false
+                       } }])
+    fact = in_place_fact(columns: ["title"])
+    assert_equal :maybe, V.of(deps(aggregates: [opaque]), fact)
+  end
+
+  def test_whole_row_count_in_place_never_refreshes
+    count = aggregate(fn: "count", predicates: [{ "status" => ["open"] }])
+    fact = in_place_fact(columns: ["status"], extra: { "status" => "open" })
+    assert_equal :irrelevant, V.of(deps(aggregates: [count]), fact),
+      "membership unchanged = count unchanged, whatever columns moved"
+  end
+
+  def test_grouped_count_refreshes_on_a_grouping_key_move
+    count = aggregate(fn: "count", group: ["user_id"],
+                      predicates: [{ "status" => ["open"] }])
+    moved = in_place_fact(columns: ["user_id"], extra: { "user_id" => 2 })
+    titled = in_place_fact(columns: ["title"])
+    assert_equal :in_place, V.of(deps(aggregates: [count]), moved)
+    assert_equal :irrelevant, V.of(deps(aggregates: [count]), titled)
+  end
+
+  def test_maximum_in_place_change_to_the_aggregated_column_refreshes
+    max = aggregate(fn: "maximum", column: "duration",
+                    predicates: [{ "status" => ["open"] }])
+    fact = in_place_fact(columns: ["duration"], extra: { "duration" => 1 })
+    assert_equal :in_place, V.of(deps(aggregates: [max]), fact),
+      "the old max may not survive a downward move — always refresh"
+  end
+
+  def test_unscoped_aggregate_treats_every_row_as_a_member
+    unscoped = aggregate(fn: "sum", column: "duration")
+    title_edit = in_place_fact(columns: ["title"])
+    duration_edit = in_place_fact(columns: ["duration"], extra: { "duration" => 7 })
+    insert = Upkeep::Fact.new(table: "cards", id: 9, kind: :insert,
+                              new_attrs: { "id" => 9, "duration" => 3 })
+    assert_equal :irrelevant, V.of(deps(aggregates: [unscoped]), title_edit)
+    assert_equal :in_place, V.of(deps(aggregates: [unscoped]), duration_edit)
+    assert_equal :enter, V.of(deps(aggregates: [unscoped]), insert)
+  end
+
+  def test_aggregates_survive_serialization
+    rs = Upkeep::ReadSet.new
+    rs.record_aggregate("cards", SUM.dup)
+    reloaded = Upkeep::ReadSet.from_h(JSON.parse(JSON.generate(rs.to_h)))
+    title_edit = in_place_fact(columns: ["title"])
+    duration_edit = in_place_fact(columns: ["duration"], extra: { "duration" => 7 })
+    refute reloaded.matches?(title_edit),
+      "the value-sensitive skip must survive the store round trip"
+    assert reloaded.matches?(duration_edit)
+    assert_equal [SUM], reloaded.tables.fetch("cards").aggregates
+  end
+
+  def test_aggregates_survive_fragment_slice_absorb
+    rs = Upkeep::ReadSet.new
+    rs.record_aggregate("cards", SUM.dup, node: "n1")
+    absorbed = Upkeep::ReadSet.new
+    absorbed.absorb(JSON.parse(JSON.generate(rs.to_h)))
+    assert_equal [SUM], absorbed.tables.fetch("cards").aggregates
+    assert_equal [SUM], absorbed.tables.fetch("cards").node_reads.fetch("n1").aggregates
   end
 
   # --- composition ---------------------------------------------------------

@@ -169,10 +169,20 @@ module Upkeep
       end
 
       def live_line(recording, path, notes)
-        parts = ["[upkeep] live", "GET #{path}", cohort_part, surface_part(recording)]
+        parts = ["[upkeep] live", "GET #{path}", cohort_part, surface_part(recording),
+                 aggregate_part(recording)]
         degrades = table_degrades(recording, notes[:hints]) + event_degrades(notes[:events])
         parts << "degraded: #{degrades.join("; ")}" if degrades.any?
         parts.compact.join(" · ")
+      end
+
+      # Value-sensitive aggregate dependencies, named so devs can see what
+      # is precise: "aggregates: time_logs sum(duration) by user_id".
+      def aggregate_part(recording)
+        labels = recording.read_set.tables.flat_map do |table, deps|
+          deps.aggregates.map { |agg| "#{table} #{ReadSet.aggregate_label(agg)}" }
+        end.uniq
+        "aggregates: #{labels.join(", ")}" if labels.any?
       end
 
       def cohort_part

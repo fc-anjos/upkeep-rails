@@ -25,12 +25,18 @@ module Upkeep
         recording = Recording.current
         return super unless recording
         result = recording.accounting { super }
-        # A whole-row count sees membership only: an in-place content move
-        # cannot change it. Any other aggregate (sum/min/max/avg, count of
-        # a nullable column) depends on row content and stays a full
+        # Value-sensitive when the aggregate's structure is fully visible
+        # (known function, plain column or whole-row count, plain grouping
+        # columns): the verdict layer can then skip in-place writes that
+        # touch neither the aggregated column, a grouping key, nor a
+        # predicate column. Anything structurally opaque falls back to the
+        # old membership-shaped dependency — coarser, still correct: a
+        # whole-row count is membership-only, any other aggregate a full
         # predicate dependency.
         recording.record_relation(
-          self, membership_only: _upkeep_membership_count?(operation, column_name)
+          self,
+          membership_only: _upkeep_membership_count?(operation, column_name),
+          aggregate: _upkeep_aggregate_descriptor(operation, column_name)
         )
         _upkeep_record_columns(recording, [column_name])
         result
@@ -71,8 +77,46 @@ module Upkeep
 
       def _upkeep_membership_count?(operation, column_name)
         return false unless operation.to_s == "count"
+        _upkeep_whole_row?(column_name)
+      end
+
+      def _upkeep_whole_row?(column_name)
         column_name.nil? || column_name == :all ||
           column_name.to_s == "*" || column_name.to_s == klass.primary_key
+      end
+
+      AGGREGATE_FUNCTIONS = %w[count sum minimum maximum average].freeze
+
+      # A value-sensitive descriptor {fn:, column:, group:} — or nil when
+      # any part of the aggregate's structure is not a plainly visible
+      # column of this relation's own table (derived strictly from the
+      # calculation call Rails hands us, never guessed).
+      def _upkeep_aggregate_descriptor(operation, column_name)
+        fn = operation.to_s
+        return nil unless AGGREGATE_FUNCTIONS.include?(fn)
+        return nil unless (group = _upkeep_group_columns)
+        column = _upkeep_aggregate_column(fn, column_name)
+        column == :opaque ? nil : { fn: fn, column: column, group: group }
+      end
+
+      # Grouping keys as plain own-table column names; nil when any
+      # grouping expression is anything else (Arel nodes, SQL strings).
+      def _upkeep_group_columns
+        group_values.map do |value|
+          return nil unless value.is_a?(Symbol) || value.is_a?(String)
+          name = value.to_s
+          return nil unless klass.column_names.include?(name)
+          name
+        end
+      end
+
+      # The aggregated column: nil for a whole-row count (blind to row
+      # content), a column name when plainly visible, :opaque otherwise.
+      def _upkeep_aggregate_column(fn, column_name)
+        return nil if fn == "count" && _upkeep_whole_row?(column_name)
+        return :opaque unless column_name.is_a?(Symbol) || column_name.is_a?(String)
+        name = column_name.to_s
+        klass.column_names.include?(name) ? name : :opaque
       end
 
       # Plain column names from a pluck/calculate column list; Arel nodes

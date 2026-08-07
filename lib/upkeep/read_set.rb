@@ -17,16 +17,40 @@ module Upkeep
   # comparisons go through Coercion so a JSON-reloaded read set still
   # matches live writes (Date vs "2026-01-01", 5 vs "5", ...).
   class ReadSet
+    # Every predicate recorded anywhere in a Deps, aggregate-carried ones
+    # included — for consumers that reason about predicate shape (temporal
+    # expiry, RETURNING projection candidates), not membership.
+    module PredicateEnumeration
+      def all_predicates
+        predicates + membership_predicates +
+          Array(aggregates).flat_map { |agg| agg["predicates"] }
+      end
+    end
+
     # membership_predicates: predicates recorded from doors that see only
     # set membership (count/exists) — an in-place content move is invisible
     # to them, so their :in_place verdict downgrades to :irrelevant.
-    Deps = Struct.new(:ids, :predicates, :table_reasons, :membership_predicates) do
-      def self.empty = new(Set.new, [], [], [])
+    # aggregates: value-sensitive calculation descriptors —
+    # {"fn", "column", "group", "predicates"} — whose :in_place verdict
+    # depends on WHICH columns the write touched (see Verdict).
+    Deps = Struct.new(:ids, :predicates, :table_reasons, :membership_predicates,
+                      :aggregates) do
+      include PredicateEnumeration
+      def self.empty = new(Set.new, [], [], [], [])
     end
 
     TableDeps = Struct.new(:ids, :predicates, :table_reasons, :node_reads,
-                           :columns, :membership_predicates) do
-      def self.empty = new(Set.new, [], [], {}, Set.new, [])
+                           :columns, :membership_predicates, :aggregates) do
+      include PredicateEnumeration
+      def self.empty = new(Set.new, [], [], {}, Set.new, [], [])
+    end
+
+    # One human-readable label for an aggregate descriptor (dev summary,
+    # upkeep:report): sum(duration) by user_id.
+    def self.aggregate_label(agg)
+      label = "#{agg["fn"]}(#{agg["column"] || "*"})"
+      group = Array(agg["group"])
+      group.any? ? "#{label} by #{group.join(", ")}" : label
     end
 
     def initialize
@@ -58,6 +82,15 @@ module Upkeep
       slices.each do |s|
         s.record_predicate(table, predicate, node: node, membership_only: membership_only)
       end
+    end
+
+    # A value-sensitive aggregate dependency: the aggregate function, the
+    # aggregated column (nil for whole-row count), the grouping columns and
+    # the membership predicates of the aggregated set, as one descriptor.
+    def record_aggregate(table, aggregate, node: nil)
+      deps(table).aggregates << aggregate
+      node_deps(table, node).aggregates << aggregate if node
+      slices.each { |s| s.record_aggregate(table, aggregate, node: node) }
     end
 
     def record_table(table, reason, node: nil)
@@ -165,6 +198,7 @@ module Upkeep
       deps.ids.merge(h.fetch("ids", []))
       h.fetch("predicates", []).each { |p| deps.predicates << p }
       h.fetch("membership_predicates", []).each { |p| deps.membership_predicates << p }
+      h.fetch("aggregates", []).each { |a| deps.aggregates << a }
       h.fetch("table_reasons", []).each { |r| deps.table_reasons << r.to_sym }
     end
 
@@ -185,8 +219,13 @@ module Upkeep
         "ids" => d.ids.to_a,
         "predicates" => d.predicates.map { |p| p.transform_keys(&:to_s) },
         "membership_predicates" => d.membership_predicates.map { |p| p.transform_keys(&:to_s) },
+        "aggregates" => d.aggregates.map { |a| serialize_aggregate(a) },
         "table_reasons" => d.table_reasons.map(&:to_s)
       }
+    end
+
+    def serialize_aggregate(agg)
+      agg.merge("predicates" => agg["predicates"].map { |p| p.transform_keys(&:to_s) })
     end
 
     def absorb_table(table, d)
@@ -198,6 +237,8 @@ module Upkeep
         .each { |p| record_predicate(table, p) }
       subtract_multiset(d.fetch("membership_predicates", []), absorbed.membership_predicates)
         .each { |p| record_predicate(table, p, membership_only: true) }
+      subtract_multiset(d.fetch("aggregates", []), absorbed.aggregates)
+        .each { |a| record_aggregate(table, a) }
       subtract_multiset(d.fetch("table_reasons", []).map(&:to_sym), absorbed.table_reasons)
         .each { |r| record_table(table, r) }
     end
@@ -212,6 +253,10 @@ module Upkeep
         record_predicate(table, p, node: address, membership_only: true)
         absorbed.membership_predicates << p
       end
+      nd.fetch("aggregates", []).each do |a|
+        record_aggregate(table, a, node: address)
+        absorbed.aggregates << a
+      end
       nd.fetch("table_reasons", []).each { |r| record_table(table, r.to_sym, node: address); absorbed.table_reasons << r.to_sym }
     end
 
@@ -225,7 +270,8 @@ module Upkeep
         table_deps.ids - node.flat_map { |d| d.ids.to_a }.to_set,
         subtract_multiset(table_deps.predicates, node.flat_map(&:predicates)),
         subtract_multiset(table_deps.table_reasons, node.flat_map(&:table_reasons)),
-        subtract_multiset(table_deps.membership_predicates, node.flat_map(&:membership_predicates))
+        subtract_multiset(table_deps.membership_predicates, node.flat_map(&:membership_predicates)),
+        subtract_multiset(table_deps.aggregates, node.flat_map(&:aggregates))
       )
     end
 

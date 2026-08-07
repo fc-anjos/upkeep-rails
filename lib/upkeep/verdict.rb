@@ -40,6 +40,9 @@ module Upkeep
       deps.membership_predicates.each do |pred|
         verdict = combine(verdict, membership_verdict(pred, fact))
       end
+      Array(deps.aggregates).each do |agg|
+        verdict = combine(verdict, aggregate_verdict(agg, fact))
+      end
       verdict
     end
 
@@ -47,7 +50,8 @@ module Upkeep
     # about, is conservatively relevant; an empty Deps matches nothing.
     def conservative(deps)
       empty = deps.ids.empty? && deps.predicates.empty? &&
-              deps.membership_predicates.empty? && deps.table_reasons.empty?
+              deps.membership_predicates.empty? &&
+              Array(deps.aggregates).empty? && deps.table_reasons.empty?
       empty ? :irrelevant : :maybe
     end
 
@@ -74,6 +78,44 @@ module Upkeep
     def membership_verdict(pred, fact)
       verdict = predicate_verdict(pred, fact)
       verdict == :in_place ? :irrelevant : verdict
+    end
+
+    # A value-sensitive aggregate dependency ({"fn", "column", "group",
+    # "predicates"}): membership changes (:enter/:leave/:maybe) always
+    # refresh — any aggregate over the set may change. :in_place refreshes
+    # only when the write touched a column the aggregate's VALUE can see:
+    # the aggregated column, a grouping column, or a predicate column.
+    # Whole-row count sees no content at all — with membership unchanged
+    # only a grouping-key move can change it.
+    def aggregate_verdict(agg, fact)
+      verdict = agg["predicates"].reduce(:irrelevant) do |acc, pred|
+        combine(acc, predicate_verdict(pred, fact))
+      end
+      verdict == :in_place ? aggregate_in_place_verdict(agg, fact) : verdict
+    end
+
+    # Membership provably unchanged: compare the write's changed columns
+    # against the aggregate's value-sensitive columns. Every unknown
+    # resolves to refresh (freshness fails open); a provably disjoint
+    # write is the pure saving.
+    def aggregate_in_place_verdict(agg, fact)
+      sensitive = aggregate_sensitive_columns(agg)
+      return :irrelevant if sensitive && sensitive.empty?
+      return :in_place if sensitive.nil? || fact.columns.nil?
+      (sensitive & fact.columns.map(&:to_s)).any? ? :in_place : :irrelevant
+    end
+
+    # The columns an aggregate's value depends on beyond membership: the
+    # grouping keys, plus — for value aggregates — the aggregated column
+    # and the predicate columns. Whole-row count (nil column) is blind to
+    # row content: only its grouping keys matter. nil = unknown (a
+    # predicate whose columns the parser cannot name) — never disjoint.
+    def aggregate_sensitive_columns(agg)
+      group = Array(agg["group"]).map(&:to_s)
+      return group unless agg["column"]
+      pred_columns = agg["predicates"].map { |pred| predicate_columns(pred) }
+      return nil if pred_columns.any?(&:nil?)
+      group + [agg["column"].to_s] + pred_columns.flatten
     end
 
     # Most conservative row verdict across every row the fact touched.

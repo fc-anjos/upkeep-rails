@@ -19,7 +19,7 @@ module Upkeep
       def expiry_for(read_set, now: Upkeep.now)
         today = now.to_date
         return nil unless read_set.tables.values.any? do |deps|
-          (deps.predicates + deps.membership_predicates).any? do |pred|
+          deps.all_predicates.any? do |pred|
             predicate_values(pred).any? { |value| date_of(value) == today }
           end
         end

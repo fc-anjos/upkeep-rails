@@ -108,10 +108,11 @@ module Upkeep
 
     # A relation that just executed: extract simple membership predicates,
     # degrade to table-level with a reason when analysis can't be exact.
-    def record_relation(relation, membership_only: false)
+    def record_relation(relation, membership_only: false, aggregate: nil)
       return if OWN_TABLES.include?(relation.klass.table_name)
       Upkeep.stats[:relations_analyzed] += 1
-      RelationAnalysis.new(relation).apply_to(self, membership_only: membership_only)
+      RelationAnalysis.new(relation)
+                      .apply_to(self, membership_only: membership_only, aggregate: aggregate)
     end
 
     # A statement-cache execution (Model.find / find_by / association

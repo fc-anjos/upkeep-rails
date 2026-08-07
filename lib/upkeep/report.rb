@@ -21,10 +21,13 @@ module Upkeep
         reasons = deps.fetch("table_reasons", []).uniq
         [table, reasons] if reasons.any?
       end.to_h
+      aggregates = read_set.flat_map do |table, deps|
+        deps.fetch("aggregates", []).map { |agg| "#{table} #{ReadSet.aggregate_label(agg)}" }
+      end
       {
         path: row.path, stream: row.stream, activated: !row.activated_at.nil?,
         tables: read_set.keys.sort, surfaces: JSON.parse(row.surfaces_json),
-        degradations: degradations
+        degradations: degradations, aggregates: aggregates.uniq
       }
     end
 
@@ -62,7 +65,8 @@ module Upkeep
           activated: group.count { |c| c[:activated] },
           tables: group.flat_map { |c| c[:tables] }.uniq.sort,
           surfaces: group.flat_map { |c| c[:surfaces] }.uniq.sort,
-          degradations: merged_degradations(group)
+          degradations: merged_degradations(group),
+          aggregates: group.flat_map { |c| c[:aggregates] }.uniq.sort
         }
       end
     end
@@ -95,6 +99,7 @@ module Upkeep
                "cohort#{"s" unless page[:cohorts] == 1} (#{page[:activated]} activated)"]
       lines << "    tables: #{page[:tables].join(", ")}"
       lines << "    surfaces: #{page[:surfaces].join(", ")}" if page[:surfaces].any?
+      lines << "    aggregates: #{page[:aggregates].join(", ")}" if page[:aggregates].any?
       page[:degradations].each do |table, reasons|
         lines << "    degraded: #{table} → table-level (#{reasons.join(", ")})"
       end

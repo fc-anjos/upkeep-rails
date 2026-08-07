@@ -283,7 +283,9 @@ module Upkeep
       CohortRow.where(id: ids).pluck(:read_set_json).each_with_object(Set.new) do |json, columns|
         deps = JSON.parse(json)[table]
         next unless deps
-        (deps.fetch("predicates", []) + deps.fetch("membership_predicates", [])).each do |pred|
+        aggregate_preds = deps.fetch("aggregates", []).flat_map { |a| a["predicates"] }
+        (deps.fetch("predicates", []) + deps.fetch("membership_predicates", []) +
+         aggregate_preds).each do |pred|
           columns.merge(Verdict.predicate_columns(pred) || [])
         end
       end.to_a

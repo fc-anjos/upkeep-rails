@@ -18,7 +18,7 @@ module Upkeep
       @table = @klass.table_name
     end
 
-    def apply_to(recording, membership_only: false)
+    def apply_to(recording, membership_only: false, aggregate: nil)
       @recording = recording
       @membership_only = membership_only
       joined = joined_tables
@@ -26,6 +26,11 @@ module Upkeep
       if fallback_reason
         read_set.record_table(@table, fallback_reason, node: node)
         Legibility.note_hint(@table, fallback_reason)
+      elsif aggregate && joined.empty?
+        # Joined aggregates stay membership-shaped: the join can move a row
+        # in or out through columns this analysis never sees (FKs, ON
+        # clauses), so value-sensitivity would be a staleness bet.
+        record_aggregate(aggregate, predicates.fetch(@table, {}), fragments)
       else
         record_own(predicates.fetch(@table, {}), fragments)
       end
@@ -51,6 +56,21 @@ module Upkeep
         read_set.record_predicate(@table, fragment, node: node, membership_only: @membership_only)
         note_identity(fragment.fetch("__fragment__").fetch("columns"))
       end
+    end
+
+    # The same predicate list record_own would build, packed into one
+    # value-sensitive descriptor: {"fn", "column", "group", "predicates"}.
+    # Identity binding is unchanged — an aggregate over an identity-scoped
+    # predicate still marks the capture identity-bound.
+    def record_aggregate(aggregate, own, fragments)
+      preds = fragments.dup
+      preds.unshift(own) if own.any? || fragments.empty?
+      read_set.record_aggregate(@table, {
+        "fn" => aggregate[:fn], "column" => aggregate[:column],
+        "group" => aggregate[:group], "predicates" => preds
+      }, node: node)
+      note_identity(own.keys)
+      fragments.each { |f| note_identity(f.fetch("__fragment__").fetch("columns")) }
     end
 
     def note_identity(columns)

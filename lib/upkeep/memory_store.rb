@@ -66,7 +66,7 @@ module Upkeep
         @cohorts.values.each_with_object(Set.new) do |cohort, columns|
           deps = cohort.read_set.tables[table]
           next unless deps
-          (deps.predicates + deps.membership_predicates).each do |pred|
+          deps.all_predicates.each do |pred|
             columns.merge(Verdict.predicate_columns(pred) || [])
           end
         end.to_a
