@@ -131,6 +131,25 @@ table-level: more refreshes, never staleness), `row_identity_unavailable`
 refresh), `payload_limit_degrade` (one oversized Tier S delivery stepped
 aside), `cable_topology` (see above).
 
+## The SQLGlot parser
+
+The gem carries a native SQL parser as a core dependency:
+[sql-glot-rust](https://github.com/protegrity/sql-glot-rust), bound over FFI
+as `Upkeep::SQLGlot` (parse, transpile, generate, plus schema-aware
+qualify/scope/lineage). Platform gems ship the compiled library; the source
+gem builds it at install time (needs git + cargo). Its role, precisely:
+
+- **Off the hot path.** Nothing in capture, matching, or delivery parses
+  SQL. The parser exists for future precision work — analyzing the distinct
+  registered query shapes an app produces, once each, cached by digest.
+- **Never a correctness authority.** Parse output can only refine cost
+  decisions; Turbo refresh from execution-recorded read sets remains the
+  sole correctness mechanism. A wrong or failed parse can cost an extra
+  refresh, never staleness.
+
+`benchmark/sqlglot_query_analysis.rb` measures the per-shape analysis cost
+(parse + qualify + scope, ~55us for a two-table join on Apple Silicon).
+
 ## Development
 
 `bash run_all.sh` runs every suite against a throwaway SQLite database.

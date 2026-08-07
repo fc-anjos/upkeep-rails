@@ -27,6 +27,9 @@ jobs:
         with:
           ruby-version: ${{ matrix.ruby }}
           bundler-cache: true
+      # SQLGlot native parser: test/sqlglot_test.rb needs the library built
+      # (GitHub ubuntu runners ship rustup/cargo).
+      - run: ruby ext/sqlglot_rust/extconf.rb
       - run: bash run_all.sh
 
   # Complexity guardrail (.rubocop.yml): the decision-path methods must
