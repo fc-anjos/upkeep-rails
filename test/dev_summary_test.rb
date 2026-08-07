@@ -56,6 +56,15 @@ class DevSummaryTest < ActionDispatch::IntegrationTest
     refute_match(/degraded/, line, "nothing degraded on this page: #{line}")
   end
 
+  # A value-sensitive aggregate is not a degradation — it is shown
+  # distinctly so devs can see what is precise.
+  def test_aggregate_dependency_is_named_not_degraded
+    in_development { get "/census/capacity" }
+    line = summary_lines.first
+    assert_match(/aggregates: time_logs sum\(duration\) by user_id/, line)
+    refute_match(/degraded/, line, "a precise aggregate must not read as a degradation: #{line}")
+  end
+
   def test_table_level_degradation_carries_reason_and_source_hint
     in_development { get "/opaque_cards" }
 

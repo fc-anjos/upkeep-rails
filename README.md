@@ -65,6 +65,19 @@ delivery. Enter-then-leave churn inside one debounce window nets out. An
 unknown before-value can never prove irrelevance, so it degrades to a
 refresh: coarser, never staler.
 
+Aggregate reads (`count`/`sum`/`minimum`/`maximum`/`average`, grouped or
+not) are *value-sensitive*: the read set records the aggregate function,
+the aggregated column and the grouping keys alongside the membership
+predicate, so an in-place write refreshes only when it touched a column
+the aggregate's value can see — the aggregated column, a grouping key, or
+a predicate column. A title edit on a time log costs a capacity dashboard
+(`group(:user_id).sum(:duration)`) nothing; a duration edit, a group move
+or a row entering/leaving the window still refreshes. Structurally opaque
+aggregates (SQL-expression columns or groupings, joined sets) keep the
+old membership-shaped dependency — coarser, never staler — and the dev
+summary and `rails upkeep:report` name each precise aggregate
+(`sum(duration) by user_id`).
+
 **Tier S (earned, never configured): render-once shared broadcast.** Surfaces
 — top-level partials, detected automatically — are promoted only by runtime
 evidence: multiple authenticated, role-diverse viewers whose rendered bytes

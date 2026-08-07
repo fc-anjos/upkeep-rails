@@ -27,8 +27,10 @@ class ReadDoorsTest < ActionDispatch::IntegrationTest
       stream = stream_for("/doors/open_count")
       assert stream, "count-only page must register a cohort"
       deps = Upkeep::Capture.last_recording.read_set.tables.fetch("cards")
-      assert_includes deps.membership_predicates, { "status" => ["open"] },
-        "the calculate door must record the counted predicate as membership-only"
+      assert_includes deps.aggregates,
+        { "fn" => "count", "column" => nil, "group" => [],
+          "predicates" => [{ "status" => ["open"] }] },
+        "the calculate door must record the counted predicate inside a count descriptor"
       assert_empty events, "hooked doors must not trip the audit"
 
       Card.create!(board: @board1, title: "Newly open", status: "open")

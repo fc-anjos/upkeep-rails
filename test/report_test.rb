@@ -40,6 +40,17 @@ class ReportTest < ActionDispatch::IntegrationTest
     assert_match(/my_cards\s+Tier P \(pinned: identity_predicate\)/, text)
   end
 
+  def test_report_names_value_sensitive_aggregates
+    in_process(sim_process) do
+      get "/census/capacity"
+      assert_response :success
+    end
+    text = Upkeep::Report.build.to_text
+    assert_match(/GET \/census\/capacity — 1 cohort/, text)
+    assert_match(/aggregates: time_logs sum\(duration\) by user_id/, text)
+    refute_match(/degraded: time_logs/, text)
+  end
+
   def test_report_shows_activation_state
     sim = sim_process
     stream = nil

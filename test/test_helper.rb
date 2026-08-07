@@ -93,6 +93,15 @@ ActiveRecord::Schema.define do
     t.integer :item_id
     t.integer :score
   end
+  # Census hot-cluster fixture: grouped aggregates feeding a capacity
+  # dashboard (TimeLog.where(period).group(:user_id).sum(:duration)).
+  create_table :time_logs, force: true do |t|
+    t.integer :user_id
+    t.string :title
+    t.string :status, default: "billable"
+    t.integer :duration, default: 0
+    t.date :logged_on
+  end
 end
 
 Upkeep.install!
@@ -144,6 +153,9 @@ class Assignment < ActiveRecord::Base
 end
 
 class Review < ActiveRecord::Base
+end
+
+class TimeLog < ActiveRecord::Base
 end
 
 class SidekiqStyleJob < ActiveJob::Base
@@ -326,6 +338,15 @@ class CensusController < ActionController::Base
     @count = Item.count
     render inline: "<p><%= @count %></p>", layout: false
   end
+
+  # The census hot cluster: a capacity dashboard rendering a grouped sum
+  # over a predicate window.
+  def capacity
+    @totals = TimeLog.where(status: "billable").group(:user_id).sum(:duration)
+    render inline: "<ul><% @totals.each do |uid, total| %>" \
+                   "<li><%= uid %>: <%= total %></li><% end %></ul>",
+           layout: false
+  end
 end
 
 # Upkeep's write convention: POST + head :no_content. The broadcast is the
@@ -484,6 +505,7 @@ Rails.application.routes.draw do
   get "/census/long_titles", to: "census#long_titles"
   get "/census/reviewed_items", to: "census#reviewed_items"
   get "/census/kept_count", to: "census#kept_count"
+  get "/census/capacity", to: "census#capacity"
   get "/pulse/board", to: "pulse#board"
   get "/pulse/skip_board", to: "pulse#skip_board"
   get "/pulse/bare_board", to: "pulse#bare_board"
