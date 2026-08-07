@@ -18,6 +18,7 @@ module Upkeep
       predicates, fallback_reason = extract_predicates(joined)
       if fallback_reason
         read_set.record_table(@table, fallback_reason, node: node)
+        Legibility.note_hint(@table, fallback_reason)
       else
         own = predicates.fetch(@table, {})
         read_set.record_predicate(@table, own, node: node, membership_only: membership_only)

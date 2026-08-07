@@ -8,6 +8,13 @@ require_relative "test_helper"
 class MemberDivergenceTest < ActionDispatch::IntegrationTest
   include ProofHelpers
 
+  # Every page here renders the body-bearing bare layout, and the suite
+  # asserts which stream tags each member's page carries.
+  def setup
+    super
+    Upkeep::Streams.auto_subscribe = true
+  end
+
   def promote_vip
     @a = session_for(@alice)
     @c = session_for(@carol)

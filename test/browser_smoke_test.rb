@@ -98,6 +98,9 @@ class BrowserSmokeTest < ActiveSupport::TestCase
       Upkeep.store = Upkeep::ActiveRecordStore.new
       Upkeep.registry = Upkeep::ActiveRecordSurfaceRegistry.new
       Upkeep.debouncer = Upkeep::Debouncer.new(window: 0.2)
+      # The browsers subscribe through injected tags; /inbox renders a
+      # real <body>, so injection is sound here.
+      Upkeep::Streams.auto_subscribe = true
 
       injector = Class.new do
         define_method(:initialize) { |app| @app = app }

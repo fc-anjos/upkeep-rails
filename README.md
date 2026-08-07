@@ -131,6 +131,37 @@ table-level: more refreshes, never staleness), `row_identity_unavailable`
 refresh), `payload_limit_degrade` (one oversized Tier S delivery stepped
 aside), `cable_topology` (see above).
 
+## Knowing what is live
+
+Every `*.upkeep` event is classified by stakes in one exhaustive map
+(`Upkeep::Legibility::TIERS`), and the classification has teeth where
+developers actually look:
+
+- **Liveness lost raises in development and test.** A page or query that
+  falls out of liveness entirely — capture refused, an unattributable query
+  or write, a write to an ignored table an active page depends on, a page
+  whose subscription tags cannot be injected, a cable topology that cannot
+  deliver — raises `Upkeep::LivenessLost` naming the construct, the nearest
+  app-code frame, and the fix. Production is untouched: warn and degrade,
+  exactly as before. `UPKEEP_NO_RAISE=1` opts a team mid-migration out.
+- **Liveness coarsened never raises.** Table-level fallbacks, Tier S
+  stepping aside, payload degrades: still live, just less precise. In
+  development, every captured request logs one summary line —
+
+  ```
+  [upkeep] live · GET /boards/7 · 3 cohorts · 1 promoted surface ·
+    degraded: cards → table-level (unanalyzable_grouping at app/models/card.rb:12)
+  ```
+
+  — and if the page is NOT live, the line says so and why.
+- **`rails upkeep:report`** prints the static liveness map from the
+  persisted store: every known page with its tables, activation state and
+  recorded degradations, and every surface with its tier and pin reason.
+  `UPKEEP_REPORT_JSON=1` emits the same map as JSON for CI.
+
+An event emitted without a classification raises `UnclassifiedEvent` in
+dev/test: adding a warning without deciding its stakes is not possible.
+
 ## The SQLGlot parser
 
 The gem carries a native SQL parser as a core dependency:

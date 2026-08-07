@@ -26,8 +26,10 @@ class IgnoreListTest < ActionDispatch::IntegrationTest
 
     events = []
     callback = ->(*, payload) { events << payload }
+    # Strict mode raises on this misuse (legibility_test); the production
+    # path underneath still warns and skips.
     ActiveSupport::Notifications.subscribed(callback, "ignored_table_write_skipped.upkeep") do
-      AuditRecord.create!(action: "board.rename")
+      no_raise { AuditRecord.create!(action: "board.rename") }
       drain_debounce
     end
 
@@ -43,7 +45,9 @@ class IgnoreListTest < ActionDispatch::IntegrationTest
     visit_board(@board1)
     stream = response.headers["X-Upkeep-Stream"]
 
-    @board1.update!(name: "Renamed")
+    # This page depends on the now-ignored table, so strict mode raises the
+    # misuse loudly; the skip itself (production behavior) is unchanged.
+    assert_raises(Upkeep::LivenessLost) { @board1.update!(name: "Renamed") }
     assert_no_refresh(stream)
   ensure
     Upkeep.ignored_tables = nil

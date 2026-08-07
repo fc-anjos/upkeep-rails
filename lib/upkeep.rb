@@ -41,6 +41,10 @@ module Upkeep
   # path: reserved for analyzing registered query shapes, never a correctness
   # authority. Autoloaded so apps that never touch it skip the FFI load.
   autoload :SQLGlot,          "upkeep/sqlglot"
+  autoload :Legibility,       "upkeep/legibility"
+  autoload :Report,           "upkeep/report"
+  autoload :LivenessLost,     "upkeep/legibility"
+  autoload :UnclassifiedEvent, "upkeep/legibility"
 
   # One observed committed write.
   #   kind: :insert, :update, :delete - one row, full attrs known
@@ -215,6 +219,7 @@ module Upkeep
     def install!
       return if @installed
       @installed = true
+      Legibility.install!
       Hooks.install!
       Ambient.install!
       AutoSurfaces.install!

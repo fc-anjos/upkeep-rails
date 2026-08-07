@@ -8,7 +8,7 @@ class StreamsTest < ActionDispatch::IntegrationTest
   include ProofHelpers
 
   def test_capture_injects_signed_stream_sources_for_cohort_and_surfaces
-    get "/pulse/board"
+    with_auto_subscribe { get "/pulse/board" }
     assert_response :success
     stream = response.headers["X-Upkeep-Stream"]
     assert stream
