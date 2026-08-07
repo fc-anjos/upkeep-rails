@@ -11,7 +11,8 @@ module Upkeep
     # advanced after every region delivery it receives. Region broadcasts
     # are diffed per cohort against THIS, so the first write after
     # registration sends only what actually changed for that viewer.
-    Cohort = Struct.new(:id, :stream, :read_set, :surfaces, :identity, :baselines, keyword_init: true)
+    Cohort = Struct.new(:id, :stream, :read_set, :surfaces, :identity, :baselines, :path,
+                        keyword_init: true)
 
     def initialize
       @mutex = Mutex.new
@@ -19,11 +20,11 @@ module Upkeep
       @watched_tables = Set.new
     end
 
-    def register(read_set:, surfaces: [], baselines: {}, identity: nil)
+    def register(read_set:, surfaces: [], baselines: {}, identity: nil, path: nil)
       id = SecureRandom.hex(8)
       cohort = Cohort.new(id: id, stream: "upkeep:cohort:#{id}",
                           read_set: read_set, surfaces: surfaces,
-                          identity: identity, baselines: baselines)
+                          identity: identity, baselines: baselines, path: path)
       @mutex.synchronize do
         @cohorts[id] = cohort
         @watched_tables.merge(read_set.tables.keys)

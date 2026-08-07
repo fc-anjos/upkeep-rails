@@ -36,6 +36,9 @@ module Upkeep
         conn.create_table :upkeep_cohorts do |t|
           t.string :stream, null: false
           t.string :deploy_key, null: false
+          # The captured request path: pure legibility (upkeep:report names
+          # pages by it); matching never reads it.
+          t.string :path
           # Viewer identity (nil for unauthenticated pages): the key
           # per-member divergence ejection and re-admission act on.
           t.string :identity
@@ -118,13 +121,14 @@ module Upkeep
       @predicate_columns_cache = {}
     end
 
-    def register(read_set:, surfaces: [], baselines: {}, identity: nil)
+    def register(read_set:, surfaces: [], baselines: {}, identity: nil, path: nil)
       id = SecureRandom.hex(8)
       stream = "upkeep:cohort:#{id}"
       row = CohortRow.create!(
         stream: stream,
         deploy_key: Upkeep.deploy_key,
         identity: identity,
+        path: path,
         read_set_json: JSON.generate(read_set.to_h),
         surfaces_json: JSON.generate(surfaces),
         baselines_json: JSON.generate(baselines),
@@ -141,7 +145,7 @@ module Upkeep
       sweep_opportunistically
       MemoryStore::Cohort.new(id: id, stream: stream, read_set: read_set,
                               surfaces: surfaces, identity: identity,
-                              baselines: baselines)
+                              baselines: baselines, path: path)
     end
 
     # Deletes what no browser is behind anymore. Cheap indexed deletes;
@@ -278,7 +282,7 @@ module Upkeep
       MemoryStore::Cohort.new(
         id: row.id, stream: row.stream, read_set: read_set,
         surfaces: JSON.parse(row.surfaces_json),
-        identity: row.identity,
+        identity: row.identity, path: row.path,
         baselines: JSON.parse(row.baselines_json.presence || "{}")
       )
     end

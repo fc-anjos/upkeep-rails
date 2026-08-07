@@ -13,6 +13,10 @@ module Upkeep
       end
     end
 
+    rake_tasks do
+      load File.expand_path("tasks/report.rake", __dir__)
+    end
+
     # Turbo::StreamsChannel is a zeitwerk autoload inside the turbo-rails
     # engine; attach the subscription observer once the app is fully booted.
     config.after_initialize do

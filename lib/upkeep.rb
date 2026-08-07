@@ -38,6 +38,7 @@ module Upkeep
   autoload :Verdict,          "upkeep/verdict"
   autoload :Dispatch,         "upkeep/dispatch"
   autoload :Legibility,       "upkeep/legibility"
+  autoload :Report,           "upkeep/report"
   autoload :LivenessLost,     "upkeep/legibility"
   autoload :UnclassifiedEvent, "upkeep/legibility"
 

@@ -114,6 +114,8 @@ module Upkeep
       Upkeep.store.register(
         read_set: recording.read_set,
         surfaces: recording.surfaces.map { |o| o.descriptor.name },
+        # Pure legibility: upkeep:report names pages by their captured path.
+        path: request.path,
         # Viewer identity rides on the cohort so a write to the member's own
         # delta rows can eject exactly this member from shared delivery.
         identity: viewer&.id&.to_s,
