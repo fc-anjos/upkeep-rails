@@ -222,7 +222,8 @@ module Upkeep
         when "scrubbed_render_failed"
           "surface #{payload[:name]} scrubbed render failed (#{payload[:error]})"
         when "provenance_compile_failed"
-          "#{payload[:template]} renders without provenance (#{payload[:error]})"
+          template = payload[:template].to_s.delete_prefix("#{root}/")
+          "#{template} renders without provenance (#{payload[:error]})"
         when "row_identity_unavailable"
           "bulk writes match table-level (#{payload[:adapter]})"
         else
