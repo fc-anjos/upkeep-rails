@@ -49,6 +49,10 @@ module Upkeep
       @mutex.synchronize { @watched_tables.include?(table) }
     end
 
+    def cohort_count
+      @mutex.synchronize { @cohorts.size }
+    end
+
     # Columns appearing in registered cohort predicates for `table` — the
     # RETURNING projection candidates (derived from evidence, never
     # configured).

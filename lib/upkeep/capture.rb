@@ -30,19 +30,37 @@ module Upkeep
     def _upkeep_capture
       return yield unless Capture.enabled && request.get? && Capture.registrable?(request)
 
-      recording = Recording.start(
-        request_id: request.headers["X-Turbo-Request-Id"] || request.request_id
-      )
+      Legibility.request_started
       begin
-        yield
-      ensure
-        Recording.finish
-        Capture.last_recording = recording
-      end
+        recording = Recording.start(
+          request_id: request.headers["X-Turbo-Request-Id"] || request.request_id
+        )
+        begin
+          yield
+        ensure
+          Recording.finish
+          Capture.last_recording = recording
+        end
 
-      return unless response.successful? && response.media_type == "text/html"
-      return _upkeep_refuse(recording) if recording.incomplete?
-      _upkeep_register(recording)
+        outcome = _upkeep_outcome(recording)
+        # Dev-only summary line: what this captured request registered, and
+        # every way it did less than expected. No-op outside development.
+        Legibility.request_summary(outcome, recording, request.path) if outcome
+      ensure
+        Legibility.request_finished
+      end
+    end
+
+    # :live, :refused, or nil (response not a successful HTML page).
+    def _upkeep_outcome(recording)
+      return nil unless response.successful? && response.media_type == "text/html"
+      if recording.incomplete?
+        _upkeep_refuse(recording)
+        :refused
+      else
+        _upkeep_register(recording)
+        :live
+      end
     end
 
     # Completeness audit verdict: an unattributable unhooked read ran

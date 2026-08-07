@@ -93,7 +93,49 @@ module Upkeep
 
       def observe(event, payload)
         tier = tier_for(event, payload)
+        notes&.[](:events)&.push([event, tier, payload]) unless tier == :info
         raise LivenessLost, lost_message(event, payload) if tier == :lost && raise_lost?
+      end
+
+      # --- per-request dev summary --------------------------------------------
+      # One line through the Rails logger after each captured HTML request:
+      # liveness status, cohort count, surface buckets, and every
+      # degradation with its reason and source hint. Development only —
+      # request_started leaves the thread-local nil everywhere else, so
+      # every collector below is a nil check.
+
+      NOTES_KEY = :upkeep_legibility_notes
+
+      attr_writer :logger
+
+      def logger
+        @logger || (defined?(::Rails) && ::Rails.respond_to?(:logger) ? ::Rails.logger : nil)
+      end
+
+      def summarizing? = env.to_s == "development"
+
+      def request_started
+        Thread.current[NOTES_KEY] = { events: [], hints: {} } if summarizing?
+      end
+
+      def request_finished
+        Thread.current[NOTES_KEY] = nil
+      end
+
+      def notes = Thread.current[NOTES_KEY]
+
+      # Source hint for a table-level degradation the read set records
+      # without an event (relation-analysis fallbacks, unhooked read
+      # doors): the nearest app-code frame at degrade time.
+      def note_hint(table, reason)
+        n = notes
+        n[:hints][[table.to_s, reason.to_sym]] ||= app_frame if n
+      end
+
+      def request_summary(outcome, recording, path)
+        n = notes
+        return unless n && logger
+        logger.info(summary_line(outcome, recording, path, n))
       end
 
       # First stack frame in application code — past the gem, past Rails,
@@ -104,6 +146,89 @@ module Upkeep
       end
 
       private
+
+      def summary_line(outcome, recording, path, notes)
+        lost = notes[:events].select { |_event, tier, _payload| tier == :lost }
+        if outcome == :refused || lost.any?
+          "[upkeep] NOT live · GET #{path} — #{not_live_reason(recording, outcome, lost)}"
+        else
+          live_line(recording, path, notes)
+        end
+      end
+
+      def not_live_reason(recording, outcome, lost)
+        if outcome == :refused
+          "capture refused: unattributable query " \
+            "(#{recording.incomplete_detail.inspect}); no cohort registered, " \
+            "the page will not update"
+        else
+          event, _tier, payload = lost.first
+          explanation(event, payload).first
+        end
+      end
+
+      def live_line(recording, path, notes)
+        parts = ["[upkeep] live", "GET #{path}", cohort_part, surface_part(recording)]
+        degrades = table_degrades(recording, notes[:hints]) + event_degrades(notes[:events])
+        parts << "degraded: #{degrades.join("; ")}" if degrades.any?
+        parts.compact.join(" · ")
+      end
+
+      def cohort_part
+        return nil unless Upkeep.store.respond_to?(:cohort_count)
+        count = Upkeep.store.cohort_count
+        "#{count} cohort#{"s" unless count == 1}"
+      end
+
+      def surface_part(recording)
+        names = recording.surfaces.map { |o| o.descriptor.name }
+        return nil if names.empty?
+        counts = names.group_by { |name| surface_bucket(name) }.transform_values(&:size)
+        %i[promoted candidate pinned].filter_map do |bucket|
+          n = counts[bucket]
+          "#{n} #{bucket} surface#{"s" if n > 1}" if n
+        end.join(", ")
+      end
+
+      def surface_bucket(name)
+        surface = Upkeep.registry.lookup(name)
+        return :candidate unless surface
+        return :promoted if surface.tier_s?
+        surface.status == :personal ? :pinned : :candidate
+      end
+
+      def table_degrades(recording, hints)
+        recording.read_set.tables.flat_map do |table, deps|
+          deps.table_reasons.uniq.map do |reason|
+            hint = hints[[table, reason]]
+            "#{table} → table-level (#{reason}#{" at #{hint}" if hint})"
+          end
+        end
+      end
+
+      def event_degrades(events)
+        events.filter_map do |event, tier, payload|
+          next unless tier == :coarsened
+          # Table-level capture degrades already appear via table_degrades.
+          next if event == "capture_incomplete"
+          describe_coarse(event, payload)
+        end
+      end
+
+      def describe_coarse(event, payload)
+        case event
+        when "surface_pinned", "surface_demoted"
+          "surface #{payload[:name]} #{event.delete_prefix("surface_")} (#{payload[:reason]})"
+        when "scrubbed_render_failed"
+          "surface #{payload[:name]} scrubbed render failed (#{payload[:error]})"
+        when "provenance_compile_failed"
+          "#{payload[:template]} renders without provenance (#{payload[:error]})"
+        when "row_identity_unavailable"
+          "bulk writes match table-level (#{payload[:adapter]})"
+        else
+          "#{event} #{payload.except(:name, :deploy_key).inspect}"
+        end
+      end
 
       def root
         defined?(::Rails) && ::Rails.respond_to?(:root) && ::Rails.root ? ::Rails.root.to_s : Dir.pwd

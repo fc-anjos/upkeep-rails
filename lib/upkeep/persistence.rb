@@ -165,6 +165,8 @@ module Upkeep
       { cohorts: dead.size, claims: claims }
     end
 
+    def cohort_count = CohortRow.count
+
     # A live subscription's periodic touch (the channel pings it on
     # subscribe): keeps the cohort out of the sweeper's reach.
     def heartbeat(stream)

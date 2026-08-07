@@ -284,6 +284,7 @@ module Upkeep
         # table-level dependency — every write to that table now matches.
         recording.read_set.record_table(table, :unhooked_read_door,
                                         node: recording.prov_address)
+        Legibility.note_hint(table, :unhooked_read_door)
         Upkeep.stats[:unhooked_reads_degraded] += 1
         ActiveSupport::Notifications.instrument(
           "capture_incomplete.upkeep",

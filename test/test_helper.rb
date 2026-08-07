@@ -173,6 +173,13 @@ class BoardsController < ActionController::Base
     render inline: "<ul><% @cards.each do |c| %><li><%= c.title %></li><% end %></ul>", layout: false
   end
 
+  # Raw-SQL where: relation analysis can't extract a predicate and degrades
+  # cards to a table-level dependency (dev-summary source-hint fixture).
+  def opaque_cards
+    @cards = Card.where("status = 'open'").to_a
+    render inline: "<ul><% @cards.each do |c| %><li><%= c.title %></li><% end %></ul>", layout: false
+  end
+
   # Write-on-read page (mark-as-read): idempotent, so refresh-triggered
   # re-GETs converge instead of cascading forever.
   def inbox
@@ -360,6 +367,7 @@ Rails.application.routes.draw do
   post "/cards_api", to: "cards_api#create"
   get "/boards/:id", to: "boards#show"
   get "/cards", to: "boards#all_cards"
+  get "/opaque_cards", to: "boards#opaque_cards"
   get "/inbox", to: "boards#inbox"
   get "/shared_board", to: "surfaces#shared_board"
   get "/dashboard", to: "surfaces#dashboard"
