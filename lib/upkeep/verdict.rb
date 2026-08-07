@@ -88,6 +88,9 @@ module Upkeep
     # Whole-row count sees no content at all — with membership unchanged
     # only a grouping-key move can change it.
     def aggregate_verdict(agg, fact)
+      # A descriptor without predicates never comes off the recording path
+      # (unscoped records the match-all {}); treat it as membership unknown.
+      return :maybe if agg["predicates"].empty?
       verdict = agg["predicates"].reduce(:irrelevant) do |acc, pred|
         combine(acc, predicate_verdict(pred, fact))
       end
