@@ -8,3 +8,4 @@ gem "sqlite3"
 gem "puma"
 gem "redis", ">= 4", "< 6" # actioncable 8.1 redis adapter pins < 6
 gem "minitest"
+gem "ffi", "~> 1.15"

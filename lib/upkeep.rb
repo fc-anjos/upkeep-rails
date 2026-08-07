@@ -37,6 +37,10 @@ module Upkeep
   autoload :AutoSurfaces,     "upkeep/auto_surfaces"
   autoload :Verdict,          "upkeep/verdict"
   autoload :Dispatch,         "upkeep/dispatch"
+  # Native SQL parser (sql-glot-rust via FFI). Core dependency, off the hot
+  # path: reserved for analyzing registered query shapes, never a correctness
+  # authority. Autoloaded so apps that never touch it skip the FFI load.
+  autoload :SQLGlot,          "upkeep/sqlglot"
 
   # One observed committed write.
   #   kind: :insert, :update, :delete - one row, full attrs known

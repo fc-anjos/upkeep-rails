@@ -12,3 +12,10 @@
 /*.gem
 /test/tmp/
 /tmp/
+
+# SQLGlot native build products (source clone, stub Makefile, built library)
+/ext/sqlglot_rust/sql-glot-rust/
+/ext/sqlglot_rust/Makefile
+/lib/upkeep/sqlglot/*.so
+/lib/upkeep/sqlglot/*.dylib
+/lib/upkeep/sqlglot/*.dll
